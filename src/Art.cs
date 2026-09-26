@@ -8,15 +8,15 @@ public static class Art
     public const int TS = 64; // wall/floor texture size
 
     // Walls
-    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, Portcullis, LeverOff, LeverOn, Marble;
+    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble;
     // Flats
-    public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff;
-    public static Tex SkyDusk, SkyIce;
+    public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff;
+    public static Tex SkyDusk, SkyIce, SkyNight;
     // Sprites
     public static readonly Dictionary<string, Tex[]> Monsters = new();
     public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt;
     public static Tex[] Torch;
-    public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, Armor, WeaponPiece2, WeaponPiece3, Tree, Crystal;
+    public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, WeaponPiece2, WeaponPiece3, Tree, Crystal;
     // HUD
     public static Tex HudBack;
     // First-person weapons, indexed [class*3 + slot][frame]
@@ -150,6 +150,20 @@ public static class Art
             SteelDoor = c.T;
         }
 
+        // fire key door: scorched iron with a glowing flame emblem
+        {
+            var r = new Rng(47); var c = new Canvas(TS, TS);
+            c.Clear(Col.Rgb(70, 40, 30));
+            for (int y = 0; y < 64; y += 16) { c.Rect(0, y, 64, 1, Col.Rgb(30, 16, 10)); c.Rect(0, y + 1, 64, 1, Col.Rgb(130, 70, 40)); }
+            for (int y = 4; y < 64; y += 16) for (int x = 4; x < 64; x += 8) c.Circle(x, y, 1.3f, Col.Rgb(180, 110, 60));
+            c.Circle(32, 32, 12, Col.Rgb(30, 16, 10));
+            c.Glow(32, 32, 12, Col.Rgb(255, 120, 20));
+            c.Tri(24, 40, 40, 40, 32, 20, Col.Rgb(255, 140, 30));
+            c.Tri(28, 40, 36, 40, 32, 28, Col.Rgb(255, 230, 120));
+            c.Noise(r, 14);
+            FireDoor = c.T;
+        }
+
         // portcullis: see-through iron grate (transparent between bars)
         {
             var c = new Canvas(TS, TS);
@@ -216,8 +230,12 @@ public static class Art
         PortalFloor = RuneFloor(Col.Rgb(60, 140, 255));
         ExitFloor = RuneFloor(Col.Rgb(255, 80, 60));
         ExitFloorOff = RuneFloor(Col.Rgb(90, 60, 60));
+        SpawnFloor = RuneFloor(Col.Rgb(160, 60, 220));
+        AltarFloor = RuneFloor(Col.Rgb(255, 200, 60));
+        AltarFloorOff = RuneFloor(Col.Rgb(110, 90, 50));
 
         SkyDusk = BuildSky(201, (40, 20, 60), (200, 90, 60), (30, 16, 30), false);
+        SkyNight = BuildSky(205, (8, 14, 20), (50, 80, 60), (12, 20, 14), false);
         SkyIce = BuildSky(203, (120, 150, 190), (220, 230, 240), (80, 96, 120), true);
     }
 
@@ -343,6 +361,13 @@ public static class Art
             c.Circle(22, 44, 8, Col.Rgb(190, 196, 210)); c.Circle(22, 44, 4, Col.Rgb(0, 0, 0) & 0x00FFFFFF);
             c.Rect(29, 42, 22, 4, Col.Rgb(190, 196, 210));
             c.Rect(44, 46, 3, 6, Col.Rgb(190, 196, 210)); c.Rect(49, 46, 2, 5, Col.Rgb(190, 196, 210));
+        });
+        FireKey = Item(c =>
+        {
+            c.Glow(30, 46, 16, Col.Rgb(255, 120, 20));
+            c.Circle(22, 44, 8, Col.Rgb(230, 120, 40)); c.Circle(22, 44, 4, Col.Rgb(0, 0, 0) & 0x00FFFFFF);
+            c.Rect(29, 42, 22, 4, Col.Rgb(230, 120, 40));
+            c.Rect(44, 46, 3, 6, Col.Rgb(230, 120, 40)); c.Rect(49, 46, 2, 5, Col.Rgb(230, 120, 40));
         });
         Armor = Item(c =>
         {

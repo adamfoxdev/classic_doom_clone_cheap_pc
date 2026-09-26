@@ -42,9 +42,9 @@ public static class Program
 
         while (!Raylib.WindowShouldClose() && !game.QuitRequested)
         {
-            var inp = ReadInput();
+            var inp = ReadInput(game.Con.Open);
 
-            bool wantCapture = game.Mode is GameMode.Playing or GameMode.Dead && !game.Paused;
+            bool wantCapture = game.Mode is GameMode.Playing or GameMode.Dead && !game.Paused && !game.Con.Open;
             if (wantCapture != captured)
             {
                 if (wantCapture) Raylib.DisableCursor(); else Raylib.EnableCursor();
@@ -88,7 +88,7 @@ public static class Program
     static bool Down(KeyboardKey k) => Raylib.IsKeyDown(k);
     static bool Pressed(KeyboardKey k) => Raylib.IsKeyPressed(k);
 
-    static Input ReadInput()
+    static Input ReadInput(bool consoleOpen)
     {
         var i = new Input();
         if (Down(KeyboardKey.W) || Down(KeyboardKey.Up)) i.Move += 1;
@@ -99,13 +99,23 @@ public static class Program
         if (Down(KeyboardKey.Left)) i.Turn -= 1;
         i.Walk = Down(KeyboardKey.LeftShift) || Down(KeyboardKey.RightShift);
         i.Fire = Raylib.IsMouseButtonDown(MouseButton.Left) || Down(KeyboardKey.LeftControl) || Down(KeyboardKey.RightControl);
-        i.Use = Pressed(KeyboardKey.E) || Pressed(KeyboardKey.Space);
+        i.Use = Pressed(KeyboardKey.E);
+        i.Jump = Pressed(KeyboardKey.Space);
+        i.Slide = Pressed(KeyboardKey.C);
+        i.ConsoleToggle = Pressed(KeyboardKey.Grave);
+        i.Backspace = Pressed(KeyboardKey.Backspace) || Raylib.IsKeyPressedRepeat(KeyboardKey.Backspace);
+        i.Tab = Pressed(KeyboardKey.Tab);
+        i.PageUp = Pressed(KeyboardKey.PageUp);
+        i.PageDown = Pressed(KeyboardKey.PageDown);
+        var typed = new System.Text.StringBuilder();
+        for (int c = Raylib.GetCharPressed(); c != 0; c = Raylib.GetCharPressed()) typed.Append((char)c);
+        i.Typed = typed.ToString();
         i.UseItem = Pressed(KeyboardKey.F);
         i.Map = Pressed(KeyboardKey.Tab) || Pressed(KeyboardKey.M);
         i.Pause = Pressed(KeyboardKey.Escape);
         i.Confirm = Pressed(KeyboardKey.Enter) || Pressed(KeyboardKey.KpEnter);
-        i.Up = Pressed(KeyboardKey.Up) || Pressed(KeyboardKey.W);
-        i.Down = Pressed(KeyboardKey.Down) || Pressed(KeyboardKey.S);
+        i.Up = Pressed(KeyboardKey.Up) || (!consoleOpen && Pressed(KeyboardKey.W));
+        i.Down = Pressed(KeyboardKey.Down) || (!consoleOpen && Pressed(KeyboardKey.S));
         i.Quit = Pressed(KeyboardKey.Q);
         i.Screenshot = Pressed(KeyboardKey.F12);
         if (Pressed(KeyboardKey.One)) i.Slot = 1;

@@ -18,13 +18,14 @@ public static class Headless
         {
             Console.WriteLine($"{lv.Name}: {lv.W}x{lv.H}, {lv.Things.Count} things");
             // player start (or arrival portal) reaches every portal/exit/key when doors, gates and key doors are passable
-            var start = lv == hub[0] ? ((int)lv.StartX, (int)lv.StartY) : ((int)lv.FindMark('1')!.Value.x, (int)lv.FindMark('1')!.Value.y);
+            var arrival = Enumerable.Range(0, lv.Marks.Length).First(i => char.IsDigit(lv.Marks[i]));
+            var start = lv == hub[0] ? ((int)lv.StartX, (int)lv.StartY) : (arrival % lv.W, arrival / lv.W);
             var reach = Flood(lv, start.Item1, start.Item2);
             for (int i = 0; i < lv.Marks.Length; i++)
                 if (lv.Marks[i] != '\0') Check(reach[i], $"mark '{lv.Marks[i]}' at {i % lv.W},{i / lv.W} reachable");
             foreach (var t in lv.Things)
             {
-                if (t is Pickup pk && pk.Kind is PickupKind.SteelKey or PickupKind.Weapon2 or PickupKind.Weapon3)
+                if (t is Pickup pk && pk.Kind is PickupKind.SteelKey or PickupKind.FireKey or PickupKind.Weapon2 or PickupKind.Weapon3)
                     Check(reach[(int)t.Y * lv.W + (int)t.X], $"{pk.Kind} reachable");
                 if (t is Monster m && m.Def.Boss) Check(reach[(int)t.Y * lv.W + (int)t.X], "boss reachable");
                 Check(!lv.BlocksPoint(t.X, t.Y), $"{t.GetType().Name} at {t.X - 0.5f},{t.Y - 0.5f} not inside a wall");
@@ -40,6 +41,19 @@ public static class Headless
         }
         Console.WriteLine("Gameplay:");
         GameplayChecks(Check);
+
+        // every portal digit must exist in exactly two maps
+        foreach (char d in hub.SelectMany(l => l.Marks).Where(char.IsDigit).Distinct())
+            Check(hub.Count(l => l.FindMark(d) != null) == 2, $"portal {d} links exactly two maps");
+
+        Console.WriteLine("Hub progression:");
+        HubChecks(Check);
+        Console.WriteLine("Jumping and sliding:");
+        MovementChecks(Check);
+        Console.WriteLine("Console and cheats:");
+        ConsoleChecks(Check);
+        Console.WriteLine("Chaos Arena waves:");
+        ArenaChecks(Check);
 
         Console.WriteLine("Audio synthesis:");
         bool audioOk = true;
@@ -137,6 +151,167 @@ public static class Headless
         check(g.Mode == GameMode.Playing && g.P.Health == 100, "restart after death");
     }
 
+    static void HubChecks(Action<bool, string> check)
+    {
+        var g = new Game();
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Cleric);
+        g.Vars.God = true;
+
+        // Frozen Keep: the fire door guards the lever room
+        g.Warp(1);
+        int fire = Array.IndexOf(g.Level.Cells, 'F');
+        int fx = fire % g.Level.W, fy = fire / g.Level.W;
+        g.P.X = fx + 0.5f; g.P.Y = fy - 0.6f; g.P.Angle = MathF.PI / 2;
+        Tick(new Input { Use = true }); Tick(default, 35);
+        check(g.Level.DoorOpen[fire] == 0f, "fire door stays locked without the Fire Key");
+
+        // portal 2 leads to Darkmere Crypt, which holds the Fire Key behind a two-lever gate
+        var p2 = g.Level.FindMark('2').Value;
+        g.P.X = p2.x; g.P.Y = p2.y; Tick(default);
+        check(g.Level == g.Hub[2], "portal 2 leads to Darkmere Crypt");
+        var crypt = g.Level;
+        check(crypt.LeverCount == 2, "crypt has two levers");
+        int gate = Array.IndexOf(crypt.Cells, 'P');
+        var levers = Enumerable.Range(0, crypt.Cells.Length).Where(i => crypt.Cells[i] == 'L').ToList();
+        foreach (var (li, n) in levers.Select((l, n) => (l, n)))
+        {
+            int lx = li % crypt.W, ly = li / crypt.W;
+            // stand on the open side of the lever and face it
+            var (sx, sy, a) = !crypt.Blocks(lx - 1, ly) ? (lx - 0.5f, ly + 0.5f, 0f) : (lx + 1.5f, ly + 0.5f, MathF.PI);
+            g.P.X = sx; g.P.Y = sy; g.P.Angle = a;
+            Tick(new Input { Use = true }); Tick(default, 35 * 2);
+            if (n == 0) check(crypt.DoorOpen[gate] == 0f, "one lever is not enough");
+        }
+        check(crypt.DoorOpen[gate] >= 1f, "both levers raise the crypt gate");
+        var key = crypt.Things.OfType<Pickup>().First(p => p.Kind == PickupKind.FireKey);
+        g.P.X = key.X; g.P.Y = key.Y; Tick(default);
+        check(g.P.FireKey, "Fire Key picked up");
+
+        g.Warp(1);
+        g.P.X = fx + 0.5f; g.P.Y = fy - 0.6f; g.P.Angle = MathF.PI / 2;
+        Tick(new Input { Use = true }); Tick(default, 35);
+        check(g.Level.DoorOpen[fire] >= 1f, "Fire Key opens the fire door");
+
+        // portal 3 in the courtyard reaches the arena
+        g.Warp(0);
+        Tick(default); // step off the arrival spot so portals re-arm
+        var p3 = g.Level.FindMark('3').Value;
+        g.P.X = p3.x; g.P.Y = p3.y; Tick(default);
+        check(g.Level == g.Hub[3], "portal 3 leads to the Chaos Arena");
+    }
+
+    static void MovementChecks(Action<bool, string> check)
+    {
+        var g = new Game();
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+
+        Tick(new Input { Jump = true });
+        float peak = 0;
+        for (int k = 0; k < 35; k++) { Tick(default); peak = MathF.Max(peak, g.P.Z); }
+        check(peak > 0.35f && g.P.OnGround, $"jump rises (peak {peak:0.00}) and lands");
+
+        // a low missile passes under a jumping player
+        g.P.X = 3.5f; g.P.Y = 2.5f; g.P.Health = 100;
+        Tick(new Input { Jump = true }); Tick(default, 5);
+        g.Level.Things.Add(new Projectile { Kind = ProjKind.CentaurBolt, DmgMin = 10, DmgMax = 10, X = g.P.X + 0.4f, Y = g.P.Y, Z = 0.2f, VX = -3, Level = g.Level });
+        Tick(default, 3);
+        check(g.P.Health == 100, "jumping dodges a low missile");
+        Tick(default, 35);
+
+        // sliding ducks under a chest-high missile and covers more ground
+        g.P.X = 2.5f; g.P.Y = 2.5f; g.P.Angle = 0;
+        float x0 = g.P.X;
+        Tick(new Input { Move = 1 }, 10);
+        float walked = g.P.X - x0;
+        g.P.X = 2.5f; x0 = g.P.X;
+        Tick(new Input { Move = 1, Slide = true }); Tick(new Input { Move = 1 }, 5);
+        g.Level.Things.Add(new Projectile { Kind = ProjKind.Fireball, DmgMin = 10, DmgMax = 10, X = g.P.X + 0.35f, Y = g.P.Y, Z = 0.45f, VX = -3, Level = g.Level });
+        Tick(new Input { Move = 1 }, 4);
+        float slid = g.P.X - x0;
+        check(slid > walked * 1.3f, $"slide covers more ground ({slid:0.00} vs {walked:0.00})");
+        check(g.P.Health == 100, "sliding ducks under a fireball");
+    }
+
+    static void ConsoleChecks(Action<bool, string> check)
+    {
+        var g = new Game();
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Mage);
+
+        Tick(new Input { ConsoleToggle = true });
+        check(g.Con.Open, "~ opens the console");
+        float ang = g.P.Angle;
+        Tick(new Input { Typed = "give all", LookX = 300 });
+        Tick(new Input { Confirm = true });
+        check(g.P.HasWeapon[2] && g.P.SteelKey && g.P.FireKey && g.P.GreenMana == 200, "'give all' via typed input");
+        check(g.P.Angle == ang, "game input is ignored while the console is open");
+        g.Con.Execute("set speed 2");
+        check(g.Vars.Speed == 2f, "'set speed 2'");
+        g.Con.Execute("monsterdamage 0.5");
+        check(g.Vars.MonsterDamage == 0.5f, "shorthand 'monsterdamage 0.5'");
+        g.Con.Execute("reset");
+        check(g.Vars.Speed == 1f && g.Vars.MonsterDamage == 1f, "'reset' restores defaults");
+        g.Con.Execute("bogus");
+        check(g.Con.Log[^1].Contains("unknown"), "unknown command reported");
+        g.Con.Execute("map 3");
+        check(g.Level == g.Hub[2], "'map 3' warps to Darkmere Crypt");
+        int before = g.Level.Things.Count;
+        g.Con.Execute("summon ettin");
+        check(g.Level.Things.Count == before + 1, "'summon ettin'");
+        g.Con.Execute("kill");
+        check(g.Level.Things.OfType<Monster>().All(m => !m.Alive), "'kill' clears the map");
+        Tick(new Input { Pause = true });
+        check(!g.Con.Open, "Esc closes the console");
+
+        // classic cheat codes typed during play
+        foreach (char c in "satan") Tick(new Input { Typed = c.ToString() });
+        check(g.Vars.God, "typing 'satan' enables god mode");
+        g.Level.Things.Add(new Projectile { Kind = ProjKind.BossBall, DmgMin = 500, DmgMax = 500, X = g.P.X + 0.4f, Y = g.P.Y, Z = 0.3f, VX = -5, Level = g.Level });
+        Tick(default, 5);
+        check(g.Mode == GameMode.Playing && g.P.Health > 0, "god mode survives a lethal hit");
+        foreach (char c in "visit4") Tick(new Input { Typed = c.ToString() });
+        check(g.Level == g.Hub[3], "typing 'visit4' warps to the arena");
+        foreach (char c in "mapsco") Tick(new Input { Typed = c.ToString() });
+        check(g.Level.Seen.All(s => s), "typing 'mapsco' reveals the map");
+    }
+
+    static void ArenaChecks(Action<bool, string> check)
+    {
+        var g = new Game();
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Vars.God = true;
+        g.Warp(3);
+        var a = g.Level.Arena;
+        check(a != null && !a.Started, "arena waits for the player");
+        var altar = g.Level.FindMark('!').Value;
+        g.P.X = altar.x; g.P.Y = altar.y;
+        Tick(default);
+        check(a.Started && a.Wave == 1, "stepping on the altar starts wave 1");
+        int w1 = a.Remaining;
+        Tick(default, 35 * 8);
+        check(a.Live.Count > 0 && a.Live.All(m => m.State != AiState.Idle), "wave monsters spawn awake");
+        float hp1 = a.Live.Max(m => m.Health / (float)m.Def.Health);
+
+        for (int wave = 1; wave <= 5; wave++)
+        {
+            for (int k = 0; k < 35 * 60 && !a.InIntermission; k++) { g.KillAll(); Tick(default); }
+            if (wave == 1) check(a.InIntermission, "killing everything clears the wave");
+            if (wave == 1) check(g.Level.Things.OfType<Pickup>().Any(), "supplies appear after a wave");
+            Tick(default, (int)(35 * ArenaState.Intermission) + 2);
+        }
+        check(a.Wave == 6, $"waves keep coming (now on wave {a.Wave})");
+        Tick(default, 35 * 3);
+        float hp6 = a.Live.Max(m => m.Health / (float)m.Def.Health);
+        check(ArenaState.Compose(6, new Random(1)).Count > w1, "later waves have more monsters");
+        check(hp6 > hp1, $"later waves are tougher (health x{hp1:0.00} -> x{hp6:0.00})");
+        check(ArenaState.Compose(5, new Random(1)).Any(d => d.Boss), "wave 5 brings a Heresiarch");
+        check(!ArenaState.Compose(1, new Random(1)).Any(d => d != Monster.Ettin), "wave 1 is only ettins");
+    }
+
     static bool[] Flood(Level lv, int sx, int sy)
     {
         var seen = new bool[lv.W * lv.H];
@@ -204,8 +379,11 @@ public static class Headless
 
         // gate half-raised, seen from inside the hall
         g.P.X = 17.5f; g.P.Y = 8.5f; g.P.Angle = MathF.PI / 2; g.P.Pitch = -10;
-        g.Level.LeverPulled = true;
-        for (int i = 0; i < g.Level.Cells.Length; i++) if (g.Level.Cells[i] == 'P') g.Level.DoorOpen[i] = 0.45f;
+        for (int i = 0; i < g.Level.Cells.Length; i++)
+        {
+            if (g.Level.Cells[i] == 'L') g.Level.PulledLevers.Add(i);
+            if (g.Level.Cells[i] == 'P') g.Level.DoorOpen[i] = 0.45f;
+        }
         Tick(default, 1);
         Shot("06_portcullis");
 
@@ -238,6 +416,40 @@ public static class Headless
         g.ShowMap = true;
         Shot("11_automap");
         g.ShowMap = false;
+
+        // Darkmere Crypt courtyard, looking toward the lever-gated hall
+        g.NewGame(PClass.Fighter);
+        g.Warp(2);
+        g.P.X = 13.5f; g.P.Y = 6.5f; g.P.Angle = -MathF.PI / 2 + 0.4f; g.P.Pitch = 10;
+        g.Level.Things.RemoveAll(t => t is Monster m && m.Def != Monster.Ettin);
+        Tick(default, 50); // let the teleport flash fade
+        Shot("13_darkmere_crypt");
+
+        // Chaos Arena mid-wave
+        g.NewGame(PClass.Cleric);
+        g.Vars.God = true; g.Vars.Freeze = false;
+        g.Warp(3);
+        var altar = g.Level.FindMark('!').Value;
+        g.P.X = altar.x; g.P.Y = altar.y;
+        Tick(default, 1);
+        g.P.X = altar.x - 3; g.P.Angle = MathF.PI + 0.1f;
+        Tick(default, 35 * 4);
+        g.Vars.Freeze = true;
+        g.P.X = altar.x + 2; g.P.Y = altar.y; g.P.Angle = MathF.PI;
+        Tick(default, 2);
+        Shot("14_arena_wave");
+
+        // jumping (camera raised) with the console open
+        g.P.VZ = 3.3f;
+        for (int k = 0; k < 4; k++) g.Update(default, 1f / 35f);
+        g.Vars.God = false; g.Vars.Freeze = false;
+        g.Con.Open = true;
+        g.Con.Execute("help");
+        g.Con.Execute("set fov 90");
+        g.Con.Line = "summon here";
+        Shot("15_console");
+        g.Con.Open = false;
+        g.Vars.Fov = 74;
 
         // victory screen
         g.Mode = GameMode.Victory;

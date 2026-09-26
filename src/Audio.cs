@@ -72,6 +72,9 @@ public sealed unsafe class Audio : IDisposable
             Sfx.Locked => Gen(0.3f, (t, n) => Square(t * 110) * 0.3f * ((int)(t * 13) % 2 == 0 ? 1 : 0) * Env(t, 0.01f, 0.3f), lowpass: 0.3f),
             Sfx.BossSight => Gen(1.2f, (t, n) => (Saw(t * (60 + 20 * MathF.Sin(t * 9))) * 0.6f + r.Range(-1f, 1f) * 0.3f) * Env(t, 0.1f, 1.2f), lowpass: 0.2f),
             Sfx.Heal => Gen(0.5f, (t, n) => MathF.Sin(MathF.Tau * t * (600 + 600 * t)) * 0.4f * Env(t, 0.02f, 0.5f)),
+            Sfx.Jump => Gen(0.16f, (t, n) => MathF.Sin(MathF.Tau * (180 * t + 900 * t * t)) * 0.35f * Env(t, 0.01f, 0.16f)),
+            Sfx.Land => Gen(0.12f, (t, n) => (r.Range(-1f, 1f) * 0.5f + MathF.Sin(t * 70 * MathF.Tau) * 0.6f) * Decay(t, 30), lowpass: 0.2f),
+            Sfx.Slide => Gen(0.45f, (t, n) => r.Range(-1f, 1f) * Env(t, 0.03f, 0.45f) * 0.45f, lowpass: 0.1f),
             _ => new short[1],
         };
     }

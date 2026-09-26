@@ -7,6 +7,9 @@ There are no asset files.
 ![Great hall](docs/great_hall.png)
 ![Frozen Keep](docs/frozen_keep.png)
 ![Heresiarch](docs/heresiarch.png)
+![Darkmere Crypt](docs/darkmere_crypt.png)
+![Chaos Arena](docs/chaos_arena.png)
+![Console](docs/console.png)
 
 ## Features
 
@@ -17,10 +20,16 @@ There are no asset files.
   | Cleric | Mace of Contrition | Serpent Staff | Firestorm |
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
-- **Hub levels.** Portals connect *Winnowing Hall* and *The Frozen Keep*. Each map keeps its state
-  (dead monsters, opened doors, pulled levers) when you leave and come back.
-- **Puzzles.** A lever raises a portcullis elsewhere in the map, the Steel Key opens a locked door, and the exit
-  stays sealed until the Heresiarch is dead.
+- **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt* and the optional
+  *Chaos Arena*. Each map keeps its state (dead monsters, opened doors, pulled levers) when you leave and come back.
+- **Puzzles.** Levers raise portcullises (the crypt's gate needs *both* of its levers), the Fire Key and Steel Key
+  open locked doors in other maps, and the exit stays sealed until the Heresiarch is dead.
+- **Chaos Arena waves.** Step on the golden altar to start endless waves. Each wave has more monsters and
+  tougher types (Afrits from wave 2, Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed
+  scale up every wave, and every fifth wave adds Heresiarchs. Supplies appear at the altar after each wave.
+- **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
+  under missiles.
+- **Developer console (`~`)** for changing game mechanics, plus Hexen's classic cheat codes.
 - **Monsters:** Ettins, Afrits (flying fire gargoyles), Centaurs, Slaughtaurs and the Heresiarch boss.
   Monsters wake on sight or on noise, open doors, and use melee and/or missiles.
 - **Inventory:** Quartz Flasks and Mystic Urns, used with `F`.
@@ -46,22 +55,53 @@ dotnet run -c Release
 | `W` `A` `S` `D` / arrow keys | Move / strafe / turn |
 | Mouse | Look (including up/down) |
 | Left click / `Ctrl` | Attack |
-| `E` / `Space` | Use (doors, levers) |
+| `E` | Use (doors, levers) |
+| `Space` | Jump |
+| `C` | Slide (while moving) |
 | `1` `2` `3` / mouse wheel | Select weapon |
 | `F` | Use a healing item (Quartz Flask, else Mystic Urn) |
 | `Shift` | Walk |
 | `Tab` / `M` | Automap |
 | `Esc` | Pause (`Q` quits from the pause menu) |
 | `F12` | Save a screenshot |
+| `~` | Developer console |
 
 ## Walkthrough (spoilers)
 
 1. In Winnowing Hall, grab the class weapon piece in the north-east room.
 2. Pull the lever on the great hall's south wall. The portcullis opens to the courtyard.
-3. Step on the blue portal to reach the Frozen Keep. Find the Keep's weapon piece, then pull the lever
-   on the east wall to open the vault with the **Steel Key**.
-4. Take the portal back and open the steel door off the courtyard. Kill the Heresiarch, then step on the red
+3. Step on blue portal **1** to reach the Frozen Keep and grab its weapon piece (middle room).
+   The east room is behind a fire door.
+4. Take portal **2** (the Keep's west room) to Darkmere Crypt. Pull *both* levers (north-east and south-west rooms)
+   to raise the gate to the **Fire Key**.
+5. Back in the Keep, open the fire door, pull the lever on the east wall, and take the **Steel Key** from the vault.
+6. Return to Winnowing Hall and open the steel door off the courtyard. Kill the Heresiarch, then step on the red
    exit rune.
+
+Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival.
+
+## Console and cheats
+
+Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Down` recall history,
+`PgUp`/`PgDn` scroll, `Esc` closes. Type `help` for everything; the most useful commands:
+
+| Command | Effect |
+|---|---|
+| `vars` | list every tweakable setting and its current value |
+| `set <var> <value>` (or just `<var> <value>`) | change a setting, e.g. `speed 1.5`, `fov 90`, `gravity 6` |
+| `reset` | restore default settings |
+| `god`, `noclip`, `notarget`, `freeze` | toggles |
+| `give all\|health\|mana\|weapons\|keys\|items\|armor` | give yourself things |
+| `summon <ettin\|afrit\|centaur\|slaughtaur\|heresiarch\|flask\|...>` | spawn something in front of you |
+| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena) |
+| `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
+
+Settings: `speed`, `sens`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
+`gravity`, `jump`, `slidespeed`, `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `fullbright`, `showfps`.
+
+Hexen's cheat codes work when typed during play (or in the console):
+`satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys),
+`clubmed` (health), `butcher` (kill all), `mapsco` (reveal map), `visitN` (warp to hub map N).
 
 ## Developer tools
 
@@ -76,7 +116,9 @@ dotnet run -c Release -- --shots shots    # renders scripted screenshots headles
 |---|---|
 | `src/Program.cs` | Raylib window, input mapping, framebuffer upload |
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
-| `src/Level.cs` | Map parsing, doors, collision, line of sight, and the hub's two maps |
+| `src/Level.cs` | Map parsing, doors, collision, line of sight, and the hub's four maps |
+| `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
+| `src/DevConsole.cs` | `~` console, tweakable settings, cheat codes |
 | `src/Entities.cs` | Things: monsters (and their stats), projectiles, pickups, decorations |
 | `src/Renderer.cs` | Software raycaster, sprites, HUD, automap, menus |
 | `src/Art.cs` | Procedural textures, sprites and first-person weapons |
@@ -92,9 +134,10 @@ Maps are ASCII grids in `src/Level.cs`:
 |---|---|---|---|
 | `#` `B` `W` `M` `I` `O` | walls (stone, brick, wood, moss, ice, marble) | `.` / `,` | indoor floor / outdoor floor (sky) |
 | `D` | door | `@` | player start |
-| `S` | steel-key door | `1`–`9` | portal (links to the same digit in another map) |
+| `S` / `F` | steel-key / fire-key door | `1`–`9` | portal (links to the same digit in another map) |
 | `P` | portcullis (opened by a lever) | `E` | exit (sealed until the boss dies) |
-| `L` | lever | `e` `a` `c` `C` `H` | Ettin, Afrit, Centaur, Slaughtaur, Heresiarch |
+| `L` | lever (gates open once every lever in the map is pulled) | `e` `a` `c` `C` `H` | Ettin, Afrit, Centaur, Slaughtaur, Heresiarch |
 | `h` `q` `u` | Crystal Vial, Quartz Flask, Mystic Urn | `b` `g` | blue / green mana |
-| `k` | Steel Key | `r` | Mesh Armor |
+| `k` / `f` | Steel Key / Fire Key | `r` | Mesh Armor |
+| `*` | arena spawn rune | `!` | arena altar (starts the waves) |
 | `w` `x` | weapon piece for slot 2 / slot 3 | `t` `p` `T` | torch, pillar, tree |
