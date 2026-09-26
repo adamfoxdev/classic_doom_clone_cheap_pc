@@ -1,0 +1,544 @@
+namespace HexenSharp;
+
+/// <summary>
+/// Pure software renderer into a 320x200 framebuffer: a grid raycaster with textured floors and
+/// ceilings, sky, fog, rising doors / see-through gates, depth-buffered sprites, HUD and automap.
+/// </summary>
+public sealed class Renderer
+{
+    public const int W = 320, H = 200, HudH = 32, ViewH = H - HudH;
+    const float PlaneLen = 0.75f;              // ~74 degree horizontal FOV
+    const float Proj = (W / 2f) / PlaneLen;    // pixels per world unit at distance 1
+
+    public readonly uint[] Fb = new uint[W * H];
+    readonly float[] _depth = new float[W * ViewH];
+    readonly List<(float d, int side, float wallX, int cell)> _doors = new();
+    readonly List<(Thing t, float depth)> _sprites = new();
+
+    // per-frame camera
+    float _px, _py, _dirX, _dirY, _plX, _plY, _eyeZ, _horizon;
+
+    public void Render(Game g)
+    {
+        switch (g.Mode)
+        {
+            case GameMode.Title: DrawTitle(g); return;
+            case GameMode.ClassSelect: DrawClassSelect(g); return;
+            case GameMode.Victory: DrawVictory(g); return;
+        }
+
+        DrawView(g);
+        DrawWeapon(g);
+        DrawScreenTint(g);
+        if (g.ShowMap) DrawAutomap(g);
+        DrawHud(g);
+        DrawMessages(g);
+
+        if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
+            CenterText("YOU DIED", 60, Col.Rgb(220, 40, 30), 3);
+        if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
+            CenterText("PRESS ENTER TO TRY AGAIN", 90, Col.Rgb(230, 220, 200));
+        if (g.Paused)
+        {
+            Darken(0, 0, W, ViewH, 110);
+            CenterText("PAUSED", 58, Col.Rgb(230, 190, 80), 3);
+            CenterText("ESC: RESUME     Q: QUIT", 92, Col.Rgb(230, 220, 200));
+        }
+    }
+
+    // ================================================================ 3D view
+
+    Tex WallTex(Level lv, char c)
+    {
+        switch (c)
+        {
+            case 'D': return Art.Door;
+            case 'S': return Art.SteelDoor;
+            case 'P': return Art.Portcullis;
+            case 'L': return lv.LeverPulled ? Art.LeverOn : Art.LeverOff;
+        }
+        return lv.Theme.Walls.TryGetValue(c, out var t) ? t : Art.Stone;
+    }
+
+    int Vis(Theme th, float d) => (int)(256 * Math.Clamp(1f - d / th.FogDist, 0f, 1f));
+
+    void DrawView(Game g)
+    {
+        var lv = g.Level;
+        var th = lv.Theme;
+        var p = g.P;
+        _px = p.X; _py = p.Y;
+        _dirX = MathF.Cos(p.Angle); _dirY = MathF.Sin(p.Angle);
+        _plX = -_dirY * PlaneLen; _plY = _dirX * PlaneLen;
+        _eyeZ = p.EyeZ + MathF.Sin(p.Bob) * 0.025f * p.BobAmount;
+        _horizon = ViewH / 2f + p.Pitch;
+        uint fog = th.FogColor;
+
+        for (int x = 0; x < W; x++)
+        {
+            float camX = 2f * (x + 0.5f) / W - 1f;
+            float rdx = _dirX + _plX * camX, rdy = _dirY + _plY * camX;
+            int mapX = (int)MathF.Floor(_px), mapY = (int)MathF.Floor(_py);
+            float ddx = MathF.Abs(1f / (rdx == 0 ? 1e-6f : rdx)), ddy = MathF.Abs(1f / (rdy == 0 ? 1e-6f : rdy));
+            int stepX, stepY;
+            float sideX, sideY;
+            if (rdx < 0) { stepX = -1; sideX = (_px - mapX) * ddx; } else { stepX = 1; sideX = (mapX + 1f - _px) * ddx; }
+            if (rdy < 0) { stepY = -1; sideY = (_py - mapY) * ddy; } else { stepY = 1; sideY = (mapY + 1f - _py) * ddy; }
+
+            _doors.Clear();
+            float perp = 64f, wallX = 0;
+            int side = 0;
+            char hit = '#';
+            if (lv.InBounds(mapX, mapY)) lv.Seen[mapY * lv.W + mapX] = true;
+            for (int guard = 0; guard < 96; guard++)
+            {
+                if (sideX < sideY) { sideX += ddx; mapX += stepX; side = 0; }
+                else { sideY += ddy; mapY += stepY; side = 1; }
+                if (!lv.InBounds(mapX, mapY)) { perp = side == 0 ? sideX - ddx : sideY - ddy; break; }
+                int ci = mapY * lv.W + mapX;
+                lv.Seen[ci] = true;
+                char c = lv.Cells[ci];
+                if (c == '\0') continue;
+                float d = side == 0 ? sideX - ddx : sideY - ddy;
+                float wx = side == 0 ? _py + d * rdy : _px + d * rdx;
+                wx -= MathF.Floor(wx);
+                if (Level.IsDoor(c) && (lv.DoorOpen[ci] > 0f || c == 'P'))
+                {
+                    if (lv.DoorOpen[ci] < 1f) _doors.Add((d, side, wx, ci));
+                    continue;
+                }
+                perp = d; wallX = wx; hit = c;
+                break;
+            }
+            if (perp < 0.01f) perp = 0.01f;
+
+            // ---- solid wall column
+            var tex = WallTex(lv, hit);
+            int tx = (int)(wallX * tex.W);
+            if (side == 0 && rdx < 0) tx = tex.W - 1 - tx;
+            if (side == 1 && rdy > 0) tx = tex.W - 1 - tx;
+            tx = Math.Clamp(tx, 0, tex.W - 1);
+            float hScale = Proj / perp;
+            float top = _horizon - (1f - _eyeZ) * hScale, bot = _horizon + _eyeZ * hScale;
+            int yTop = Math.Max(0, (int)MathF.Ceiling(top - 0.5f)), yBot = Math.Min(ViewH, (int)MathF.Ceiling(bot - 0.5f));
+            int light = side == 1 ? th.Light * 200 >> 8 : th.Light;
+            int vis = Vis(th, perp);
+            float vStep = 1f / hScale;
+            for (int y = yTop; y < yBot; y++)
+            {
+                float v = (y + 0.5f - top) * vStep;
+                int ty = Math.Clamp((int)(v * tex.H), 0, tex.H - 1);
+                int idx = y * W + x;
+                Fb[idx] = Col.Fog(tex.Px[ty * tex.W + tx], light, vis, fog);
+                _depth[idx] = perp;
+            }
+
+            // ---- floor
+            for (int y = Math.Max(yBot, 0); y < ViewH; y++)
+            {
+                float dy = y + 0.5f - _horizon;
+                int idx = y * W + x;
+                if (dy <= 0.01f) { Fb[idx] = fog; _depth[idx] = 999; continue; }
+                float rowDist = _eyeZ * Proj / dy;
+                float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
+                int cx = (int)MathF.Floor(wx), cy = (int)MathF.Floor(wy);
+                Tex ft = th.FloorIn;
+                int fl = th.Light;
+                if (lv.InBounds(cx, cy))
+                {
+                    int ci = cy * lv.W + cx;
+                    char mk = lv.Marks[ci];
+                    if (mk == 'E') { ft = lv.BossDead ? Art.ExitFloor : Art.ExitFloorOff; fl = 300; }
+                    else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
+                    else if (lv.Outdoor[ci]) ft = th.OutdoorFloor;
+                }
+                int u = (int)((wx - cx) * ft.W) & (ft.W - 1), vv = (int)((wy - cy) * ft.H) & (ft.H - 1);
+                Fb[idx] = Col.Fog(ft.Px[vv * ft.W + u], fl, Vis(th, rowDist), fog);
+                _depth[idx] = rowDist;
+            }
+
+            // ---- ceiling / sky
+            float rayAng = MathF.Atan2(rdy, rdx);
+            int yCeilEnd = Math.Min(yTop, ViewH);
+            for (int y = 0; y < yCeilEnd; y++)
+            {
+                float dy = _horizon - (y + 0.5f);
+                int idx = y * W + x;
+                _depth[idx] = 999;
+                bool sky;
+                float rowDist = 0;
+                int cx = 0, cy = 0;
+                if (dy <= 0.01f) sky = true;
+                else
+                {
+                    rowDist = (1f - _eyeZ) * Proj / dy;
+                    float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
+                    cx = (int)MathF.Floor(wx); cy = (int)MathF.Floor(wy);
+                    sky = lv.InBounds(cx, cy) && lv.Outdoor[cy * lv.W + cx];
+                    if (!sky)
+                    {
+                        var ct = th.CeilIn;
+                        int u = (int)((wx - cx) * ct.W) & (ct.W - 1), vv = (int)((wy - cy) * ct.H) & (ct.H - 1);
+                        Fb[idx] = Col.Fog(ct.Px[vv * ct.W + u], th.Light * 220 >> 8, Vis(th, rowDist), fog);
+                        _depth[idx] = rowDist;
+                        continue;
+                    }
+                }
+                Fb[idx] = SkyPixel(th, rayAng, y);
+            }
+
+            // ---- doors and gates, far to near, depth tested
+            for (int k = _doors.Count - 1; k >= 0; k--)
+            {
+                var (d, dside, dwx, ci) = _doors[k];
+                char c = lv.Cells[ci];
+                var dt = WallTex(lv, c);
+                float open = lv.DoorOpen[ci];
+                int dtx = (int)(dwx * dt.W);
+                if (dside == 0 && rdx < 0) dtx = dt.W - 1 - dtx;
+                if (dside == 1 && rdy > 0) dtx = dt.W - 1 - dtx;
+                dtx = Math.Clamp(dtx, 0, dt.W - 1);
+                float s = Proj / d;
+                float dTop = _horizon - (1f - _eyeZ) * s;
+                float dBot = _horizon - (open - _eyeZ) * s;
+                int y0 = Math.Max(0, (int)MathF.Ceiling(dTop - 0.5f)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(dBot - 0.5f));
+                int dl = dside == 1 ? th.Light * 200 >> 8 : th.Light;
+                int dv = Vis(th, d);
+                for (int y = y0; y < y1; y++)
+                {
+                    int idx = y * W + x;
+                    if (d >= _depth[idx]) continue;
+                    float z = _eyeZ + (_horizon - (y + 0.5f)) / s;
+                    float v = 1f - z + open;
+                    int ty = Math.Clamp((int)(v * dt.H), 0, dt.H - 1);
+                    uint texel = dt.Px[ty * dt.W + dtx];
+                    if (Col.A(texel) == 0) continue;
+                    Fb[idx] = Col.Fog(texel, dl, dv, fog);
+                    _depth[idx] = d;
+                }
+            }
+        }
+
+        DrawSprites(g);
+    }
+
+    uint SkyPixel(Theme th, float rayAng, int y)
+    {
+        var sky = th.Sky;
+        int u = (int)(rayAng / MathF.Tau * sky.W * 4) % sky.W;
+        if (u < 0) u += sky.W;
+        int v = Math.Clamp(sky.H - 1 + (int)((y + 0.5f - _horizon) * 0.8f), 0, sky.H - 1);
+        return sky.Px[v * sky.W + u];
+    }
+
+    void DrawSprites(Game g)
+    {
+        var lv = g.Level;
+        var th = lv.Theme;
+        _sprites.Clear();
+        float invDet = 1f / (_plX * _dirY - _dirX * _plY);
+        foreach (var t in lv.Things)
+        {
+            if (t.Removed) continue;
+            float rx = t.X - _px, ry = t.Y - _py;
+            float ty = invDet * (-_plY * rx + _plX * ry);
+            if (ty < 0.15f || ty > th.FogDist + 1) continue;
+            _sprites.Add((t, ty));
+        }
+        _sprites.Sort((a, b) => b.depth.CompareTo(a.depth));
+
+        foreach (var (t, depth) in _sprites)
+        {
+            float rx = t.X - _px, ry = t.Y - _py;
+            float tX = invDet * (_dirY * rx - _dirX * ry);
+            float screenX = W / 2f * (1 + tX / depth);
+            float scale = Proj / depth;
+            float sw = t.SpriteW * scale, sh = t.SpriteH * scale;
+            float left = screenX - sw / 2, top = _horizon - (t.Z + t.SpriteH - _eyeZ) * scale;
+            int x0 = Math.Max(0, (int)MathF.Ceiling(left)), x1 = Math.Min(W, (int)MathF.Ceiling(left + sw));
+            int y0 = Math.Max(0, (int)MathF.Ceiling(top)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(top + sh));
+            if (x0 >= x1 || y0 >= y1) continue;
+            var tex = t.Sprite(g.Time);
+            int light = t.FullBright ? 256 : th.Light;
+            int vis = t.FullBright ? Math.Max(Vis(th, depth), 160) : Vis(th, depth);
+            bool painFlash = t is Monster m && m.State == AiState.Pain;
+            for (int x = x0; x < x1; x++)
+            {
+                int u = Math.Clamp((int)((x - left) / sw * tex.W), 0, tex.W - 1);
+                for (int y = y0; y < y1; y++)
+                {
+                    int idx = y * W + x;
+                    if (depth >= _depth[idx]) continue;
+                    int v = Math.Clamp((int)((y - top) / sh * tex.H), 0, tex.H - 1);
+                    uint c = tex.Px[v * tex.W + u];
+                    if (Col.A(c) == 0) continue;
+                    if (painFlash) c = Col.Lerp(c, Col.Rgb(255, 255, 255), 70);
+                    Fb[idx] = Col.Fog(c, light, vis, th.FogColor);
+                    _depth[idx] = depth;
+                }
+            }
+        }
+    }
+
+    void DrawWeapon(Game g)
+    {
+        var p = g.P;
+        if (g.Mode == GameMode.Dead) return;
+        int slot = p.Weapon;
+        var frames = Art.Weapons[(int)p.Class * 3 + slot];
+        var tex = p.FireAnim > 0.06f ? frames[1] : frames[0];
+        int bx = (int)(MathF.Cos(p.Bob * 0.5f) * 5 * p.BobAmount);
+        int by = (int)(MathF.Abs(MathF.Sin(p.Bob * 0.5f)) * 5 * p.BobAmount);
+        int x0 = W / 2 - tex.W / 2 + 20 + bx;
+        int y0 = ViewH - tex.H + 4 + by + (int)(p.Raise * tex.H);
+        int light = Math.Max(g.Level.Theme.Light, 200);
+        for (int y = 0; y < tex.H; y++)
+        {
+            int sy = y0 + y;
+            if ((uint)sy >= ViewH) continue;
+            for (int x = 0; x < tex.W; x++)
+            {
+                int sx = x0 + x;
+                if ((uint)sx >= W) continue;
+                uint c = tex.Px[y * tex.W + x];
+                if (Col.A(c) == 0) continue;
+                Fb[sy * W + sx] = Col.Shade(c, light);
+            }
+        }
+    }
+
+    void DrawScreenTint(Game g)
+    {
+        var p = g.P;
+        if (p.DamageFlash > 0) Tint(Col.Rgb(200, 0, 0), (int)(p.DamageFlash * 140));
+        if (p.PickupFlash > 0) Tint(Col.Rgb(255, 210, 90), (int)(p.PickupFlash * 60));
+        if (p.TeleportFlash > 0) Tint(Col.Rgb(255, 255, 255), (int)(p.TeleportFlash * 200));
+        if (g.Mode == GameMode.Dead) Tint(Col.Rgb(120, 0, 0), 90);
+    }
+
+    void Tint(uint c, int amt)
+    {
+        amt = Math.Clamp(amt, 0, 256);
+        for (int i = 0; i < W * ViewH; i++) Fb[i] = Col.Lerp(Fb[i], c, amt);
+    }
+
+    void Darken(int x, int y, int w, int h, int amt)
+    {
+        for (int j = y; j < y + h; j++)
+            for (int i = x; i < x + w; i++)
+                Fb[j * W + i] = Col.Shade(Fb[j * W + i], 256 - amt);
+    }
+
+    // ================================================================ automap
+
+    void DrawAutomap(Game g)
+    {
+        var lv = g.Level;
+        Darken(0, 0, W, ViewH, 190);
+        int cs = Math.Max(2, Math.Min((W - 16) / lv.W, (ViewH - 24) / lv.H));
+        int ox = (W - lv.W * cs) / 2, oy = 14 + (ViewH - 14 - lv.H * cs) / 2;
+        for (int y = 0; y < lv.H; y++)
+            for (int x = 0; x < lv.W; x++)
+            {
+                int i = y * lv.W + x;
+                if (!lv.Seen[i]) continue;
+                char c = lv.Cells[i];
+                uint col;
+                if (c == '\0')
+                {
+                    char mk = lv.Marks[i];
+                    col = mk == 'E' ? Col.Rgb(200, 50, 40) : mk != '\0' ? Col.Rgb(60, 120, 255) : lv.Outdoor[i] ? Col.Rgb(34, 50, 30) : Col.Rgb(40, 36, 32);
+                }
+                else col = c switch
+                {
+                    'D' => Col.Rgb(210, 170, 60),
+                    'S' => Col.Rgb(150, 170, 230),
+                    'P' => Col.Rgb(140, 140, 140),
+                    'L' => Col.Rgb(80, 220, 90),
+                    _ => Col.Rgb(150, 110, 70),
+                };
+                for (int yy = 0; yy < cs; yy++)
+                    for (int xx = 0; xx < cs; xx++)
+                    {
+                        bool edge = xx == cs - 1 || yy == cs - 1;
+                        Put(ox + x * cs + xx, oy + y * cs + yy, c == '\0' || !edge ? col : Col.Shade(col, 150));
+                    }
+            }
+        // player arrow
+        float px = ox + g.P.X * cs, py = oy + g.P.Y * cs;
+        float ca = MathF.Cos(g.P.Angle), sa = MathF.Sin(g.P.Angle);
+        for (float t = -cs; t <= cs * 1.3f; t += 0.5f) Put((int)(px + ca * t), (int)(py + sa * t), Col.Rgb(255, 255, 255));
+        for (float t = 0; t <= cs * 0.8f; t += 0.5f)
+        {
+            Put((int)(px + ca * (cs * 1.3f - t) - sa * t * 0.6f), (int)(py + sa * (cs * 1.3f - t) + ca * t * 0.6f), Col.Rgb(255, 255, 255));
+            Put((int)(px + ca * (cs * 1.3f - t) + sa * t * 0.6f), (int)(py + sa * (cs * 1.3f - t) - ca * t * 0.6f), Col.Rgb(255, 255, 255));
+        }
+        CenterText(lv.Name.ToUpperInvariant(), 3, Col.Rgb(230, 190, 80));
+    }
+
+    void Put(int x, int y, uint c)
+    {
+        if ((uint)x < W && (uint)y < ViewH) Fb[y * W + x] = c;
+    }
+
+    // ================================================================ HUD
+
+    void DrawHud(Game g)
+    {
+        var p = g.P;
+        var hb = Art.HudBack;
+        for (int y = 0; y < HudH; y++)
+            for (int x = 0; x < W; x++)
+                Fb[(ViewH + y) * W + x] = Col.Shade(hb.Px[(y & (hb.H - 1)) * hb.W + (x & (hb.W - 1))], y == 0 ? 400 : y == 1 ? 60 : 200);
+
+        int by = ViewH + 3;
+        uint label = Col.Rgb(200, 180, 140);
+        Text(6, by, "HEALTH", label);
+        uint hcol = p.Health > 50 ? Col.Rgb(240, 230, 210) : p.Health > 25 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
+        Text(8, by + 11, p.Health.ToString(), hcol, 2);
+
+        Text(52, by, "ARMOR", label);
+        Text(54, by + 11, p.Armor.ToString(), Col.Rgb(170, 190, 230), 2);
+
+        // mana bars
+        ManaBar(96, by + 1, "BLUE", p.BlueMana, Col.Rgb(60, 120, 255));
+        ManaBar(96, by + 14, "GREEN", p.GreenMana, Col.Rgb(60, 210, 80));
+
+        // weapon slots, underlined with the mana colour the current weapon uses
+        Text(202, by, "ARMS", label);
+        for (int i = 0; i < 3; i++)
+        {
+            uint c = !p.HasWeapon[i] ? Col.Rgb(70, 60, 50) : i == p.Weapon ? Col.Rgb(255, 220, 90) : Col.Rgb(200, 190, 170);
+            Text(202 + i * 9, by + 12, (i + 1).ToString(), c);
+        }
+        var w = p.CurWeapon;
+        if (w.Mana > 0) Rect(202, by + 22, 24, 3, w.Mana == 1 ? Col.Rgb(60, 120, 255) : Col.Rgb(60, 210, 80));
+
+        // inventory (F uses a healing item) and keys
+        Icon(Art.Flask, 234, by + 2, 18);
+        Text(250, by + 13, p.Flasks.ToString(), Col.Rgb(240, 230, 210));
+        Icon(Art.Urn, 258, by + 2, 18);
+        Text(274, by + 13, p.Urns.ToString(), Col.Rgb(240, 230, 210));
+        if (p.SteelKey) Icon(Art.SteelKey, 290, by + 6, 22);
+
+        string cls = p.Def.Name.ToUpperInvariant();
+        Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
+    }
+
+    void ManaBar(int x, int y, string name, int val, uint col)
+    {
+        Text(x, y, name, Col.Rgb(200, 180, 140));
+        int bx = x + 33, bw = 44;
+        Rect(bx - 1, y - 1, bw + 2, 9, Col.Rgb(10, 8, 6));
+        Rect(bx, y, (int)(bw * Math.Clamp(val / 200f, 0, 1)), 7, col);
+        Text(bx + bw + 3, y, val.ToString(), Col.Rgb(240, 230, 210));
+    }
+
+    void Icon(Tex t, int x, int y, int size)
+    {
+        for (int j = 0; j < size; j++)
+            for (int i = 0; i < size; i++)
+            {
+                uint c = t.Px[(j * t.H / size) * t.W + i * t.W / size];
+                if (Col.A(c) == 0) continue;
+                int sx = x + i, sy = y + j;
+                if ((uint)sx < W && (uint)sy < H) Fb[sy * W + sx] = c;
+            }
+    }
+
+    void Rect(int x, int y, int w, int h, uint c)
+    {
+        for (int j = y; j < y + h; j++)
+            for (int i = x; i < x + w; i++)
+                if ((uint)i < W && (uint)j < H) Fb[j * W + i] = c;
+    }
+
+    void DrawMessages(Game g)
+    {
+        int y = 3;
+        if (g.ShowMap) y = 14;
+        foreach (var (text, _) in g.Messages)
+        {
+            Text(4, y, text, Col.Rgb(240, 225, 170));
+            y += 9;
+        }
+    }
+
+    void Text(int x, int y, string s, uint c, int scale = 1) => Font.Draw(Fb, W, H, x, y, s, c, scale);
+    void CenterText(string s, int y, uint c, int scale = 1) => Text((W - Font.Width(s, scale)) / 2, y, s, c, scale);
+
+    // ================================================================ menus
+
+    void StoneBackdrop(float time)
+    {
+        var t = Art.Stone;
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                int flick = 100 + (int)(20 * MathF.Sin(time * 3 + y * 0.05f));
+                Fb[y * W + x] = Col.Shade(t.Px[(y & 63) * 64 + (x & 63)], flick);
+            }
+    }
+
+    void DrawTitle(Game g)
+    {
+        StoneBackdrop(g.Time);
+        CenterText("HEXEN SHARP", 28, Col.Rgb(230, 170, 50), 4);
+        CenterText("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#", 68, Col.Rgb(210, 200, 180));
+        // a few monsters for show
+        var e = Art.Monsters["ettin"][(int)(g.Time * 2) % 2];
+        var a = Art.Monsters["afrit"][(int)(g.Time * 3) % 2];
+        var c = Art.Monsters["centaur"][(int)(g.Time * 2) % 2];
+        Icon(e, 40, 82, 64); Icon(c, 128, 82, 64); Icon(a, 216, 80, 64);
+        if (((int)(g.Time * 2) & 1) == 0) CenterText("PRESS ENTER", 154, Col.Rgb(255, 230, 120), 2);
+        CenterText("WASD MOVE  MOUSE LOOK  CLICK ATTACK  E USE", 176, Col.Rgb(170, 160, 140));
+        CenterText("1-3 WEAPONS  F HEAL  TAB MAP  ESC PAUSE", 186, Col.Rgb(170, 160, 140));
+    }
+
+    void DrawClassSelect(Game g)
+    {
+        StoneBackdrop(g.Time);
+        CenterText("CHOOSE YOUR CLASS", 10, Col.Rgb(230, 170, 50), 2);
+        for (int i = 0; i < 3; i++)
+        {
+            var cd = ClassDef.All[i];
+            bool sel = i == g.MenuIndex;
+            int y = 40 + i * 22;
+            if (sel) { Rect(14, y - 4, 140, 17, Col.Rgb(70, 40, 20)); Text(18, y, ">", Col.Rgb(255, 220, 90), 1); }
+            Text(28, y, $"{i + 1} {cd.Name.ToUpperInvariant()}", sel ? Col.Rgb(255, 220, 90) : Col.Rgb(190, 180, 160), 1);
+        }
+        var d = ClassDef.All[g.MenuIndex];
+        Text(18, 128, d.Blurb, Col.Rgb(230, 220, 200));
+        for (int i = 0; i < 3; i++)
+        {
+            var w = d.Weapons[i];
+            string mana = w.Mana == 0 ? "" : w.Mana == 1 ? " (BLUE MANA)" : " (GREEN MANA)";
+            Text(18, 142 + i * 10, $"{i + 1}. {w.Name}{mana}", Col.Rgb(200, 190, 170));
+        }
+        var wt = Art.Weapons[g.MenuIndex * 3 + ((int)(g.Time) % 3)][((int)(g.Time * 3) % 3 == 0) ? 1 : 0];
+        Rect(170, 34, 140, 86, Col.Rgb(20, 16, 14));
+        Icon2(wt, 176, 38);
+        CenterText("UP/DOWN + ENTER, OR PRESS 1-3", 188, Col.Rgb(170, 160, 140));
+    }
+
+    void Icon2(Tex t, int x, int y)
+    {
+        for (int j = 0; j < t.H; j++)
+            for (int i = 0; i < t.W; i++)
+            {
+                uint c = t.Px[j * t.W + i];
+                if (Col.A(c) != 0 && (uint)(x + i) < W && (uint)(y + j) < H) Fb[(y + j) * W + x + i] = c;
+            }
+    }
+
+    void DrawVictory(Game g)
+    {
+        StoneBackdrop(g.Time);
+        CenterText("VICTORY!", 30, Col.Rgb(255, 220, 90), 4);
+        CenterText("THE HERESIARCH HAS FALLEN.", 80, Col.Rgb(230, 220, 200));
+        CenterText($"THE {g.P.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL...", 94, Col.Rgb(230, 220, 200));
+        int t = (int)g.PlayTime;
+        CenterText($"KILLS: {g.P.Kills}    TIME: {t / 60}:{t % 60:00}", 120, Col.Rgb(170, 200, 255));
+        CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
+    }
+}

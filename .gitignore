@@ -1,0 +1,5 @@
+bin/
+obj/
+shots/
+*.png
+!docs/*.png
