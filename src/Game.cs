@@ -212,24 +212,35 @@ public sealed class Game
     public Func<Level[]> HubSource = Maps.BuildHub;
     public bool TestingMap;
 
-    /// <summary>On the strafe-jumping practice course (Main menu > Practice): the run's clock, and whether it has started.</summary>
+    /// <summary>On a practice course (Main menu > Practice): the run's clock, and whether it has started.</summary>
     public bool Practicing, RunStarted;
     public float RunTime;
-    /// <summary>Picking a class from the class screen starts practice rather than a new game.</summary>
+    /// <summary>The practice course you're on (or were last on).</summary>
+    public Course Course = Courses.Hangar;
+    /// <summary>Picking a class from the class screen starts this practice course rather than a new game.</summary>
     public bool PendingPractice;
+    public Course PendingCourse = Courses.Hangar;
 
-    /// <summary>Starts the strafe-jumping practice course with the given class.</summary>
-    public void StartPractice(PClass cls)
+    /// <summary>Starts a practice course (the Velocity Hangar unless you say) with the given class.</summary>
+    public void StartPractice(PClass cls, Course course = null)
     {
-        HubSource = () => new[] { Maps.VelocityCourse().Build() };
+        Course = course ?? Courses.Hangar;
+        var c = Course;
+        HubSource = () => new[] { c.Map().Build() };
         TestingMap = true;
-        NewGame(cls);
         Practicing = true;
-        RunTime = 0; RunStarted = false;
-        ResetRun();
+        NewGame(cls); // sets the course up (SetUpCourse) once the map is built
         if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
-        float best = Profile.CourseBestTime(P.Class.ToString());
+        float best = Course.Timed ? Profile.CourseBestTime(Course.Key(P.Class)) : 0;
         if (best > 0) Say($"Your best as the {P.Def.Name}: {best:0.00}s.");
+    }
+
+    /// <summary>On a fresh copy of the course (starting, or Restart): face down the course, hand out the free-roam jetpack, reset the run.</summary>
+    void SetUpCourse()
+    {
+        P.Angle = Course.StartAngle;
+        if (Course.Jetpack) { P.HasJetpack = true; P.Fuel = P.MaxFuel; }
+        ResetRun();
     }
 
     /// <summary>
@@ -244,11 +255,18 @@ public sealed class Game
         return (int)(MathF.Ceiling(need / RunSpeed * 20) * 5);
     }
 
-    /// <summary>What the course tells you as you reach each platform: how fast you'll need to be for the next gap.</summary>
+    /// <summary>
+    /// What the course tells you as you reach each checkpoint. On a gap course, how fast you'll need to be for the next
+    /// gap; elsewhere, how many checkpoints you've reached.
+    /// </summary>
     string CourseHint(int zone)
     {
-        var plats = Maps.CoursePlatforms;
-        if (zone == 0) return "Strafe jumping: jump, then hold A or D and turn the mouse the same way. Hop again the moment you land.";
+        var plats = Course.Platforms;
+        int reached = Level.CheckpointsReached.Count, total = Level.Checkpoints.Count;
+        if (plats == null)
+            return reached <= 1 ? Course.Intro
+                : reached >= total ? "Every checkpoint! Cross the line to finish." : $"Checkpoint {reached} of {total}.";
+        if (zone == 0) return Course.Intro;
         if (zone >= plats.Length - 1) return "Made it! Step into the exit to finish the run.";
         int gap = plats[zone + 1].x0 - plats[zone].x1 - 1;
         string zig = zone == 2 ? " Zig-zag: switch strafe keys and turn the other way each hop." : "";
@@ -258,7 +276,7 @@ public sealed class Game
     /// <summary>Crossed the finish: report the time and its place on your class's leaderboard, and start the run over.</summary>
     void FinishRun()
     {
-        string key = P.Class.ToString();
+        string key = Course.Key(P.Class);
         float best = Profile.CourseBestTime(key);
         int place = Profile.AddCourseRun(key, RunTime, RunnerName, DateTime.Now);
         if (place > 0) SaveProfile();
@@ -291,6 +309,8 @@ public sealed class Game
     void ResetRun()
     {
         RunTime = 0; RunStarted = false;
+        Level.CheckpointsReached.Clear();
+        Checkpoint = null;
         Recording = new GhostTrack();
         ShowGhost();
     }
@@ -299,7 +319,7 @@ public sealed class Game
     public void ShowGhost()
     {
         if (Ghost != null) { Ghost.Removed = true; Level.Things.Remove(Ghost); Ghost = null; }
-        if (!Practicing || !Vars.Ghost || !Profile.Ghosts.TryGetValue(P.Class.ToString(), out var saved)) return;
+        if (!Practicing || !Course.Timed || !Vars.Ghost || !Profile.Ghosts.TryGetValue(Course.Key(P.Class), out var saved)) return;
         var track = GhostTrack.Decode(saved.Path);
         if (track.Points.Count < 2) return;
         Ghost = new GhostRunner(track, saved.Time) { Level = Level };
@@ -307,15 +327,29 @@ public sealed class Game
         Level.Things.Add(Ghost);
     }
 
-    /// <summary>At a platform's checkpoint: how far ahead of (negative) or behind your ghost you are, as " (+0.84s vs ghost)".</summary>
+    /// <summary>At a checkpoint: how far ahead of (negative) or behind your ghost you are, as " (+0.84s vs ghost)".</summary>
     string GhostSplit(int zone)
     {
-        if (Ghost == null || zone <= 0 || !RunStarted) return "";
-        var pl = Maps.CoursePlatforms[zone];
-        float then = Ghost.Track.TimeAt(pl.x0, pl.floor);
+        if (Ghost == null || !RunStarted) return "";
+        float then = GhostZoneTime(Ghost.Track, zone);
         if (then < 0) return "";
         float d = RunTime - then;
         return $" ({(d <= 0 ? "-" : "+")}{MathF.Abs(d):0.00}s vs ghost)";
+    }
+
+    /// <summary>When a recorded run first stood in a checkpoint's zone (on its floor), or -1 if it never did.</summary>
+    float GhostZoneTime(GhostTrack track, int zone)
+    {
+        var lv = Level;
+        for (int i = 0; i < track.Points.Count; i++)
+        {
+            var (x, y, z) = track.Points[i];
+            int cx = (int)MathF.Floor(x), cy = (int)MathF.Floor(y);
+            if (!lv.InBounds(cx, cy)) continue;
+            int cell = cy * lv.W + cx;
+            if (lv.CheckpointZone[cell] == zone && MathF.Abs(z - lv.Floors[cell]) < 0.05f) return i * GhostTrack.Step;
+        }
+        return -1;
     }
 
     /// <summary>The time of the last finished practice run, and its place on the leaderboard (0 if off it).</summary>
@@ -435,7 +469,7 @@ public sealed class Game
         string NextName() => names[nameIndex++ % names.Count];
         foreach (var lv in Hub)
         {
-            Chests.Scatter(lv, _loot, Vars.Chests);
+            if (!Practicing) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses stay clear
             ChestsTotal += lv.Things.Count(t => t is Chest);
 
             // treasure in secret nooks: a relic when relaxed, a Mystic Urn in classic
@@ -472,7 +506,7 @@ public sealed class Game
             Say($"Relaxed mode: the creatures here are peaceful. Find the {RelicsTotal} relics to awaken the exit.");
         }
         else if (!TestingMap) Say($"You are the {P.Def.Name}. Find a way through the hub.");
-        if (Practicing) ShowGhost(); // Restart on the course
+        if (Practicing) SetUpCourse(); // starting a course, or Restart on one
     }
 
     static Thing Place(Thing t, Thing at, Level lv)
@@ -527,7 +561,7 @@ public sealed class Game
                 if (inp.Slot >= 1 && inp.Slot <= 3) MenuIndex = inp.Slot - 1;
                 if ((inp.Slot >= 1 && inp.Slot <= 3) || inp.Confirm)
                 {
-                    if (PendingPractice) { PendingPractice = false; StartPractice((PClass)MenuIndex); }
+                    if (PendingPractice) { PendingPractice = false; StartPractice((PClass)MenuIndex, PendingCourse); }
                     else NewGame((PClass)MenuIndex);
                     PlaySound(Sfx.Teleport, 1);
                 }
@@ -814,13 +848,13 @@ public sealed class Game
         if (Practicing)
         {
             // the clock starts when you leave the spot you started on
-            if (!RunStarted && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
+            if (!RunStarted && Course.Timed && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
             if (RunStarted)
             {
                 RunTime += dt;
                 Recording.Record(RunTime, p.X, p.Y, p.FloorZ + p.Z);
             }
-            if (Vars.Ghost != (Ghost != null) && (Ghost != null || Profile.Ghosts.ContainsKey(p.Class.ToString()))) ShowGhost();
+            if (Vars.Ghost != (Ghost != null) && (Ghost != null || (Course.Timed && Profile.Ghosts.ContainsKey(Course.Key(p.Class))))) ShowGhost();
             Ghost?.Seek(RunTime);
         }
 
@@ -838,8 +872,17 @@ public sealed class Game
         }
         else p.PortalLock = false;
         _exitMsgCd -= dt;
-        if (mark == 'E' && Practicing) { FinishRun(); return; }
-        if (mark == 'E')
+        if (mark == 'E' && Practicing)
+        {
+            // a practice exit finishes the run once you've been through every checkpoint (no cutting the lap short)
+            if (Level.CheckpointsReached.Count >= Level.Checkpoints.Count) { FinishRun(); return; }
+            if (_exitMsgCd <= 0)
+            {
+                Say($"Reach every checkpoint first ({Level.CheckpointsReached.Count} of {Level.Checkpoints.Count}).");
+                _exitMsgCd = 3;
+            }
+        }
+        else if (mark == 'E')
         {
             if (Relaxed ? P.Relics >= RelicsTotal : Level.BossDead)
             {
@@ -1021,7 +1064,7 @@ public sealed class Game
                 float floor = lv.Floors[pad];
                 // respawn at the highest pad you've lit, so dropping back to a lower ledge doesn't lose progress (on
                 // ledges of equal height, the newest)
-                if (Checkpoint == null || Checkpoint.Level != lv || floor >= Checkpoint.Floor)
+                if (Checkpoint == null || Checkpoint.Level != lv || floor >= Checkpoint.Floor || Practicing)
                     Checkpoint = new Checkpoint
                     {
                         Level = lv, Index = zone, X = pad % lv.W + 0.5f, Y = pad / lv.W + 0.5f, Floor = floor, Angle = p.Angle,
