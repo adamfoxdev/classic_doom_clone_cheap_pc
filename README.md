@@ -31,7 +31,6 @@ see [Rendered art pack](#rendered-art-pack-blender)).
 ![Key bindings](docs/key_bindings.png)
 ![Relaxed mode](docs/relaxed_mode.png)
 ![Lore stone](docs/lore_stone.png)
-![Level editor](docs/editor.png)
 ![Tall hall](docs/tall_hall.png)
 ![Stairs](docs/stairs.png)
 ![Keep terrace](docs/terrace.png)
@@ -158,8 +157,9 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   hover. Fly up onto ledges and terraces you could never jump to. A gauge in the corner of the view shows the
   fuel; it burns faster while climbing, and recharges whenever you're on the ground. Run dry in mid-air and
   you'll drop.
-- **Level editor** (title menu → Level editor): paint your own maps with the mouse using every wall,
-  door, puzzle piece, monster and item in the game, then play-test instantly. Maps save as small text files.
+- **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
+  piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
+- **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
 - **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
   invert mouse, field of view and FPS display. Settings are saved between sessions.
 - **Developer console (`~`)** for changing game mechanics, plus Hexen's classic cheat codes.
@@ -212,6 +212,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `Shift` | Walk |
 | `Tab` / `M` | Automap |
 | `Esc` | Pause menu (Resume, Options, Restart, Quit) |
+| `K` | Character screen: spend skill points, see your weapons' levels |
 | `F12` | Save a screenshot |
 | `~` | Developer console |
 
@@ -265,58 +266,11 @@ between Winnowing Hall's great hall and courtyard (open it from the courtyard si
 under the crypt's south-west room, under the arena's antechamber, at the east end of the Windspire's
 north-east ledge, and at the east end of the quarry's strongroom.
 
-## Level editor
+## Map editor
 
-Pick **Level editor** on the title menu (or type `edit` in the console). The map is on the left and the palette
-of everything you can place is on the right, drawn with the game's own textures and sprites.
-
-| Input | Action |
-|---|---|
-| Left click (drag) | Paint the selected piece |
-| Right click | Erase to floor |
-| Middle click / `Q` | Pick up the piece under the cursor |
-| Mouse wheel / `[` `]`, or click the palette | Choose a piece |
-| Arrows / `WASD`, `Space`, `Delete` | Move the cursor, paint, erase (no mouse needed) |
-| `F` | Toggle the fill tool (flood-fills the area you click) |
-| `G` | Cycle layers: tiles → ceilings (1.0–10.0, or the map default) → floors (ground up to 8.5) |
-| `K` | Stair brush (floors layer): each cell you drag over is one step (0.25) higher than the last |
-| `-` / `=` | Zoom out / in |
-| `T` | Cycle theme (hall, ice, crypt, arena, spire, barren, void, meadow) |
-| `R` | Rename the map |
-| `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
-| `Ctrl+S` | Save |
-| `Ctrl+O` | Open a saved map, or one of the built-in maps as a template |
-| `Ctrl+N` | New map (press again to cycle 32×24, 48×32 and 20×16) |
-| `P` / `F5` | Play-test the map (`C` picks the class, `V` switches Classic/Relaxed) |
-| `H` | Show / hide help |
-| `Esc` | Leave (asks again if there are unsaved changes) |
-
-A play-test needs a player start (`@`); the editor warns about a missing or unreachable exit and anything
-that can't be reached (on foot, or by flying if the map has a jetpack in it). While testing, **Esc → Back to editor** returns to your map, and so does winning.
-A custom map without a Heresiarch has its exit open from the start. Portal digits only link maps in the
-built-in hub.
-
-**Heights and floors:** in the ceilings layer every open cell shows its ceiling height as a digit over a colour
-tint (blue is low, orange is tall); in the floors layer it shows the floor height (`0` ground, `1`–`9` = 0.25–2.25,
-green to pale yellow, then letters for towers and high ledges, yellow to pink). You can walk up a difference of 2 (0.5) without jumping; ceilings are absolute, and are
-kept at least one storey above a raised floor. Doors are always one storey tall; when a taller room opens onto a lower cell, wall is drawn
-above the opening. New maps default to 1.5; the built-in maps use 1 for corridors and doorways up to 3.5 for
-the arenas.
-
-Maps are saved as `.hxm` text files in the `maps` folder next to `settings.cfg`
-(`~/.config/HexenSharp/maps/` on Linux, `%APPDATA%\HexenSharp\maps\` on Windows): a `name:`, `theme:` and
-`height:` (default ceiling height) header, a `---` line, the rows using the map legend below, and optionally a
-second `---` line followed by a same-sized grid of ceiling heights (`2`–`9` = 1.0–4.5, then `a`–`k` = 5.0–10.0 in
-half steps, `.` = default) and a third `---` line followed by a grid of floor heights (`1`–`9` = 0.25–2.25, then
-`a`–`z` = 2.5–8.75 in quarter steps, `.` = ground). You can edit them
-by hand too; files without heights are one storey everywhere.
-The console command `playmap <name>` plays a saved map directly.
-
-### HTML map editor
-
-For bigger editing sessions there's a browser editor in `tools/editor/index.html`. It's a single file with no
-dependencies: open it straight from disk in any modern browser. It reads and writes the same `.hxm` files as the
-in-game editor, and its checks give exactly the same messages.
+Maps are made in the browser editor, `tools/editor/index.html`. It's a single file with no dependencies: open it
+straight from disk in any modern browser. The game has no built-in editor. It plays the `.hxm` files the browser
+editor saves, and its checks give exactly the same messages.
 
 ![HTML map editor](docs/html_editor.png)
 
@@ -338,8 +292,66 @@ in-game editor, and its checks give exactly the same messages.
 dotnet run -c Release -- --play path/to/my_map.hxm [--class cleric|mage] [--relaxed]
 ```
 
-Every time you save in the browser the game reloads the map and keeps your position, so you can tweak and test
-without restarting. `Esc → Back to editor` opens it in the in-game editor too.
+Every time you save in the browser, the game reloads the map and keeps your position, so you can tweak and test
+without restarting. Winning, or **Esc → Restart**, plays the map again. The console command `playmap <file>` plays a
+map file too. It also takes a name from the `maps` folder next to `settings.cfg` (`~/.config/HexenSharp/maps/` on
+Linux, `%APPDATA%\HexenSharp\maps\` on Windows).
+
+A map needs a player start (`@`). The checks warn about a missing or unreachable exit and anything that can't be
+reached (on foot, or by flying if the map has a jetpack in it). A custom map without a Heresiarch has its exit open
+from the start. Portal digits only link maps in the built-in hub.
+
+**Heights and floors:** you can walk up a difference of 0.5 without jumping. Ceilings are absolute heights, kept at
+least one storey above a raised floor. Doors are always one storey tall; when a taller room opens onto a lower cell,
+wall is drawn above the opening. New maps default to 1.5; the built-in maps use 1 for corridors and doorways, up to
+3.5 for the arenas and 10 for the Windspire.
+
+**File format:** a `.hxm` file is plain text, so you can edit it by hand too.
+1. A `name:`, `theme:` and `height:` (default ceiling height) header.
+2. A `---` line, then the rows, using the map legend below.
+3. Optionally, a second `---` line and a same-sized grid of ceiling heights: `2`–`9` = 1.0–4.5, then `a`–`k` =
+   5.0–10.0 in half steps, `.` = default.
+4. Optionally, a third `---` line and a grid of floor heights: `1`–`9` = 0.25–2.25, then `a`–`z` = 2.5–8.75 in
+   quarter steps, `.` = ground.
+
+Files without heights are one storey everywhere.
+
+## Levels, skills and weapon levels
+
+Everything you do earns experience, and your progress is saved between games (in `profile.json`, next to
+`settings.cfg`). Dying, restarting and starting a new game all keep it.
+
+![Character screen](docs/character_screen.png)
+![Level bar](docs/level_bar.png)
+
+**Experience** (a "+XP" pop-up shows by the level bar in the bottom-left corner of the view):
+
+| For | XP |
+|---|---|
+| Killing a monster | half its health: Afrit 17, Ettin 35, Bishop 45, Centaur 50, Slaughtaur 65 |
+| Killing the Heresiarch | 350, plus a 500 bonus |
+| Finding a secret / reading a lore stone (first time) | 50 / 25 |
+| A relic / opening a chest | 40 / 15 |
+| Clearing an arena wave | 20 × the wave number |
+| Winning the game | 300 |
+
+The first level takes 100 XP, and each after takes a bit more (282, 519, 800…), up to level 50. Custom maps you
+play-test don't award experience.
+
+**Skills:** each level gives a skill point. Press `K` (or pick **Character** on the title or pause menu) and spend
+points with `Enter`. Every skill has 10 ranks:
+
+| Skill | Per rank |
+|---|---|
+| Vitality | +10 max health (flasks, urns and vials heal up to it) |
+| Power | +8% damage with every weapon |
+| Agility | +4% movement speed |
+| Focus | −6% mana cost and +5% attack rate |
+| Thrusters (Wings in fantasy) | +15% jetpack fuel, and faster recharging |
+
+**Weapon levels:** each weapon (per class) gains experience from the kills it makes, levels up to 10, and hits 8%
+harder per level. The game announces each level-up, and the character screen shows every weapon's level and
+progress.
 
 ## Options and key bindings
 
@@ -378,9 +390,11 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
-| `edit`, `playmap <name>` | open the level editor / play a saved custom map |
+| `playmap <file\|name>` | play a custom map file (made in the browser editor) |
 | `artstyle <scifi\|fantasy>` | switch the visual style |
 | `renderedart [0\|1]` | use the Blender-rendered sci-fi art pack (off by default) |
+| `xp <amount>`, `skill <name>` | give yourself experience / spend a skill point |
+| `profile [reset]` | show your level, skills and totals, or start your progress over |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -452,7 +466,7 @@ lineups of every monster in both looks (`56_…`, `57_…`).
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
 | `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's ten maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
-| `src/Editor.cs` | Level editor: map document and file format, palette, tools, undo, validation, play-testing |
+| `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
 | `src/Bindings.cs` | Rebindable actions, key names, turning key state into game input |
@@ -463,6 +477,7 @@ lineups of every monster in both looks (`56_…`, `57_…`).
 | `src/Art.cs` | Procedural textures, sprites and first-person weapons (fantasy style), style switching |
 | `src/SciFiArt.cs` | The sci-fi style: station textures, space skies, robots and aliens, gear and guns |
 | `src/Words.cs` | Names and messages in the current style (e.g. Heresiarch → Overmind) |
+| `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |
 | `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |

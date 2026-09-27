@@ -32,7 +32,6 @@ public sealed class Renderer
                 break;
             case GameMode.ClassSelect: DrawClassSelect(g); break;
             case GameMode.Victory: DrawVictory(g); break;
-            case GameMode.Editor: DrawEditor(g); break;
             default: DrawGame(g); break;
         }
         if (g.Menu.Open && g.Menu.Page != MenuPage.Main) DrawMenu(g);
@@ -79,7 +78,7 @@ public sealed class Renderer
         var m = g.Menu;
         var page = m.Page.Value;
         var items = m.Items(page);
-        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : 230);
+        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page == MenuPage.Character ? 246 : 230);
 
         switch (page)
         {
@@ -121,9 +120,65 @@ public sealed class Renderer
             case MenuPage.Bindings:
                 DrawBindings(g);
                 break;
+
+            case MenuPage.Character:
+                DrawCharacter(g);
+                break;
         }
 
-        if (m.NoticeTime > 0 && page != MenuPage.Bindings) CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character))
+            CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
+    }
+
+    /// <summary>The character screen: level and experience, skills to spend points on, and your weapons' levels.</summary>
+    void DrawCharacter(Game g)
+    {
+        var m = g.Menu;
+        var pr = g.Profile;
+        var items = m.Items(MenuPage.Character);
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255);
+        CenterText("CHARACTER", 6, gold, 2);
+        string xp = pr.Level >= Profile.MaxLevel ? "MAX LEVEL" : $"XP {pr.Xp}/{Profile.XpToNext(pr.Level)}";
+        CenterText($"LEVEL {pr.Level}    {xp}    POINTS {pr.Points}", 26, pr.Points > 0 ? Col.Rgb(120, 255, 140) : blue);
+        Bar(60, 36, 200, 3, pr.Level >= Profile.MaxLevel ? 1f : pr.Xp / (float)Profile.XpToNext(pr.Level), gold);
+
+        for (int i = 0; i < items.Length; i++)
+        {
+            int y = 46 + i * 13;
+            bool sel = i == m.Cursor;
+            if (i == Profile.Skills.Length) { MenuItem(items[i], y + 2, sel); break; }
+            var s = Profile.Skills[i];
+            int rank = pr.Rank(s);
+            if (sel) Rect(14, y - 3, 292, 12, Col.Rgb(70, 40, 20));
+            Text(20, y, items[i].ToUpperInvariant(), sel ? MenuSel : MenuText);
+            for (int k = 0; k < Profile.MaxRank; k++)
+                Rect(96 + k * 8, y, 6, 6, k < rank ? (sel ? MenuSel : gold) : Col.Rgb(60, 52, 44));
+            Text(180, y, rank > 0 ? Profile.Effect(s, rank) : "-", rank > 0 ? blue : MenuDim);
+        }
+
+        var cls = g.P?.Class ?? PClass.Fighter;
+        var def = ClassDef.All[(int)cls];
+        Text(20, 128, $"WEAPONS ({def.Name.ToUpperInvariant()})", MenuDim);
+        for (int slot = 0; slot < 3; slot++)
+        {
+            var w = pr.Weapon(cls, slot);
+            int y = 139 + slot * 10;
+            string name = def.Weapons[slot].Name.ToUpperInvariant();
+            Text(20, y, name.Length > 22 ? name[..22] : name, MenuText);
+            Text(160, y, $"LV {w.Level}", w.Level >= Profile.MaxWeaponLevel ? Col.Rgb(120, 255, 140) : blue);
+            Text(198, y, $"+{(w.Level - 1) * 8}%", MenuDim);
+            Bar(232, y + 2, 70, 3, w.Level >= Profile.MaxWeaponLevel ? 1f : w.Xp / (float)Profile.WeaponXpToNext(w.Level), gold);
+        }
+        if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), 174, Col.Rgb(120, 255, 140));
+        else CenterText("ENTER: SPEND A POINT    ESC: BACK", 174, MenuDim);
+        CenterText($"KILLS {pr.TotalKills}    WINS {pr.Wins}    TOTAL XP {pr.TotalXp}", 186, MenuDim);
+    }
+
+    void Bar(int x, int y, int w, int h, float fill, uint color)
+    {
+        Rect(x - 1, y - 1, w + 2, h + 2, Col.Rgb(20, 18, 16));
+        int f = (int)MathF.Round(w * Math.Clamp(fill, 0f, 1f));
+        if (f > 0) Rect(x, y, f, h, color);
     }
 
     void DrawBindings(Game g)
@@ -619,284 +674,6 @@ public sealed class Renderer
                 Fb[j * W + i] = Col.Shade(Fb[j * W + i], 256 - amt);
     }
 
-    // ================================================================ level editor
-
-    readonly Dictionary<string, Theme> _themes = new();
-    readonly Dictionary<(char, string), (Tex tex, bool overlay)> _icons = new();
-
-    Theme ThemeFor(string id) => _themes.TryGetValue(id, out var t) ? t : _themes[id] = Maps.ThemeById(id);
-
-    /// <summary>What a map glyph looks like in the editor: a full-cell texture, or a sprite drawn over the floor.</summary>
-    (Tex tex, bool overlay) GlyphIcon(char c, string themeId)
-    {
-        if (_icons.TryGetValue((c, themeId), out var hit)) return hit;
-        var th = ThemeFor(themeId);
-        (Tex, bool) r;
-        switch (c)
-        {
-            case '#': case 'B': case 'W': case 'M': case 'I': case 'O':
-                r = (th.Walls.TryGetValue(c, out var wt) ? wt : c switch
-                {
-                    'B' => Art.Brick, 'W' => Art.Wood, 'M' => Art.Moss, 'I' => Art.Ice, 'O' => Art.Marble, _ => Art.Stone,
-                }, false);
-                break;
-            case 'D': r = (Art.Door, false); break;
-            case 'S': r = (Art.SteelDoor, false); break;
-            case 'F': r = (Art.FireDoor, false); break;
-            case 'P': r = (Art.Portcullis, true); break;
-            case 'L': r = (Art.LeverOff, false); break;
-            case 'X': r = (Art.Block, false); break;
-            case Level.Rubble: r = (Art.Rubble, false); break;
-            case 'N': case 'Q': case 'U': r = (Art.Ores[Level.OreIndex(c)], false); break;
-            case 'Z': r = (Labelled(th.Walls.TryGetValue('#', out var st) ? st : Art.Stone, "?", Col.Rgb(255, 220, 60)), false); break;
-            case '.': r = (th.FloorIn, false); break;
-            case ',': r = (th.OutdoorFloor, false); break;
-            case 'E': r = (Art.ExitFloor, false); break;
-            case '*': r = (Art.SpawnFloor, false); break;
-            case '!': r = (Art.AltarFloor, false); break;
-            case '^': r = (Art.PlateFloor, false); break;
-            case '+': r = (Art.CheckpointFloor, false); break;
-            case '=': r = (Art.LiftFloor, false); break;
-            case '@': r = (Labelled(th.FloorIn, "@", Col.Rgb(90, 255, 120), true), false); break;
-            case >= '1' and <= '9': r = (Labelled(Art.PortalFloor, c.ToString(), Col.Rgb(255, 255, 255)), false); break;
-            default:
-                var thing = ThingFactory.Create(c, 0, 0);
-                r = (thing is Monster m ? Art.Monsters[m.Def.Art][(int)Pose.Walk0] : thing?.Sprite(0) ?? Art.Stone, true);
-                break;
-        }
-        return _icons[(c, themeId)] = r;
-    }
-
-    static Tex Labelled(Tex src, string text, uint color, bool big = false)
-    {
-        var t = src.Clone();
-        int scale = big ? 5 : 4;
-        int x = (t.W - Font.Width(text, scale)) / 2 + scale / 2, y = (t.H - 7 * scale) / 2;
-        Font.Draw(t.Px, t.W, t.H, x, y, text, color, scale);
-        return t;
-    }
-
-    void DrawTex(Tex t, int x, int y, int w, int h, bool alpha, int clipW, int clipH, int shade = 256)
-    {
-        for (int j = 0; j < h; j++)
-        {
-            int sy = y + j;
-            if ((uint)sy >= (uint)clipH) continue;
-            int ty = j * t.H / h;
-            for (int i = 0; i < w; i++)
-            {
-                int sx = x + i;
-                if ((uint)sx >= (uint)clipW) continue;
-                uint c = t.Px[ty * t.W + i * t.W / w];
-                if (alpha && Col.A(c) == 0) continue;
-                Fb[sy * W + sx] = shade == 256 ? c : Col.Shade(c, shade);
-            }
-        }
-    }
-
-    int _artVersion = -1;
-
-    void DrawEditor(Game g)
-    {
-        if (_artVersion != Art.Version) { _themes.Clear(); _icons.Clear(); _artVersion = Art.Version; }
-        var ed = g.Editor;
-        var doc = ed.Doc;
-        int cs = ed.CellSize;
-        Array.Fill(Fb, Col.Rgb(14, 10, 12));
-
-        // ---- map view
-        var floor = GlyphIcon('.', doc.ThemeId).tex;
-        for (int y = ed.CamY; y < doc.H && (y - ed.CamY) * cs < Editor.MapViewH; y++)
-            for (int x = ed.CamX; x < doc.W && (x - ed.CamX) * cs < Editor.MapViewW; x++)
-            {
-                int px = (x - ed.CamX) * cs, py = (y - ed.CamY) * cs;
-                char c = doc[x, y];
-                var (tex, overlay) = GlyphIcon(c, doc.ThemeId);
-                // floors are drawn dim so walls stand out even when zoomed out
-                bool isFloor = c is '.' or ',';
-                if (overlay) DrawTex(c == 'P' ? floor : NeighbourFloor(doc, x, y), px, py, cs, cs, false, Editor.MapViewW, Editor.MapViewH, 130);
-                DrawTex(tex, px, py, cs, cs, overlay, Editor.MapViewW, Editor.MapViewH, isFloor ? 130 : 256);
-                if (cs >= 8)
-                    for (int i = 0; i < cs; i++)
-                    {
-                        Shade(px + i, py + cs - 1, Editor.MapViewW, Editor.MapViewH);
-                        Shade(px + cs - 1, py + i, Editor.MapViewW, Editor.MapViewH);
-                    }
-            }
-        // ceiling / floor modes: tint open cells by height and label them
-        bool floors = ed.Mode == Editor.Layer.Floors;
-        if (ed.Mode != Editor.Layer.Tiles)
-            for (int y = ed.CamY; y < doc.H && (y - ed.CamY) * cs < Editor.MapViewH; y++)
-                for (int x = ed.CamX; x < doc.W && (x - ed.CamX) * cs < Editor.MapViewW; x++)
-                {
-                    if ("#BWMIO".Contains(doc[x, y])) continue;
-                    char hg = floors ? doc.Floors[y * doc.W + x] : doc.Heights[y * doc.W + x];
-                    uint tint = floors ? FloorColor(Level.FloorFromGlyph(hg)) : HeightColor(Level.HeightFromGlyph(hg, doc.DefaultHeight));
-                    int px = (x - ed.CamX) * cs, py = (y - ed.CamY) * cs;
-                    for (int j = 0; j < cs; j++)
-                        for (int i = 0; i < cs; i++)
-                            if ((uint)(px + i) < Editor.MapViewW && (uint)(py + j) < Editor.MapViewH)
-                                Fb[(py + j) * W + px + i] = Col.Lerp(Fb[(py + j) * W + px + i], tint, 150);
-                    if (cs >= 8)
-                    {
-                        char label = hg != '.' ? hg : floors ? '0' : Level.GlyphFromHeight(doc.DefaultHeight);
-                        Font.Draw(Fb, W, H, px + (cs - 5) / 2, py + (cs - 7) / 2, label.ToString(), hg == '.' ? Col.Rgb(170, 170, 170) : Col.Rgb(255, 255, 255), 1, false);
-                    }
-                }
-
-        // cursor
-        int cx = (ed.CursorX - ed.CamX) * cs, cy = (ed.CursorY - ed.CamY) * cs;
-        uint cc = ed.FillTool ? Col.Rgb(80, 220, 255) : Col.Rgb(255, 230, 80);
-        for (int i = -1; i <= cs; i++)
-        {
-            PutClip(cx + i, cy - 1, cc); PutClip(cx + i, cy + cs, cc);
-            PutClip(cx - 1, cy + i, cc); PutClip(cx + cs, cy + i, cc);
-        }
-        Rect(Editor.MapViewW, 0, 1, Editor.MapViewH, Col.Rgb(120, 90, 50));
-
-        // ---- palette panel
-        Text(Editor.PaletteX, 2, ed.Mode switch { Editor.Layer.Ceilings => "CEILINGS", Editor.Layer.Floors => "FLOORS", _ => "PALETTE" }, Col.Rgb(230, 190, 80));
-        if (ed.Mode != Editor.Layer.Tiles)
-        {
-            var pal = floors ? Editor.FloorPalette : Editor.HeightPalette;
-            int sel = floors ? ed.FloorIndex : ed.HeightIndex;
-            for (int i = 0; i < pal.Length; i++)
-            {
-                int px = Editor.PaletteX + (i % Editor.PaletteCols) * Editor.PaletteCell;
-                int py = Editor.PaletteY + (i / Editor.PaletteCols) * Editor.PaletteCell;
-                char hg = pal[i];
-                const int s = Editor.PaletteCell - 1;
-                Rect(px, py, s, s, floors ? FloorColor(Level.FloorFromGlyph(hg)) : HeightColor(Level.HeightFromGlyph(hg, doc.DefaultHeight)));
-                Font.Draw(Fb, W, H, px + 3, py + 3, hg == '.' ? (floors ? "0" : "D") : hg.ToString(), Col.Rgb(255, 255, 255), 1, true);
-                if (i == sel)
-                    for (int k = -1; k <= s; k++)
-                    {
-                        Put(px + k, py - 1, Col.Rgb(255, 230, 80)); Put(px + k, py + s, Col.Rgb(255, 230, 80));
-                        Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + s, py + k, Col.Rgb(255, 230, 80));
-                    }
-            }
-            int hy = Math.Max(50, Editor.PaletteY + (pal.Length + Editor.PaletteCols - 1) / Editor.PaletteCols * Editor.PaletteCell + 4);
-            string what = floors ? "Floor " + Editor.FloorLabel(ed.CurrentFloor) : "Ceiling " + Editor.HeightLabel(ed.CurrentHeight, doc.DefaultHeight);
-            foreach (var line in Wrap(what.ToUpperInvariant(), 12)) { Text(Editor.PaletteX, hy, line, Col.Rgb(255, 230, 120)); hy += 9; }
-            if (floors) { Text(Editor.PaletteX, hy + 4, ed.StairBrush ? "K: STAIRS ON" : "K: STAIRS", ed.StairBrush ? Col.Rgb(120, 255, 140) : Col.Rgb(150, 140, 120)); hy += 9; }
-            foreach (var line in Wrap("G: NEXT LAYER", 12)) { Text(Editor.PaletteX, hy + 8, line, Col.Rgb(150, 140, 120)); hy += 9; }
-        }
-        for (int i = 0; i < Editor.Palette.Length && ed.Mode == Editor.Layer.Tiles; i++)
-        {
-            int px = Editor.PaletteX + (i % Editor.PaletteCols) * Editor.PaletteCell;
-            int py = Editor.PaletteY + (i / Editor.PaletteCols) * Editor.PaletteCell;
-            var b = Editor.Palette[i];
-            var (tex, overlay) = GlyphIcon(b.Glyph, doc.ThemeId);
-            const int s = Editor.PaletteCell - 1;
-            if (overlay) DrawTex(floor, px, py, s, s, false, W, H);
-            DrawTex(tex, px, py, s, s, overlay, W, H);
-            if (i == ed.BrushIndex)
-                for (int k = -1; k <= s; k++)
-                {
-                    Put(px + k, py - 1, Col.Rgb(255, 230, 80)); Put(px + k, py + s, Col.Rgb(255, 230, 80));
-                    Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + s, py + k, Col.Rgb(255, 230, 80));
-                }
-        }
-        int iy = Editor.PaletteY + ((Editor.Palette.Length + Editor.PaletteCols - 1) / Editor.PaletteCols) * Editor.PaletteCell + 2;
-        if (ed.Mode == Editor.Layer.Tiles)
-            foreach (var line in Wrap(Words.T(ed.Current.Label).ToUpperInvariant(), 12)) { Text(Editor.PaletteX, iy, line, Col.Rgb(255, 230, 120)); iy += 9; }
-        Text(Editor.PaletteX, 160, ed.FillTool ? "TOOL: FILL" : "TOOL: BRUSH", Col.Rgb(170, 200, 255));
-        Text(Editor.PaletteX, 170, ed.PlayClass.ToString().ToUpperInvariant(), Col.Rgb(150, 140, 120));
-        Text(Editor.PaletteX, 179, g.Style.ToString().ToUpperInvariant(), Col.Rgb(150, 140, 120));
-
-        // ---- status bar
-        Rect(0, Editor.MapViewH, W, H - Editor.MapViewH, Col.Rgb(40, 28, 18));
-        string status = ed.StatusTime > 0 ? ed.Status
-            : $"{doc.Name}{(ed.Dirty ? "*" : "")}  {doc.W}X{doc.H} {doc.ThemeId}  ({ed.CursorX},{ed.CursorY})  H: HELP";
-        Text(3, Editor.MapViewH + 2, status.Length > 52 ? status[..52] : status, ed.StatusTime > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(220, 205, 180));
-
-        // ---- overlays
-        if (ed.ShowHelp && ed.OpenList == null && ed.RenameText == null)
-        {
-            string[] help =
-            {
-                "LEFT CLICK PAINT   RIGHT CLICK ERASE",
-                "MIDDLE / Q PICK    WHEEL / [ ] BRUSH",
-                "ARROWS / WASD MOVE   SPACE PAINT",
-                "F FILL TOOL        DEL ERASE",
-                "G LAYER: TILES/CEILINGS/FLOORS",
-                "K STAIR BRUSH (IN FLOORS)",
-                "- = ZOOM   T THEME   R RENAME",
-                "CTRL+Z UNDO        CTRL+Y REDO",
-                "CTRL+S SAVE  CTRL+O OPEN  CTRL+N NEW",
-                "P / F5 PLAY TEST",
-                "C CLASS  V STYLE (FOR PLAY TESTS)",
-                "H HIDE HELP        ESC EXIT",
-            };
-            int bx = 6, by = 6, bw = 228, bh = help.Length * 9 + 16;
-            Darken(bx, by, bw, bh, 170);
-            Text(bx + 6, by + 4, "LEVEL EDITOR", Col.Rgb(230, 190, 80));
-            for (int i = 0; i < help.Length; i++) Text(bx + 6, by + 15 + i * 9, help[i], Col.Rgb(220, 210, 190));
-        }
-        if (ed.OpenList != null)
-        {
-            int bx = 20, by = 20, bw = 200, rows = Math.Min(14, ed.OpenList.Count), bh = rows * 10 + 24;
-            Rect(bx - 1, by - 1, bw + 2, bh + 2, Col.Rgb(150, 110, 60));
-            Rect(bx, by, bw, bh, Col.Rgb(30, 20, 14));
-            Text(bx + 6, by + 4, "OPEN MAP  (ENTER / ESC)", Col.Rgb(230, 190, 80));
-            int first = Math.Clamp(ed.OpenCursor - rows + 1, 0, Math.Max(0, ed.OpenList.Count - rows));
-            for (int i = 0; i < rows; i++)
-            {
-                int li = first + i;
-                bool sel = li == ed.OpenCursor;
-                if (sel) Rect(bx + 2, by + 15 + i * 10, bw - 4, 10, Col.Rgb(90, 55, 25));
-                string label = ed.OpenList[li].label.ToUpperInvariant();
-                Text(bx + 6, by + 16 + i * 10, label.Length > 31 ? label[..31] : label, sel ? Col.Rgb(255, 230, 120) : Col.Rgb(210, 200, 180));
-            }
-        }
-        if (ed.RenameText != null)
-        {
-            Rect(29, 69, 182, 34, Col.Rgb(150, 110, 60));
-            Rect(30, 70, 180, 32, Col.Rgb(30, 20, 14));
-            Text(36, 74, "MAP NAME  (ENTER / ESC)", Col.Rgb(230, 190, 80));
-            string cursor = ((int)(g.Time * 3) & 1) == 0 ? "_" : "";
-            if (ed.RenameText.Length == 0) Text(36, 88, ed.Doc.Name.ToUpperInvariant(), Col.Rgb(110, 100, 90));
-            Text(36, 88, ed.RenameText.ToUpperInvariant() + cursor, Col.Rgb(255, 255, 255));
-        }
-    }
-
-    /// <summary>Floor-mode tint: ground dark green, rising to pale yellow.</summary>
-    static uint FloorColor(float f)
-    {
-        if (f > 2.25f)
-        {
-            // towers and high ledges shade on from yellow toward pink
-            float u = MathF.Min(1, (f - 2.25f) / 6.5f);
-            return Col.Rgb(240, (int)(230 - 130 * u), (int)(120 + 110 * u));
-        }
-        float t = f / 2.25f;
-        return Col.Rgb((int)(40 + 200 * t), (int)(110 + 120 * t), (int)(60 + 60 * t));
-    }
-
-    /// <summary>Height-mode tint: low ceilings blue, tall ones warm.</summary>
-    static uint HeightColor(float h)
-    {
-        float t = (h - Level.MinHeight) / (Level.MaxHeight - Level.MinHeight);
-        return Col.Rgb((int)(40 + 200 * t), (int)(90 + 60 * MathF.Sin(t * MathF.PI)), (int)(200 - 170 * t));
-    }
-
-    /// <summary>Floor under a thing: outdoor if most neighbours are outdoor floor.</summary>
-    Tex NeighbourFloor(MapDoc doc, int x, int y)
-    {
-        int outdoor = (doc[x + 1, y] == ',' ? 1 : 0) + (doc[x - 1, y] == ',' ? 1 : 0) + (doc[x, y + 1] == ',' ? 1 : 0) + (doc[x, y - 1] == ',' ? 1 : 0);
-        return GlyphIcon(outdoor >= 2 ? ',' : '.', doc.ThemeId).tex;
-    }
-
-    void Shade(int x, int y, int clipW, int clipH)
-    {
-        if ((uint)x < (uint)clipW && (uint)y < (uint)clipH) Fb[y * W + x] = Col.Shade(Fb[y * W + x], 170);
-    }
-
-    void PutClip(int x, int y, uint c)
-    {
-        if ((uint)x < Editor.MapViewW && (uint)y < Editor.MapViewH) Fb[y * W + x] = c;
-    }
-
     // ================================================================ console & arena
 
     void DrawConsole(Game g)
@@ -1026,15 +803,17 @@ public sealed class Renderer
         int by = ViewH + 3;
         uint label = Col.Rgb(200, 180, 140);
         if (p.HasJetpack) DrawFuel(p, label);
+        if (!g.Level.Flight) DrawLevelBar(g); // the cockpit dashboard fills that corner when flying
         if (g.Level.Ship != null) DrawShipPanel(g);
         if (p.Blocks > 0 && !g.Level.Flight)
         {
-            Icon(Art.Rubble, 4, ViewH - 16, 12);
-            Text(19, ViewH - 12, $"x{p.Blocks}", Col.Rgb(230, 220, 200));
+            // above the level bar and its +XP pop-up
+            Icon(Art.Rubble, 4, ViewH - 34, 12);
+            Text(19, ViewH - 30, $"x{p.Blocks}", Col.Rgb(230, 220, 200));
         }
         if (g.Relaxed) { DrawDiscoveryHud(g, by, label); return; }
         Text(6, by, "HEALTH", label);
-        uint hcol = p.Health > 50 ? Col.Rgb(240, 230, 210) : p.Health > 25 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
+        uint hcol = p.Health > p.MaxHealth / 2 ? Col.Rgb(240, 230, 210) : p.Health > p.MaxHealth / 4 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
         Text(8, by + 11, p.Health.ToString(), hcol, 2);
 
         Text(52, by, "ARMOR", label);
@@ -1064,6 +843,19 @@ public sealed class Renderer
 
         string cls = p.Def.Name.ToUpperInvariant();
         Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
+    }
+
+    /// <summary>Your level and experience, in the bottom-left corner of the view, with a pop-up as XP comes in.</summary>
+    void DrawLevelBar(Game g)
+    {
+        var pr = g.Profile;
+        int y = ViewH - 9;
+        string lv = $"LV {pr.Level}";
+        Text(4, y, lv, pr.Points > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
+        int bx = 8 + Font.Width(lv);
+        Bar(bx, y + 2, 48, 3, pr.Level >= Profile.MaxLevel ? 1f : pr.Xp / (float)Profile.XpToNext(pr.Level), Col.Rgb(230, 190, 80));
+        if (pr.Points > 0) Text(bx + 52, y, "+", Col.Rgb(120, 255, 140));
+        if (g.XpPopupTime > 0) Text(4, y - 10, $"+{g.XpPopup} XP", Col.Rgb(255, 230, 120));
     }
 
     /// <summary>On a stranded map: ore carried, and how much of each the ship still needs, in the view's top-right corner.</summary>
@@ -1099,8 +891,8 @@ public sealed class Renderer
         string name = Words.T("WINGS");
         Text(W - 3 - Font.Width(name), y0 - 9, name, p.Flying ? Col.Rgb(255, 230, 120) : label);
         Rect(x - 1, y0 - 1, bw + 2, h + 2, Col.Rgb(20, 20, 24));
-        int fill = (int)MathF.Round(h * Math.Clamp(p.Fuel / Player.FuelMax, 0f, 1f));
-        float f = p.Fuel / Player.FuelMax;
+        int fill = (int)MathF.Round(h * Math.Clamp(p.Fuel / p.MaxFuel, 0f, 1f));
+        float f = p.Fuel / p.MaxFuel;
         uint c = f < 0.25f ? Col.Rgb(250, 70, 50) : Art.Style == ArtStyle.SciFi ? Col.Rgb(80, 190, 255) : Col.Rgb(250, 220, 120);
         if (fill > 0) Rect(x, y0 + h - fill, bw, fill, c);
     }
@@ -1291,6 +1083,8 @@ public sealed class Renderer
             CenterText($"KILLS: {p.Kills}    CHESTS: {p.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 116, stat);
             CenterText($"SECRETS: {p.Secrets}/{g.SecretsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}", 128, stat);
         }
+        if (!g.TestingMap)
+            CenterText($"LEVEL {g.Profile.Level}    +{g.RunXp} XP THIS RUN", 144, g.Profile.Points > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
         CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
     }
 }

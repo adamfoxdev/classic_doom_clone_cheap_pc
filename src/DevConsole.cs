@@ -148,6 +148,33 @@ public sealed class DevConsole
             _g.NewGame(_g.P?.Class ?? PClass.Fighter);
             Print($"new {style.ToLowerInvariant()} game");
         });
+        Add("xp", "<amount>", "give yourself experience", a =>
+        {
+            if (a.Length < 2 || !int.TryParse(a[1], out int n) || n <= 0) { Print("usage: xp <amount>"); return; }
+            int before = _g.Profile.Level;
+            _g.GainXp(n);
+            Print($"+{n} xp: level {_g.Profile.Level}{(_g.Profile.Level > before ? " (level up!)" : "")}, {_g.Profile.Points} point(s) to spend");
+        });
+        Add("profile", "[reset]", "show your character's progress, or start it over", a =>
+        {
+            var pr = _g.Profile;
+            if (a.Length > 1 && a[1] == "reset")
+            {
+                _g.Profile = new Profile();
+                _g.ApplyProfile();
+                _g.SaveProfile();
+                Print("profile reset: level 1, no skills, weapons back to level 1");
+                return;
+            }
+            Print($"level {pr.Level}, xp {pr.Xp}/{Profile.XpToNext(pr.Level)}, {pr.Points} point(s), {pr.TotalKills} kills, {pr.Wins} wins");
+            Print("skills: " + string.Join(", ", Profile.Skills.Select(s => $"{s.ToString().ToLowerInvariant()} {pr.Rank(s)}")));
+        });
+        Add("skill", "<name>", "spend a skill point (vitality, power, agility, focus, thrusters)", a =>
+        {
+            var s = a.Length > 1 ? Profile.Skills.FirstOrDefault(k => k.ToString().StartsWith(a[1], StringComparison.OrdinalIgnoreCase), (Skill)(-1)) : (Skill)(-1);
+            if ((int)s < 0) { Print("usage: skill <vitality|power|agility|focus|thrusters>"); return; }
+            Print(_g.SpendSkill(s) ? $"{s.ToString().ToLowerInvariant()} is now rank {_g.Profile.Rank(s)}" : "no points to spend, or that skill is maxed");
+        });
         Add("renderedart", "[0|1]", "use the Blender-rendered sci-fi art pack", a =>
         {
             if (a.Length < 2) { Print($"renderedart = {(Art.Rendered ? 1 : 0)} ({RenderedArt.Covered.Count()} rendered assets available)"); return; }
@@ -166,12 +193,12 @@ public sealed class DevConsole
             Print("artstyle = " + a[1].ToLowerInvariant());
             _g.SaveSettings();
         });
-        Add("edit", "", "open the level editor", _ => { _g.OpenEditor(); Open = false; });
-        Add("playmap", "<name>", "play a saved custom map", a =>
+        Add("playmap", "<file|name>", "play a custom map file (made in tools/editor/index.html)", a =>
         {
-            if (a.Length < 2 || _g.MapsDir == null) { Print("usage: playmap <name>  (maps are saved from the editor)"); return; }
-            string path = Path.Combine(_g.MapsDir, Editor.FileName(string.Join(' ', a.Skip(1))));
-            if (!File.Exists(path)) { Print($"no map file {Path.GetFileName(path)}"); return; }
+            if (a.Length < 2) { Print("usage: playmap <path/to/map.hxm | name in the maps folder>"); return; }
+            string arg = string.Join(' ', a.Skip(1));
+            string path = File.Exists(arg) ? arg : _g.MapsDir != null ? Path.Combine(_g.MapsDir, MapDoc.FileName(arg)) : arg;
+            if (!File.Exists(path)) { Print($"no map file {arg}"); return; }
             try
             {
                 var doc = MapDoc.Parse(File.ReadAllText(path));
@@ -299,13 +326,13 @@ public sealed class DevConsole
         what = what.ToLowerInvariant();
         bool all = what == "all";
         bool any = false;
-        if (all || what == "health") { p.Health = 100; any = true; }
+        if (all || what == "health") { p.Health = p.MaxHealth; any = true; }
         if (all || what == "armor") { p.Armor = 100; any = true; }
         if (all || what == "weapons") { p.HasWeapon[1] = p.HasWeapon[2] = true; any = true; }
         if (all || what == "mana" || what == "weapons") { p.BlueMana = p.GreenMana = 200; any = true; }
         if (all || what == "keys") { p.SteelKey = p.FireKey = true; any = true; }
         if (all || what == "items") { p.Flasks = 9; p.Urns = 3; any = true; }
-        if (all || what == "jetpack") { p.HasJetpack = true; p.Fuel = Player.FuelMax; any = true; }
+        if (all || what == "jetpack") { p.HasJetpack = true; p.Fuel = p.MaxFuel; any = true; }
         if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor|jetpack>"); return; }
         Print($"given: {what}");
         _g.Say($"Cheater! ({what})");

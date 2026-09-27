@@ -158,6 +158,8 @@ public sealed class Projectile : Thing
     public bool FromPlayer, Exploding;
     /// <summary>Climbs or dives at VZ in a straight line (aimed up or down at a target) instead of levelling out.</summary>
     public bool Aimed;
+    /// <summary>Which of your weapons fired it (-1 for monsters' shots), so its kills level that weapon up.</summary>
+    public int Slot = -1;
     public float Homing;               // turn rate toward the player in radians/second (0 = flies straight)
     public float Life = 6f, ExplodeTime;
     public Thing Owner;

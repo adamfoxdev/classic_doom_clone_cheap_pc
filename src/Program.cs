@@ -51,9 +51,10 @@ public static class Program
             ConfigPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HexenSharp", "settings.cfg"),
         };
         game.MapsDir = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "maps");
+        game.ProfilePath = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "profile.json");
         game.LoadSettings();
+        game.LoadProfile();
         var keys = new RaylibKeys();
-        game.Keys = keys;
         var renderer = new Renderer();
         Audio audio = null;
         if (Raylib.IsAudioDeviceReady())
@@ -75,7 +76,6 @@ public static class Program
             else
             {
                 game.Style = relaxed ? GameStyle.Relaxed : GameStyle.Classic;
-                game.Editor.Doc = doc;
                 game.StartTest(doc.ToDef(), cls);
                 watcher = new MapWatcher(play);
             }
@@ -125,6 +125,7 @@ public static class Program
         }
 
         game.SaveSettings();
+        game.SaveProfile();
         Raylib.UnloadTexture(tex);
         audio?.Dispose();
         Raylib.CloseAudioDevice();
@@ -173,12 +174,6 @@ public static class Program
         keys.Poll();
         var i = game.Binds.Read(keys, game.Con.Open);
         i.KeyPressed = keys.AnyPressed;
-        // mouse position in framebuffer pixels (undoing the letterbox scaling)
-        int sw = Raylib.GetScreenWidth(), sh = Raylib.GetScreenHeight();
-        float scale = MathF.Min(sw / (float)Renderer.W, sh / (float)Renderer.H);
-        var mp = Raylib.GetMousePosition();
-        i.MouseX = (mp.X - (sw - Renderer.W * scale) / 2) / scale;
-        i.MouseY = (mp.Y - (sh - Renderer.H * scale) / 2) / scale;
         var typed = new System.Text.StringBuilder();
         for (int c = Raylib.GetCharPressed(); c != 0; c = Raylib.GetCharPressed()) typed.Append((char)c);
         i.Typed = typed.ToString();

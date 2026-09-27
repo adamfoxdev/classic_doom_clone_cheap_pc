@@ -28,7 +28,7 @@ public static class MapFiles
         MapDoc doc;
         try { doc = MapDoc.Parse(File.ReadAllText(path)); }
         catch (Exception e) { Console.WriteLine("! " + e.Message); return 1; }
-        var issues = Editor.Validate(doc);
+        var issues = doc.Validate();
         foreach (var i in issues) Console.WriteLine(i);
         if (issues.Count == 0) Console.WriteLine("ok");
         return issues.Any(i => i.StartsWith("!")) ? 1 : 0;
@@ -40,7 +40,7 @@ public static class MapFiles
         Directory.CreateDirectory(dir);
         foreach (var def in Maps.Hub)
         {
-            var path = Path.Combine(dir, Editor.FileName(def.Name));
+            var path = Path.Combine(dir, MapDoc.FileName(def.Name));
             File.WriteAllText(path, MapDoc.FromDef(def).Serialize());
             Console.WriteLine("wrote " + path);
         }
@@ -59,7 +59,7 @@ public static class MapFiles
         {
             string text = MapDoc.FromDef(def).Serialize();
             sb.Append("  { name: ").Append(Js(def.Name))
-              .Append(", file: ").Append(Js(Editor.FileName(def.Name)))
+              .Append(", file: ").Append(Js(MapDoc.FileName(def.Name)))
               .Append(", text: ").Append(Js(text)).Append(" },\n");
         }
         sb.Append("];\n");
@@ -111,11 +111,10 @@ public sealed class MapWatcher
         var now = Stamp();
         if (now == _stamp) return false;
         _stamp = now;
-        // only while play-testing: don't yank the player out of a menu or the in-game editor
+        // only while play-testing: don't yank the player out of a menu
         if (!g.TestingMap || g.Mode is not (GameMode.Playing or GameMode.Dead)) return false;
         var doc = MapFiles.TryLoad(Path, out var error);
         if (doc == null) { g.Say("Can't reload the map: " + error); return false; }
-        g.Editor.Doc = doc;
         g.ReloadTest(doc.ToDef());
         return true;
     }
