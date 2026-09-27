@@ -55,7 +55,7 @@ public sealed class MenuSystem
         MenuPage.Pause => new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
-        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Back" },
+        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
     };
 
@@ -72,6 +72,7 @@ public sealed class MenuSystem
             5 => Art.Style == ArtStyle.SciFi ? "SCI-FI" : "FANTASY",
             6 => !RenderedArt.Available ? "N/A" : Art.Rendered ? (Art.Style == ArtStyle.SciFi ? "ON" : "ON (SCI-FI)") : "OFF",
             7 => Game.HudName(v.Hud),
+            8 => v.Crosshair.ToString().ToUpperInvariant(),
             _ => "",
         };
     }
@@ -156,6 +157,10 @@ public sealed class MenuSystem
                     int n = Enum.GetValues<HudStyle>().Length;
                     v.Hud = (HudStyle)(((int)v.Hud + dir + n) % n);
                     break;
+                case 8:
+                    int cn = Enum.GetValues<CrosshairStyle>().Length;
+                    v.Crosshair = (CrosshairStyle)(((int)v.Crosshair + dir + cn) % cn);
+                    break;
                 default: if (inp.Confirm) Back(); return;
             }
             _g.PlaySound(Sfx.Pickup, 0.6f);
@@ -197,6 +202,7 @@ public static class Settings
         yield return "artstyle " + (Art.Style == ArtStyle.SciFi ? "scifi" : "fantasy");
         yield return "renderedart " + (Art.Rendered ? 1 : 0);
         yield return "hud " + (int)g.Vars.Hud;
+        yield return "crosshair " + (int)g.Vars.Crosshair;
     }
 
     public static void Save(Game g, string path)

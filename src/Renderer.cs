@@ -48,6 +48,7 @@ public sealed class Renderer
         DrawView(g);
         DrawWeapon(g);
         DrawScreenTint(g);
+        DrawCrosshair(g);
         if (g.ShowMap) DrawAutomap(g);
         DrawHud(g);
         DrawMessages(g);
@@ -654,6 +655,39 @@ public sealed class Renderer
                 Fb[sy * W + sx] = Col.Shade(c, light);
             }
         }
+    }
+
+    /// <summary>
+    /// The aiming mark, where your shots go: the centre of the view, on the horizon, so it follows vertical look.
+    /// Light with a dark outline so it reads on any wall. The cockpit has its own gunsight.
+    /// </summary>
+    void DrawCrosshair(Game g)
+    {
+        var style = g.Vars.Crosshair;
+        if (style == CrosshairStyle.Off || g.Level.Flight || g.ShowMap || g.Mode == GameMode.Dead) return;
+        int cx = W / 2, cy = (int)MathF.Round(ViewH / 2f + g.P.Pitch);
+        var pts = new List<(int x, int y)>();
+        switch (style)
+        {
+            case CrosshairStyle.Dot:
+                pts.AddRange(new[] { (0, 0), (1, 0), (0, 1), (1, 1) });
+                break;
+            case CrosshairStyle.Cross:
+                for (int k = 2; k <= 5; k++) pts.AddRange(new[] { (k, 0), (-k, 0), (0, k), (0, -k) });
+                break;
+            case CrosshairStyle.Circle:
+                for (int y = -5; y <= 5; y++)
+                    for (int x = -5; x <= 5; x++)
+                        if (MathF.Abs(MathF.Sqrt(x * x + y * y) - 4f) < 0.5f) pts.Add((x, y));
+                pts.Add((0, 0));
+                break;
+        }
+        uint dark = Col.Rgb(12, 10, 14), light = Col.Rgb(240, 236, 220);
+        foreach (var (x, y) in pts)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if ((dx == 0) != (dy == 0)) Put(cx + x + dx, cy + y + dy, dark);
+        foreach (var (x, y) in pts) Put(cx + x, cy + y, light);
     }
 
     void DrawScreenTint(Game g)

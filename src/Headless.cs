@@ -743,6 +743,56 @@ public static class Headless
         g.Con.Execute("hud 9");
         check(g.Vars.Hud == HudStyle.Off, "out-of-range values clamp");
         g.Vars.Hud = HudStyle.Full;
+
+        // the crosshair: off by default, each style marks the centre of the view, and it follows vertical look
+        check(g.Vars.Crosshair == CrosshairStyle.Off, "the crosshair is off by default");
+        uint[] Centre(int pitch)
+        {
+            g.P.Pitch = pitch;
+            r.Render(g);
+            var box = new List<uint>();
+            int cy = Renderer.StatusViewH / 2 + pitch;
+            for (int y = cy - 7; y <= cy + 7; y++)
+                for (int x = Renderer.W / 2 - 7; x <= Renderer.W / 2 + 7; x++) box.Add(r.Fb[y * Renderer.W + x]);
+            return box.ToArray();
+        }
+        var bare = Centre(0);
+        var marks = new Dictionary<CrosshairStyle, uint[]>();
+        foreach (var cs in new[] { CrosshairStyle.Dot, CrosshairStyle.Cross, CrosshairStyle.Circle })
+        {
+            g.Vars.Crosshair = cs;
+            marks[cs] = Centre(0);
+        }
+        check(marks.Values.All(m => Diff(m, bare) > 4), "dot, cross and circle each draw at the centre of the view");
+        check(Diff(marks[CrosshairStyle.Dot], marks[CrosshairStyle.Cross]) > 0 && Diff(marks[CrosshairStyle.Cross], marks[CrosshairStyle.Circle]) > 0,
+              "and they look different");
+        g.Vars.Crosshair = CrosshairStyle.Cross;
+        var lookUp = Centre(20);
+        g.Vars.Crosshair = CrosshairStyle.Off;
+        check(Diff(lookUp, Centre(20)) > 4, "it moves with the horizon when you look up or down");
+        g.Vars.Crosshair = CrosshairStyle.Cross;
+        g.ShowMap = true;
+        var onMap = Centre(0);
+        g.Vars.Crosshair = CrosshairStyle.Off;
+        check(Diff(onMap, Centre(0)) == 0, "it's hidden on the automap");
+        g.ShowMap = false;
+        g.P.Pitch = 0;
+
+        g.Menu.Show(MenuPage.Options);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "Crosshair");
+        check(g.Menu.Value(g.Menu.Cursor) == "OFF", "Options shows Crosshair: OFF");
+        g.Menu.Update(new Input { Right = true }, 1f / 35f);
+        g.Menu.Update(new Input { Right = true }, 1f / 35f);
+        check(g.Vars.Crosshair == CrosshairStyle.Cross && g.Menu.Value(g.Menu.Cursor) == "CROSS", "Right steps through DOT to CROSS");
+        g.Menu.Update(new Input { Left = true }, 1f / 35f);
+        g.Menu.Update(new Input { Left = true }, 1f / 35f);
+        g.Menu.Update(new Input { Left = true }, 1f / 35f);
+        check(g.Vars.Crosshair == CrosshairStyle.Circle, "and Left wraps round to CIRCLE");
+        g.Menu.Close();
+        check(Settings.Lines(g).Contains("crosshair 3"), "the crosshair is saved with the settings");
+        g.Con.Execute("crosshair 1");
+        check(g.Vars.Crosshair == CrosshairStyle.Dot, "'crosshair 1' sets it from the console");
+        g.Vars.Crosshair = CrosshairStyle.Off;
     }
 
     static void RpgChecks(Action<bool, string> check)
@@ -2679,6 +2729,9 @@ public static class Headless
             Shot(name);
         }
         g.Vars.Hud = HudStyle.Full;
+        g.Vars.Crosshair = CrosshairStyle.Cross;
+        Shot("81_crosshair");
+        g.Vars.Crosshair = CrosshairStyle.Off;
         g.Vars.Freeze = false;
 
         // character progression: the HUD's level bar with an XP pop-up, and the character screen
