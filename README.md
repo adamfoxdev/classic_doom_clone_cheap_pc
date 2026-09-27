@@ -305,30 +305,38 @@ dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styl
 
 ## Rendered art pack (Blender)
 
-A pilot of Blender-rendered sci-fi art sits on top of the procedural art as a toggle (**Options → Rendered art**,
+A pack of Blender-rendered sci-fi art sits on top of the procedural art as a toggle (**Options → Rendered art**,
 or `renderedart 1` in the console). It's off by default and only affects the sci-fi style; anything it doesn't
-cover keeps its procedural look. The pilot covers:
+cover keeps its procedural look. It covers:
 
 - the 11 pickups: stim, medkit, nano canister, energy and plasma cells, both keycards, armor vest, jetpack and
   both weapon crates
-- the drone monster: walk, attack and pain frames, with the death frames derived from them as usual
+- all six monsters: the drone, brute mech, strider, siege strider, psi wraith and the Overmind. Each has two walk
+  frames (alternate steps, a bank or a bob), an attack frame (muzzle flashes, a raised arm cannon, casting hands)
+  and a white-hot pain frame; the death frames are derived from them as usual. They're built bolder than the
+  pickups, with brighter hulls, strong glows and a rim light, so they still read at a distance. The walkers are
+  seen at a three-quarter angle to show their legs.
 - four textures: the main station wall panels, white hull plating, the pipe wall and the deck floor
 
 ![Rendered art sheet: procedural above, rendered below](docs/rendered_art_sheet.png)
+![Rendered monsters: procedural above, rendered below](docs/rendered_art_monsters.png)
 ![Hab Ring with rendered art](docs/rendered_art_hab_ring.png)
+![Rendered monsters in the great hall](docs/rendered_art_monsters_ingame.png)
 
 Every asset is modelled in code in `tools/blender/build_scifi_assets.py`. It's built from primitives, rendered with
 Cycles at 4× size, then shrunk to 64×64 with a hard alpha edge, a slightly reduced colour depth and a dark outline,
 so it sits in the chunky 320×200 look. The PNGs are committed under `assets/scifi/` and embedded in the game, so
-players don't need Blender. To rebuild them (Blender 4.x, about a minute on 4 CPU cores):
+players don't need Blender. Every pose of a monster is measured first and all of them are framed together, so it
+keeps its size from frame to frame. To rebuild the pack (Blender 4.x, about two minutes on 4 CPU cores):
 
 ```sh
 blender -b --factory-startup -noaudio -P tools/blender/build_scifi_assets.py            # everything
 blender -b --factory-startup -noaudio -P tools/blender/build_scifi_assets.py -- afrit   # just matching names
 ```
 
-`--shots` writes `52_rendered_sheet.png`, which puts the procedural art and the rendered pack side by side for
-review.
+`--shots` writes review sheets that put the procedural art and the rendered pack side by side
+(`52_rendered_sheet.png` for items and textures, `55_rendered_monsters.png` for monsters). It also writes great-hall
+lineups of every monster in both looks (`56_…`, `57_…`).
 
 ## Code layout
 
