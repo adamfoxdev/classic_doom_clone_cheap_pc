@@ -85,6 +85,20 @@ public static class Words
         ["LORE STONE"] = "DATA LOG",
     };
 
+    /// <summary>Whole words swapped inside any sentence, for messages built with numbers or names in them.</summary>
+    static readonly (System.Text.RegularExpressions.Regex from, string to)[] SciFiWords = new[]
+    {
+        ("RELICS", "ARTIFACTS"), ("RELIC", "ARTIFACT"), ("Relics", "Artifacts"), ("Relic", "Artifact"),
+        ("relics", "artifacts"), ("relic", "artifact"), ("an ancient artifact", "an alien artifact"),
+        ("LORE STONES", "DATA LOGS"), ("lore stones", "data logs"),
+    }.Select(w => (new System.Text.RegularExpressions.Regex(@"\b" + w.Item1 + @"\b"), w.Item2)).ToArray();
+
     /// <summary>The phrase in the current visual style.</summary>
-    public static string T(string s) => Art.Style == ArtStyle.SciFi && s != null && SciFi.TryGetValue(s, out var r) ? r : s;
+    public static string T(string s)
+    {
+        if (Art.Style != ArtStyle.SciFi || s == null) return s;
+        if (SciFi.TryGetValue(s, out var r)) return r;
+        foreach (var (from, to) in SciFiWords) s = from.Replace(s, to);
+        return s;
+    }
 }

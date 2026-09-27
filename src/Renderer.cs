@@ -111,7 +111,7 @@ public sealed class Renderer
                 string[] about = m.Cursor switch
                 {
                     0 => new[] { Words.T("FIGHT YOUR WAY THROUGH THE HUB,"), Words.T("SOLVE ITS PUZZLES AND SLAY THE HERESIARCH.") },
-                    1 => new[] { Words.T("NO COMBAT: THE CREATURES ARE PEACEFUL."), "EXPLORE, READ LORE STONES, UNCOVER SECRETS", "AND FIND THE HIDDEN RELICS." },
+                    1 => new[] { Words.T("NO COMBAT: THE CREATURES ARE PEACEFUL."), Words.T("EXPLORE, READ LORE STONES, UNCOVER SECRETS"), Words.T("AND FIND THE HIDDEN RELICS.") },
                     _ => Array.Empty<string>(),
                 };
                 for (int i = 0; i < about.Length; i++) CenterText(about[i], 128 + i * 10, Col.Rgb(170, 200, 255));
@@ -958,7 +958,7 @@ public sealed class Renderer
             Text(x, by, name, label);
             Text(x + 2, by + 11, $"{have}/{total}", have >= total && total > 0 ? done : val, 2);
         }
-        Stat(6, "RELICS", p.Relics, g.RelicsTotal);
+        Stat(6, Words.T("RELICS"), p.Relics, g.RelicsTotal);
         Stat(70, "LORE", p.LoreRead, g.LoreTotal);
         Stat(134, "SECRETS", p.Secrets, g.SecretsTotal);
         int pct = (int)(Discovery.Explored(g.Hub) * 100);
@@ -1122,9 +1122,9 @@ public sealed class Renderer
         uint stat = Col.Rgb(170, 200, 255);
         if (g.Relaxed)
         {
-            CenterText("EVERY RELIC IS FOUND.", 72, Col.Rgb(230, 220, 200));
+            CenterText(Words.T("EVERY RELIC IS FOUND."), 72, Col.Rgb(230, 220, 200));
             CenterText($"THE {p.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL, AT PEACE.", 84, Col.Rgb(230, 220, 200));
-            CenterText($"RELICS: {p.Relics}/{g.RelicsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}    SECRETS: {p.Secrets}/{g.SecretsTotal}", 108, stat);
+            CenterText(Words.T($"RELICS: {p.Relics}/{g.RelicsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}    SECRETS: {p.Secrets}/{g.SecretsTotal}"), 108, stat);
             CenterText($"EXPLORED: {(int)(Discovery.Explored(g.Hub) * 100)}%    CHESTS: {p.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 120, stat);
         }
         else
