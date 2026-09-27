@@ -879,7 +879,7 @@ def weapon_camera():
 
 
 # where a weapon model (built around its grip, pointing along +Y, about a unit long) sits in front of the eye
-WPN_HOLD = dict(loc=(0.0, 0.75, -0.22), scale=0.5, rot=(-2, 0, 8))
+WPN_HOLD = dict(loc=(0.0, 0.75, -0.16), scale=0.46, rot=(-2, 0, 8))
 
 
 # melee weapons are held lower and further out, so a raised blade or a punch stays in frame
@@ -903,15 +903,43 @@ def weapon(name, build, hold=WPN_HOLD):
         rig.scale = (hold["scale"],) * 3
         rig.rotation_euler = [math.radians(v) for v in hold["rot"]]
         bpy.context.view_layer.update()
-        lights(key=2.6, fill=1.0, key_rot=(-40, 25, 15), rim=1.2)
+        lights(key=2.4, fill=0.8, key_rot=(40, 0, -20), rim=1.4)   # key from behind your shoulder, rim from ahead
         weapon_camera()
         write_png(os.path.join(OUT, "weapons", "%s_%s.png" % (name, frame)), shrink(render(), True))
 
 
-def arm(cls, hand, back=(0.62, -2.2, -1.0), r=0.13):
-    """Your sleeve and glove, from the hand back out of the bottom of the view."""
+ACCENTS = [(120, 200, 255), (255, 170, 60), (190, 140, 255)]   # glove lights: Marine, Engineer, Psion
+
+
+def arm(cls, hand, back=(0.8, -1.6, -1.3), r=0.13, armour=None, glow=1.5, fist=1.0):
+    """Your sleeve and gloved fist (`fist` times the sleeve's radius), from the hand back out of the bottom of the view."""
     limb(hand, back, r, mat(SLEEVES[cls], metal=0.2, rough=0.6))
-    add("sphere", hand, (r * 1.05, r * 1.05, r * 1.05), m=mat((48, 52, 60), metal=0.3, rough=0.55))
+    glove(cls, hand, back, r * fist, armour, glow)
+
+
+def glove(cls, hand, back, s, armour=None, glow=1.5):
+    """A right fist closed around a grip: knuckles forward (+Y), thumb over the top on the left, an armoured
+    plate in the class colour on the back and a cuff where it meets the sleeve. `armour` swaps in a heavier
+    material for the whole fist (the Marine's power gauntlets); `glow` is how bright the knuckle lights are."""
+    x, y, z = hand
+    padding = mat((84, 88, 98), metal=0.25, rough=0.6)
+    plate = armour or mat((150, 156, 168), metal=0.75, rough=0.3)
+    shell = armour or padding
+    accent = ACCENTS[cls]
+    add("cube", (x, y, z), (1.9 * s, 1.6 * s, 1.6 * s), m=shell, bevel=0.3 * s)                    # the fist
+    for k in range(4):                                                                              # curled fingers
+        add("cube", (x + (-0.69 + k * 0.46) * s, y + 0.82 * s, z - 0.12 * s), (0.42 * s, 0.5 * s, 1.15 * s),
+            m=mat((62, 66, 76), metal=0.3, rough=0.55), bevel=0.12 * s)
+    add("cube", (x, y + 0.62 * s, z + 0.72 * s), (2.0 * s, 0.6 * s, 0.4 * s), m=plate, bevel=0.1 * s)  # knuckle guard
+    add("cube", (x, y + 0.95 * s, z + 0.72 * s), (1.5 * s, 0.08 * s, 0.14 * s), m=mat(accent, emit=accent, strength=glow))
+    add("cube", (x + 0.12 * s, y - 0.15 * s, z + 0.84 * s), (1.5 * s, 1.1 * s, 0.22 * s),              # back plate
+        m=mat(SLEEVES[cls], metal=0.5, rough=0.35), bevel=0.08 * s)
+    limb((x - 0.95 * s, y - 0.35 * s, z + 0.2 * s), (x - 0.7 * s, y + 0.62 * s, z + 0.55 * s), 0.3 * s, shell)  # thumb
+    add("sphere", (x - 0.7 * s, y + 0.62 * s, z + 0.55 * s), (0.3 * s,) * 3, m=shell)
+    d = (Vector(back) - Vector(hand)).normalized()
+    h = Vector(hand)
+    limb(h + d * 0.8 * s, h + d * 1.9 * s, 0.9 * s, mat((56, 60, 70), metal=0.4, rough=0.5))       # cuff
+    limb(h + d * 1.5 * s, h + d * 1.65 * s, 0.95 * s, mat(accent, emit=accent, strength=glow * 0.8))
 
 
 def gun_body(pos, length, width, body, accent, barrel_r=0.04, barrels=(0.0,)):
@@ -921,7 +949,15 @@ def gun_body(pos, length, width, body, accent, barrel_r=0.04, barrels=(0.0,)):
     for bx in barrels:
         add("cyl", (x + bx, y + length * 0.55, z + 0.02), (barrel_r, barrel_r, length * 0.35), rot=(90, 0, 0), m=mat((70, 74, 84), metal=0.8, rough=0.35))
     add("cube", (x, y + length * 0.05, z + width * 0.46), (width * 0.3, length * 0.4, 0.012), m=mat(accent, emit=accent, strength=3))
+    gx, gy, gz = grip(pos, length, width)
+    add("cube", (gx, gy - 0.02, gz - 0.02), (0.09, 0.12, 0.3), rot=(-15, 0, 0), m=mat((50, 54, 62), metal=0.4, rough=0.5), bevel=0.02)
     return y + length * 0.9      # where the muzzle is
+
+
+def grip(pos, length, width):
+    """Where the hand closes on a gun_body's pistol grip, under the back of the receiver."""
+    x, y, z = pos
+    return (x + 0.02, y - length * 0.2, z - width * 0.45 - 0.08)
 
 
 def flash(pos, color, size=0.18, strength=10):
@@ -929,24 +965,35 @@ def flash(pos, color, size=0.18, strength=10):
 
 
 def power_fist(fire):
-    """Marine: armoured gauntlets; the right one punches forward crackling with energy."""
-    metal = mat((150, 156, 168), metal=0.8, rough=0.3)
-    for side in (-1, 1):
-        punching = fire and side == 1
-        hand = (0.15, 0.6, 0.12) if punching else ((-0.28, 0.0, 0.0) if side < 0 else (0.5, 0.0, 0.0))
-        arm(0, hand, back=(hand[0] + side * 0.3, -1.0, -2.0), r=0.13)
-        add("cube", hand, (0.3, 0.26, 0.22), m=metal, bevel=0.04)
-        for k in range(4):
-            add("cube", (hand[0] - 0.1 + k * 0.067, hand[1] + 0.13, hand[2] + 0.06), (0.05, 0.05, 0.06), m=mat((90, 96, 108), metal=0.8, rough=0.3))
-        add("cube", (hand[0], hand[1] - 0.02, hand[2] + 0.12), (0.2, 0.12, 0.03), m=mat((120, 200, 255), emit=(120, 200, 255), strength=3 if punching else 1.5))
+    """Marine: armoured power gauntlets. The right one punches out toward the crosshair and hits with a ring of
+    energy; the left pulls back to the hip."""
+    armour = mat((150, 156, 168), metal=0.8, rough=0.3)
+    blue = (120, 200, 255)
     if fire:
-        flash((0.15, 0.8, 0.14), (140, 210, 255), 0.16, 8)
+        left, right = (-0.44, -0.15, -0.25), (0.02, 0.55, -0.15)
+    else:
+        left, right = (-0.28, 0.0, 0.0), (0.5, 0.0, 0.0)
+    arm(0, left, back=(left[0] - 0.3, -1.0, -2.0), r=0.12, armour=armour, fist=1.3)
+    # the punching arm comes in from the right, so you see the fist and forearm side on rather than end on
+    arm(0, right, back=(0.9, -0.4, -1.8) if fire else (0.8, -1.0, -2.0), r=0.12, armour=armour, glow=5 if fire else 1.5, fist=1.3)
+    if fire:
+        front = right[1] + 0.2
+        c = Vector((right[0], front, right[2] + 0.04))
+        # the impact bursts off the knuckles: two shock rings, a bright core and sparks thrown outward
+        add("torus", c + Vector((0, 0.08, 0)), (1, 1, 1), rot=(90, 0, 0), m=mat(blue, emit=blue, strength=2.5), major_radius=0.12, minor_radius=0.026)
+        add("torus", c + Vector((0, 0.2, 0)), (1, 1, 1), rot=(90, 0, 0), m=mat((150, 210, 255), emit=(110, 180, 255), strength=1.6),
+            major_radius=0.2, minor_radius=0.018)
+        flash(c + Vector((0, 0.04, 0)), (180, 225, 255), 0.06, 6)
+        for ang in (20, 70, 150, 200, 250, 320):
+            a = math.radians(ang)
+            p0 = c + Vector((0.2 * math.cos(a), 0.2, 0.2 * math.sin(a)))
+            limb(p0, p0 + Vector((0.09 * math.cos(a), 0.05, 0.09 * math.sin(a))), 0.016, mat(blue, emit=blue, strength=3))
 
 
 def vibro_blade(fire):
     """Marine: a humming energy blade, held up and then swung across."""
     hand = (0.15, 0.2, 0.0) if fire else (0.4, 0.0, -0.05)
-    arm(0, hand, back=(0.8, -1.0, -2.0))
+    arm(0, hand, back=(0.8, -1.0, -2.0), r=0.1, fist=1.3)
     parts = [add("cyl", hand, (0.05, 0.05, 0.14), m=mat((50, 54, 60), metal=0.6, rough=0.4)),
              add("cube", (hand[0], hand[1], hand[2] + 0.16), (0.16, 0.05, 0.04), m=mat((150, 156, 168), metal=0.8, rough=0.3)),
              add("cube", (hand[0], hand[1], hand[2] + 0.46), (0.06, 0.015, 0.56), m=mat((200, 240, 255), emit=(120, 220, 255), strength=4))]
@@ -959,7 +1006,7 @@ def grav_launcher(fire):
     muzzle = gun_body((0.16, 0.05 + kick, -0.02), 0.95, 0.24, mat((110, 116, 128), metal=0.7, rough=0.35), (200, 120, 255), barrel_r=0.08)
     for k in range(3):
         add("torus", (0.16, 0.1 + kick + k * 0.14, 0.02), (1, 1, 1), rot=(90, 0, 0), m=mat((200, 120, 255), emit=(200, 120, 255), strength=3), major_radius=0.12, minor_radius=0.02)
-    arm(0, (0.22, -0.32 + kick, -0.08))
+    arm(0, grip((0.16, 0.05 + kick, -0.02), 0.95, 0.24))
     if fire:
         flash((0.16, muzzle + 0.05, 0.02), (210, 140, 255), 0.24)
 
@@ -967,7 +1014,7 @@ def grav_launcher(fire):
 def shock_baton(fire):
     """Engineer: a baton with a crackling tip, jabbed forward."""
     hand = (0.25, 0.35, -0.02) if fire else (0.4, 0.0, -0.05)
-    arm(1, hand, back=(0.8, -1.0, -2.0))
+    arm(1, hand, back=(0.8, -1.0, -2.0), r=0.1, fist=1.3)
     parts = [add("cyl", (hand[0], hand[1], hand[2] + 0.25), (0.035, 0.035, 0.3), m=mat((60, 62, 70), metal=0.6, rough=0.4)),
              add("cyl", (hand[0], hand[1], hand[2] + 0.56), (0.06, 0.06, 0.05), m=mat((120, 200, 255), emit=(120, 200, 255), strength=3 if fire else 1.5))]
     if fire:
@@ -980,7 +1027,7 @@ def bio_rifle(fire):
     kick = -0.06 if fire else 0.0
     muzzle = gun_body((0.14, 0.05 + kick, -0.02), 1.0, 0.16, mat((84, 96, 84), metal=0.5, rough=0.45), (120, 255, 120))
     add("cyl", (0.3, -0.05 + kick, 0.02), (0.07, 0.07, 0.2), rot=(90, 0, 0), m=mat((70, 230, 100), rough=0.2, emit=(60, 220, 90), strength=2))
-    arm(1, (0.2, -0.3 + kick, -0.08))
+    arm(1, grip((0.14, 0.05 + kick, -0.02), 1.0, 0.16))
     if fire:
         flash((0.14, muzzle + 0.05, 0.02), (130, 255, 130), 0.18)
 
@@ -991,7 +1038,7 @@ def flamer(fire):
     muzzle = gun_body((0.14, 0.05 + kick, -0.02), 0.85, 0.2, mat((110, 100, 90), metal=0.5, rough=0.45), (255, 150, 40), barrel_r=0.06)
     add("cyl", (0.34, -0.1 + kick, 0.0), (0.1, 0.1, 0.32), rot=(90, 0, 0), m=mat((200, 80, 40), metal=0.3, rough=0.4))
     add("sphere", (0.14, muzzle, 0.02), (0.05, 0.05, 0.05), m=mat((255, 140, 40), emit=(255, 140, 40), strength=2))
-    arm(1, (0.2, -0.3 + kick, -0.08))
+    arm(1, grip((0.14, 0.05 + kick, -0.02), 0.85, 0.2))
     if fire:
         for k in range(3):
             flash((0.14 + (k - 1) * 0.06, muzzle + 0.15 + k * 0.12, 0.05 + k * 0.03), (255, 160 - k * 30, 50), 0.14 + k * 0.05, 8)
@@ -1001,7 +1048,7 @@ def blaster(fire):
     """Psion: a compact sidearm."""
     kick = -0.06 if fire else 0.0
     muzzle = gun_body((0.16, 0.0 + kick, -0.04), 0.55, 0.13, mat((130, 136, 148), metal=0.7, rough=0.3), (80, 160, 255))
-    arm(2, (0.19, -0.26 + kick, -0.1), r=0.11)
+    arm(2, grip((0.16, 0.0 + kick, -0.04), 0.55, 0.13), r=0.11)
     if fire:
         flash((0.16, muzzle + 0.03, 0.0), (110, 180, 255), 0.14)
 
@@ -1011,7 +1058,7 @@ def shard_gun(fire):
     kick = -0.06 if fire else 0.0
     muzzle = gun_body((0.15, 0.03 + kick, -0.03), 0.8, 0.26, mat((120, 128, 142), metal=0.7, rough=0.3), (160, 230, 255),
                       barrel_r=0.035, barrels=(-0.08, 0.0, 0.08))
-    arm(2, (0.2, -0.3 + kick, -0.1), r=0.11)
+    arm(2, grip((0.15, 0.03 + kick, -0.03), 0.8, 0.26), r=0.11)
     if fire:
         for bx in (-0.08, 0.0, 0.08):
             flash((0.15 + bx, muzzle + 0.05, 0.0), (170, 235, 255), 0.09)
@@ -1023,7 +1070,7 @@ def arc_rifle(fire):
     muzzle = gun_body((0.15, 0.05 + kick, -0.02), 1.0, 0.18, mat((80, 76, 100), metal=0.6, rough=0.35), (220, 220, 255), barrel_r=0.05)
     for k in range(4):
         add("torus", (0.15, 0.15 + kick + k * 0.12, 0.02), (1, 1, 1), rot=(90, 0, 0), m=mat((150, 160, 255), emit=(120, 140, 255), strength=1.5), major_radius=0.08, minor_radius=0.015)
-    arm(2, (0.21, -0.3 + kick, -0.08), r=0.11)
+    arm(2, grip((0.15, 0.05 + kick, -0.02), 1.0, 0.18), r=0.11)
     if fire:
         pts = [(0.15, muzzle, 0.02), (0.05, muzzle + 0.2, 0.12), (0.2, muzzle + 0.4, 0.1), (0.08, muzzle + 0.62, 0.2)]
         for a, b in zip(pts, pts[1:]):
