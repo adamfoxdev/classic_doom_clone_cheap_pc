@@ -457,7 +457,7 @@ public sealed class Level
 }
 
 /// <summary>The hub's maps. Legend: see README.</summary>
-/// <summary>A map's source: its name, arrival message, theme and ASCII rows. The level editor reads and writes these.</summary>
+/// <summary>A map's source: its name, arrival message, theme and ASCII rows. Map files (.hxm) and the HTML editor use the same format.</summary>
 public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null)
 {
     public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId };

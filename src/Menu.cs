@@ -48,8 +48,8 @@ public sealed class MenuSystem
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Level editor", "Options", "Quit" },
-        MenuPage.Pause => new[] { "Resume", "Options", "Restart", _g.TestingMap ? "Back to editor" : "Quit to title", "Quit game" },
+        MenuPage.Main => new[] { "New game", "Options", "Quit" },
+        MenuPage.Pause => new[] { "Resume", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
@@ -150,13 +150,12 @@ public sealed class MenuSystem
             case (MenuPage.Main, 0): Show(MenuPage.Style); Cursor = (int)_g.Style; break;
             case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
             case (MenuPage.Style, 2): Back(); break;
-            case (MenuPage.Main, 1): _g.OpenEditor(); break;
-            case (MenuPage.Main, 2): Show(MenuPage.Options); break;
-            case (MenuPage.Main, 3): _g.QuitRequested = true; break;
+            case (MenuPage.Main, 1): Show(MenuPage.Options); break;
+            case (MenuPage.Main, 2): _g.QuitRequested = true; break;
             case (MenuPage.Pause, 0): Close(); _g.Paused = false; break;
             case (MenuPage.Pause, 1): Show(MenuPage.Options); break;
             case (MenuPage.Pause, 2): Close(); _g.NewGame(_g.P.Class); break;
-            case (MenuPage.Pause, 3): Close(); if (_g.TestingMap) _g.ReturnToEditor(); else _g.GoToTitle(); break;
+            case (MenuPage.Pause, 3): Close(); _g.GoToTitle(); break;
             case (MenuPage.Pause, 4): _g.QuitRequested = true; break;
         }
     }

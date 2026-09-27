@@ -166,12 +166,12 @@ public sealed class DevConsole
             Print("artstyle = " + a[1].ToLowerInvariant());
             _g.SaveSettings();
         });
-        Add("edit", "", "open the level editor", _ => { _g.OpenEditor(); Open = false; });
-        Add("playmap", "<name>", "play a saved custom map", a =>
+        Add("playmap", "<file|name>", "play a custom map file (made in tools/editor/index.html)", a =>
         {
-            if (a.Length < 2 || _g.MapsDir == null) { Print("usage: playmap <name>  (maps are saved from the editor)"); return; }
-            string path = Path.Combine(_g.MapsDir, Editor.FileName(string.Join(' ', a.Skip(1))));
-            if (!File.Exists(path)) { Print($"no map file {Path.GetFileName(path)}"); return; }
+            if (a.Length < 2) { Print("usage: playmap <path/to/map.hxm | name in the maps folder>"); return; }
+            string arg = string.Join(' ', a.Skip(1));
+            string path = File.Exists(arg) ? arg : _g.MapsDir != null ? Path.Combine(_g.MapsDir, MapDoc.FileName(arg)) : arg;
+            if (!File.Exists(path)) { Print($"no map file {arg}"); return; }
             try
             {
                 var doc = MapDoc.Parse(File.ReadAllText(path));

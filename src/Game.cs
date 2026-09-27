@@ -1,7 +1,7 @@
 namespace HexenSharp;
 
 public enum PClass { Fighter, Cleric, Mage }
-public enum GameMode { Title, ClassSelect, Playing, Dead, Victory, Editor }
+public enum GameMode { Title, ClassSelect, Playing, Dead, Victory }
 
 /// <summary>One frame of player input. Held controls are continuous; the rest are "pressed this frame".</summary>
 public struct Input
@@ -11,7 +11,6 @@ public struct Input
     public bool Fire, Walk, JumpHeld, SlideHeld; // held
     public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
-    public float MouseX, MouseY;          // mouse position in framebuffer pixels (-1 when unknown)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
     public bool ConsoleToggle, Backspace, Tab, PageUp, PageDown, Jump, Slide;
@@ -147,7 +146,6 @@ public sealed class Game
     {
         Con = new DevConsole(this);
         Menu = new MenuSystem(this);
-        Editor = new Editor(this);
         Menu.Show(MenuPage.Main);
     }
 
@@ -189,29 +187,19 @@ public sealed class Game
             foreach (var lv in Hub) lv.Theme = Maps.ThemeById(lv.ThemeId);
     }
 
-    /// <summary>Raw key state (the editor reads keys directly rather than through bindings).</summary>
-    public IKeySource Keys;
-    /// <summary>Folder for custom maps; null means the editor can't save.</summary>
+    /// <summary>Folder where `playmap <name>` looks for custom maps.</summary>
     public string MapsDir;
-    public readonly Editor Editor;
     /// <summary>Where new games get their maps: the built-in hub, or a single map being play-tested.</summary>
     public Func<Level[]> HubSource = Maps.BuildHub;
     public bool TestingMap;
 
-    public void OpenEditor()
-    {
-        Menu.Close();
-        Paused = false;
-        Mode = GameMode.Editor;
-    }
-
-    /// <summary>Plays a single custom map; Esc > Back to editor (or winning) returns to the editor.</summary>
+    /// <summary>Plays a single custom map (from --play or `playmap`). Restart or winning plays it again.</summary>
     public void StartTest(MapDef map, PClass cls)
     {
         HubSource = () => new[] { map.Build() };
         TestingMap = true;
         NewGame(cls);
-        Say($"Play-testing '{map.Name}'. Esc > Back to editor to return.");
+        Say($"Play-testing '{map.Name}'.");
     }
 
     /// <summary>
@@ -232,14 +220,6 @@ public sealed class Game
         }
         Messages.Clear();
         Say($"Reloaded '{map.Name}'.");
-    }
-
-    public void ReturnToEditor()
-    {
-        TestingMap = false;
-        HubSource = Maps.BuildHub;
-        ReadingLore = null;
-        OpenEditor();
     }
 
     public void GoToTitle()
@@ -383,10 +363,8 @@ public sealed class Game
                 if (inp.Pause) GoToTitle();
                 return;
             case GameMode.Victory:
-                if (inp.Confirm) { if (TestingMap) ReturnToEditor(); else GoToTitle(); }
-                return;
-            case GameMode.Editor:
-                Editor.Update(inp, dt);
+                // a play-tested map starts over, so you can keep iterating; the hub goes back to the title
+                if (inp.Confirm) { if (TestingMap) NewGame(P.Class); else GoToTitle(); }
                 return;
         }
 

@@ -72,7 +72,9 @@ function gameChecks(text) {
   const brush = async g => page.click(`#palette button[data-glyph="${g.replace(/"/g, '\\"')}"]`);
   const cell = (x, y, layer = "cells") => E(([x, y, layer]) => { const d = hexenEditor.state.doc; return d[layer][y * d.w + x]; }, [x, y, layer]);
   const text = () => E(() => hexenEditor.serialize(hexenEditor.state.doc));
-  const issues = () => E(() => [...document.querySelectorAll("#issues li")].map(li => li.textContent));
+  // the checks list refreshes on the next animation frame, so let it catch up before reading it
+  const issues = () => E(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() =>
+    r([...document.querySelectorAll("#issues li")].map(li => li.textContent))))));
   await scrollTo();
 
   check((await E(() => [hexenEditor.state.doc.w, hexenEditor.state.doc.h])).join() === "20,16", "New → 20 × 16 makes an empty walled map");

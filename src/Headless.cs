@@ -68,8 +68,8 @@ public static class Headless
         Console.WriteLine("Relaxed mode and discovery:");
         RelaxedChecks(Check);
 
-        Console.WriteLine("Level editor:");
-        EditorChecks(Check);
+        Console.WriteLine("Custom maps:");
+        CustomMapChecks(Check);
 
         Console.WriteLine("Ceiling heights:");
         HeightChecks(Check);
@@ -161,7 +161,7 @@ public static class Headless
               "tall glyphs: ceilings 'a'-'k' = 5-10, floors 'a'-'z' = 2.5-8.75");
         var def = Maps.Hub[si];
         var copy = MapDoc.Parse(MapDoc.FromDef(def).Serialize()).ToDef().Build();
-        check(copy.Floors.SequenceEqual(lv.Floors) && copy.Heights.SequenceEqual(lv.Heights), "the Windspire's towers survive a save and load in the editor");
+        check(copy.Floors.SequenceEqual(lv.Floors) && copy.Heights.SequenceEqual(lv.Heights), "the Windspire's towers survive being saved to a map file and loaded back");
 
         // climb it for real: portal in, grab the spare jetpack, hop ledge to ledge, pull the beacon lever, loot the vault
         var g = new Game { FixedSeed = 3 };
@@ -278,7 +278,6 @@ public static class Headless
 
             var g = new Game { FixedSeed = 1 };
             var loaded = MapFiles.TryLoad(path, out _);
-            g.Editor.Doc = loaded;
             g.StartTest(loaded.ToDef(), PClass.Mage);
             var watcher = new MapWatcher(path);
             g.P.X = 6.5f; g.P.Y = 3.5f; g.P.Angle = 1.2f;
@@ -290,7 +289,6 @@ public static class Headless
                   "saving the file reloads the play-test with the new map");
             check(MathF.Abs(g.P.X - 6.5f) < 0.01f && MathF.Abs(g.P.Y - 3.5f) < 0.01f && MathF.Abs(g.P.Angle - 1.2f) < 0.01f,
                   "and keeps you where you were");
-            check(g.Editor.Doc.Cells[5 * 12 + 6] == 'e', "Back to editor shows the reloaded map");
             File.WriteAllText(path, "garbage");
             File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(10));
             check(!watcher.Poll(g, 1f) && g.Messages.Last().text.StartsWith("Can't reload"), "a broken save is reported, and the game keeps running");
@@ -536,7 +534,7 @@ public static class Headless
         g3.NewGame(PClass.Cleric);
         foreach (char c in "icarus") g3.Con.FeedCheat(c);
         check(g3.P.HasJetpack, "the 'icarus' cheat gives the jetpack");
-        check(Editor.IsKnownGlyph('J') && ThingFactory.Create('J', 1, 1) is Pickup { Kind: PickupKind.Jetpack }, "the editor can place jetpacks ('J')");
+        check(MapDoc.IsKnownGlyph('J') && ThingFactory.Create('J', 1, 1) is Pickup { Kind: PickupKind.Jetpack }, "maps can place jetpacks ('J')");
 
         // fantasy style calls it the Wings of Wrath
         g.SetArtStyle(ArtStyle.Fantasy);
@@ -951,12 +949,12 @@ public static class Headless
 
         // title menu: New game / Options / Quit
         check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
-        Press(Keys.Down); Press(Keys.Down);
+        Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
         Press(Keys.Escape);
-        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 2, "Esc goes back to the main menu");
-        Press(Keys.Up); Press(Keys.Up); Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 1, "Esc goes back to the main menu");
+        Press(Keys.Up); Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
         Press(Keys.Enter);
         check(g.Mode == GameMode.ClassSelect && g.Style == GameStyle.Classic, "Classic goes to class select");
@@ -1191,140 +1189,62 @@ public static class Headless
         check(!g.Relaxed && g.Mode == GameMode.Playing && g.RelicsTotal == 0, "console 'mode classic'");
     }
 
-    static void EditorChecks(Action<bool, string> check)
+    /// <summary>Custom maps: the file format, play-testing one, and the in-game editor being gone.</summary>
+    static void CustomMapChecks(Action<bool, string> check)
     {
         string dir = Path.Combine(Path.GetTempPath(), $"hexensharp-maps-{Environment.ProcessId}");
         if (Directory.Exists(dir)) Directory.Delete(dir, true);
-        var keys = new FakeKeys();
-        var g = new Game { FixedSeed = 1, Keys = keys, MapsDir = dir };
-        var ed = g.Editor;
-        // one frame: keys pressed this frame, keys held, and the mouse position
-        void Frame(int[] hit = null, int[] held = null, float mx = -1, float my = -1, string typed = null)
-        {
-            keys.Hit.Clear(); keys.Held.Clear();
-            foreach (var k in hit ?? Array.Empty<int>()) keys.Hit.Add(k);
-            foreach (var k in held ?? Array.Empty<int>()) keys.Held.Add(k);
-            var inp = g.Binds.Read(keys, g.Con.Open);
-            inp.MouseX = mx; inp.MouseY = my; inp.Typed = typed;
-            g.Update(inp, 1f / 35f);
-        }
-        (float, float) CellPos(int x, int y) => ((x - ed.CamX) * ed.CellSize + 3, (y - ed.CamY) * ed.CellSize + 3);
-        void Click(int button, int x, int y) { var (mx, my) = CellPos(x, y); Frame(new[] { button }, new[] { button }, mx, my); Frame(mx: mx, my: my); }
-        void Select(char glyph) => ed.BrushIndex = Array.FindIndex(Editor.Palette, b => b.Glyph == glyph);
+        Directory.CreateDirectory(dir);
+        var g = new Game { FixedSeed = 1, MapsDir = dir };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
 
-        // title menu -> Level editor
-        Frame(new[] { Keys.Down }); Frame(new[] { Keys.Enter });
-        check(g.Mode == GameMode.Editor, "title menu opens the level editor");
-        ed.NewMap(20, 16);
-        check(ed.Doc.W == 20 && ed.Doc[0, 0] == '#' && ed.Doc[5, 5] == '.' && ed.Doc[2, 2] == '@', "a new map is walled, with a player start");
+        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Options", "Quit" }),
+              "the title menu no longer has a level editor (maps are made in tools/editor)");
+        g.Con.Execute("edit");
+        check(g.Con.Log.Last().Contains("unknown"), "the 'edit' console command is gone");
 
-        // paint a wall stroke by dragging with the left button
-        Select('B');
-        for (int x = 4; x <= 8; x++) { var (mx, my) = CellPos(x, 6); Frame(x == 4 ? new[] { Keys.Mouse1 } : null, new[] { Keys.Mouse1 }, mx, my); }
-        Frame(mx: 0, my: 0);
-        check(Enumerable.Range(4, 5).All(x => ed.Doc[x, 6] == 'B'), "dragging with the left button paints a line");
-        ed.Undo();
-        check(Enumerable.Range(4, 5).All(x => ed.Doc[x, 6] == '.'), "one undo removes the whole stroke");
-        ed.Redo();
-        check(ed.Doc[8, 6] == 'B', "redo puts it back");
-        Click(Keys.Mouse2, 6, 6);
-        check(ed.Doc[6, 6] == '.', "right click erases");
-        Click(Keys.Mouse3, 5, 6);
-        check(ed.Current.Glyph == 'B', "middle click picks up a glyph");
-
-        // palette: click an icon, or use the wheel
-        int ettin = Array.FindIndex(Editor.Palette, b => b.Glyph == 'e');
-        float pmx = Editor.PaletteX + (ettin % Editor.PaletteCols) * Editor.PaletteCell + 5;
-        float pmy = Editor.PaletteY + (ettin / Editor.PaletteCols) * Editor.PaletteCell + 5;
-        Frame(new[] { Keys.Mouse1 }, new[] { Keys.Mouse1 }, pmx, pmy); Frame(mx: pmx, my: pmy);
-        check(ed.Current.Glyph == 'e', "clicking the palette selects Ettin");
-        Frame(new[] { Keys.WheelDown });
-        check(ed.Current.Glyph == Editor.Palette[ettin + 1].Glyph, "the mouse wheel steps through the palette");
-
-        // keyboard only: move the cursor and paint with Space
-        Select('h');
-        ed.CursorX = 3; ed.CursorY = 3;
-        Frame(new[] { Keys.Right }); Frame(new[] { Keys.Down });
-        Frame(new[] { Keys.Space });
-        check(ed.Doc[4, 4] == 'h', "arrows + Space paint without a mouse");
-
-        // one player start at most
-        Select('@');
-        Click(Keys.Mouse1, 10, 10);
-        check(ed.Doc.Cells.Count(c => c == '@') == 1 && ed.Doc[10, 10] == '@', "placing a new start moves it");
-
-        // fill tool: fill a walled pocket
-        Select('#');
-        foreach (var (x, y) in new[] { (14, 3), (15, 3), (16, 3), (14, 4), (16, 4), (14, 5), (15, 5), (16, 5) }) ed.Doc[x, y] = '#';
-        Select(',');
-        Frame(new[] { Keys.Letter('F') });
-        Click(Keys.Mouse1, 15, 4);
-        check(ed.FillTool && ed.Doc[15, 4] == ',' && ed.Doc[13, 4] == '.', "fill tool fills an enclosed pocket only");
-        Frame(new[] { Keys.Letter('F') });
-
-        // theme, rename, zoom
-        string theme = ed.Doc.ThemeId;
-        Frame(new[] { Keys.Letter('T') });
-        check(ed.Doc.ThemeId != theme, "T cycles the theme");
-        Frame(new[] { Keys.Letter('R') });
-        Frame(typed: "Test Grotto"); Frame(new[] { Keys.Enter });
-        check(ed.Doc.Name == "Test Grotto" && ed.RenameText == null, "R renames the map");
-        int cs = ed.CellSize;
-        Frame(new[] { Keys.Equal });
-        check(ed.CellSize > cs, "= zooms in");
-        Frame(new[] { Keys.Minus });
-
-        // validation and play-test
-        ed.Doc[10, 10] = '.';
-        Frame(new[] { Keys.Letter('P') });
-        check(g.Mode == GameMode.Editor && ed.Status.Contains("player start"), "play-test refuses a map without a start");
-        Select('@'); Click(Keys.Mouse1, 3, 12);
-        Select('E'); Click(Keys.Mouse1, 12, 12);
-        Select('e'); Click(Keys.Mouse1, 17, 12);
-        Frame(new[] { Keys.Letter('P') });
-        check(g.Mode == GameMode.Playing && g.TestingMap && g.Hub.Length == 1, "P play-tests the map");
-        check(g.Level.Name == "Test Grotto" && (int)g.P.X == 3 && (int)g.P.Y == 12, "you start at the map's @");
-        check(g.Level.Cell(8, 6) == 'B' && g.Level.Things.Any(t => t is Monster && (int)t.X == 17), "the level matches what was painted");
-        check(g.Level.BossDead, "a map with no Heresiarch has its exit open");
-
-        // pause > Back to editor
-        Frame(new[] { Keys.Escape });
-        check(g.Menu.Items(MenuPage.Pause)[3] == "Back to editor", "the pause menu offers Back to editor");
-        Frame(new[] { Keys.Down }); Frame(new[] { Keys.Down }); Frame(new[] { Keys.Down }); Frame(new[] { Keys.Enter });
-        check(g.Mode == GameMode.Editor && !g.TestingMap && ed.Doc.Name == "Test Grotto", "Back to editor keeps your map");
-
-        // winning a play-test also returns to the editor
-        Frame(new[] { Keys.Letter('P') });
-        var exit = g.Level.FindMark('E').Value;
-        g.P.X = exit.x; g.P.Y = exit.y;
-        Frame();
-        check(g.Mode == GameMode.Victory, "reaching the exit wins the play-test");
-        Frame(new[] { Keys.Enter });
-        check(g.Mode == GameMode.Editor, "Enter on victory returns to the editor");
-
-        // save / open / load
-        Frame(new[] { Keys.Letter('S') }, new[] { Keys.LeftControl });
-        string file = Path.Combine(dir, "test_grotto.hxm");
-        check(File.Exists(file) && !ed.Dirty, "Ctrl+S saves test_grotto.hxm");
-        var reloaded = MapDoc.Parse(File.ReadAllText(file));
-        check(reloaded.Name == "Test Grotto" && reloaded.Rows().SequenceEqual(ed.Doc.Rows()) && reloaded.ThemeId == ed.Doc.ThemeId, "the saved file loads back identically");
-        Frame(new[] { Keys.Letter('O') }, new[] { Keys.LeftControl });
-        check(ed.OpenList != null && ed.OpenList.Count == Maps.Hub.Length + 1, "Ctrl+O lists the built-in maps and your map");
-        Frame(new[] { Keys.Enter });
-        check(ed.Doc.Name == "Winnowing Hall" && ed.Doc.Rows().SequenceEqual(Maps.Hub[0].Rows), "open a built-in map as a template");
+        // the file format the HTML editor writes
+        var doc = new MapDoc(20, 16) { Name = "Test Grotto", ThemeId = "crypt", DefaultHeight = 2f };
+        check(doc[0, 0] == '#' && doc[5, 5] == '.', "a new map is walled");
+        doc[3, 12] = '@'; doc[12, 12] = 'E'; doc[17, 12] = 'e';
+        for (int x = 4; x <= 8; x++) doc[x, 6] = 'B';
+        doc.Floors[3 * 20 + 5] = '4'; doc.Heights[3 * 20 + 6] = 'a';
+        string text = doc.Serialize();
+        var back = MapDoc.Parse(text);
+        check(back.Serialize() == text && back.Name == "Test Grotto" && back.ThemeId == "crypt" && back.DefaultHeight == 2f,
+              "a map saves and loads back identically, heights and floors included");
         check(Maps.Hub.All(d => MapDoc.Parse(MapDoc.FromDef(d).Serialize()).Rows().SequenceEqual(d.Rows)), "every built-in map survives save and load");
         check(MapDoc.Parse("name: X\n---\n#####\n#@?Q#\n#####\n")[2, 1] == '.', "unknown glyphs in a file become floor");
+        check(MapDoc.FileName("Test Grotto!") == "test_grotto.hxm" && MapDoc.FileName("??") == "untitled.hxm", "file names are lower-case with underscores");
+        check(new MapDoc(8, 8).Validate().SequenceEqual(new[] { "! Place a player start (@) first." }), "a map without a start can't be played");
+        check(doc.Validate().Count == 0, $"a map with a start and a reachable exit passes ({string.Join("; ", doc.Validate())})");
 
-        // leaving with unsaved changes needs a second Esc
-        ed.Paint(5, 5, '#');
-        Frame(new[] { Keys.Escape });
-        check(g.Mode == GameMode.Editor && ed.Status.Contains("Unsaved"), "Esc warns about unsaved changes");
-        Frame(new[] { Keys.Escape });
-        check(g.Mode == GameMode.Title, "a second Esc leaves");
+        // play-testing a map
+        g.StartTest(doc.ToDef(), PClass.Cleric);
+        check(g.Mode == GameMode.Playing && g.TestingMap && g.Hub.Length == 1 && g.Level.Name == "Test Grotto", "a custom map plays on its own");
+        check((int)g.P.X == 3 && (int)g.P.Y == 12 && g.Level.Cell(8, 6) == 'B' && g.Level.Things.Any(t => t is Monster && (int)t.X == 17),
+              "the level matches the file");
+        check(g.Level.BossDead, "a map with no Heresiarch has its exit open");
+        g.Level.Things.RemoveAll(t => t is Monster);
+        var exit = g.Level.FindMark('E').Value;
+        g.P.X = exit.x; g.P.Y = exit.y;
+        Tick(default);
+        check(g.Mode == GameMode.Victory, "reaching the exit wins the play-test");
+        Tick(new Input { Confirm = true });
+        check(g.Mode == GameMode.Playing && g.TestingMap && (int)g.P.X == 3 && g.P.Class == PClass.Cleric, "Enter on victory plays the map again");
+        Tick(new Input { Pause = true });
+        check(g.Menu.Items(MenuPage.Pause)[3] == "Quit to title", "the pause menu quits to the title");
+        g.Menu.Cursor = 3; Tick(new Input { Confirm = true });
+        check(g.Mode == GameMode.Title && !g.TestingMap, "and that ends the play-test");
 
-        // play a saved map from the console
+        // playmap: a file path, or a name in the maps folder
+        string file = Path.Combine(dir, MapDoc.FileName(doc.Name));
+        File.WriteAllText(file, text);
         g.Con.Execute("playmap test grotto");
-        check(g.Mode == GameMode.Playing && g.Level.Name == "Test Grotto", "console 'playmap test grotto'");
+        check(g.Mode == GameMode.Playing && g.Level.Name == "Test Grotto", "console 'playmap test grotto' finds it in the maps folder");
+        g.GoToTitle();
+        g.Con.Execute("playmap " + file);
+        check(g.Mode == GameMode.Playing && g.Level.Name == "Test Grotto", "console 'playmap <path>' plays a file anywhere");
         g.GoToTitle();
         g.NewGame(PClass.Fighter);
         check(g.Hub.Length == Maps.Hub.Length, "normal games still use the full hub afterwards");
@@ -1388,41 +1308,16 @@ public static class Headless
         var built = back.ToDef().Build();
         check(built.HeightAt(4.5f, 3.5f) == 4f && built.HeightAt(5.5f, 3.5f) == 2f, "a saved tower builds with its heights");
         check(MapDoc.Parse("name: Old\n---\n#####\n#@..#\n#####\n").ToDef().Build().HeightAt(2.5f, 1.5f) == 1f, "old map files without heights are one storey");
-        check(Maps.Hub.All(d => MapDoc.FromDef(d).ToDef().Build().Heights.SequenceEqual(d.Build().Heights)), "built-in maps keep their heights when opened in the editor");
+        check(Maps.Hub.All(d => MapDoc.FromDef(d).ToDef().Build().Heights.SequenceEqual(d.Build().Heights)), "built-in maps keep their heights when saved as map files");
 
-        // editor: height mode painting, fill, undo, and play-testing the result
-        var keys = new FakeKeys();
-        var eg = new Game { FixedSeed = 1, Keys = keys };
-        var ed = eg.Editor;
-        void Frame(int[] hit = null, int[] held = null, float mx = -1, float my = -1)
-        {
-            keys.Hit.Clear(); keys.Held.Clear();
-            foreach (var k in hit ?? Array.Empty<int>()) keys.Hit.Add(k);
-            foreach (var k in held ?? Array.Empty<int>()) keys.Held.Add(k);
-            var inp = eg.Binds.Read(keys, false);
-            inp.MouseX = mx; inp.MouseY = my;
-            eg.Update(inp, 1f / 35f);
-        }
-        eg.OpenEditor();
-        ed.NewMap(20, 16);
-        check(ed.Doc.DefaultHeight == 1.5f, "new maps start 1.5 tall");
-        Frame(new[] { Keys.Letter('G') });
-        Frame(new[] { Keys.Digit(8) });
-        check(ed.HeightMode && ed.CurrentHeight == '8', "G enters height mode; 8 picks 4.0");
-        float cx = 6 * ed.CellSize + 3, cy = 6 * ed.CellSize + 3;
-        Frame(new[] { Keys.Mouse1 }, new[] { Keys.Mouse1 }, cx, cy); Frame(mx: cx, my: cy);
-        check(ed.Doc.Heights[6 * 20 + 6] == '8' && ed.Doc[6, 6] == '.', "painting in height mode changes the height, not the tile");
-        Frame(new[] { Keys.Letter('F') });
-        Frame(new[] { Keys.Digit(4) });
-        Frame(new[] { Keys.Mouse1 }, new[] { Keys.Mouse1 }, 10 * ed.CellSize + 3, 10 * ed.CellSize + 3);
-        check(ed.Doc.Heights[10 * 20 + 10] == '4' && ed.Doc.Heights[1 * 20 + 1] == '4' && ed.Doc.Heights[6 * 20 + 6] == '8', "height fill covers the room but not other heights");
-        ed.Undo();
-        check(ed.Doc.Heights[10 * 20 + 10] == '.' && ed.Doc.Heights[6 * 20 + 6] == '8', "undo reverts a height fill");
-        Frame(new[] { Keys.Letter('F') });
-        Frame(new[] { Keys.Letter('G') });
-        check(!ed.HeightMode, "G returns to tile mode");
-        Frame(new[] { Keys.Letter('P') });
-        check(eg.Mode == GameMode.Playing && eg.Level.HeightAt(6.5f, 6.5f) == 4f && eg.Level.HeightAt(8.5f, 8.5f) == 1.5f, "play-testing uses the painted heights");
+        // a map file with its own heights plays with them
+        var tallMap = new MapDoc(20, 16) { DefaultHeight = 1.5f };
+        tallMap[2, 2] = '@';
+        tallMap.Heights[6 * 20 + 6] = '8';
+        var eg = new Game { FixedSeed = 1 };
+        eg.StartTest(MapDoc.Parse(tallMap.Serialize()).ToDef(), PClass.Fighter);
+        check(eg.Mode == GameMode.Playing && eg.Level.HeightAt(6.5f, 6.5f) == 4f && eg.Level.HeightAt(8.5f, 8.5f) == 1.5f,
+              "a map file's ceiling heights (and its default height) are what you play");
     }
 
     static void StairChecks(Action<bool, string> check)
@@ -1509,47 +1404,19 @@ public static class Headless
         check(!plat.Reachable(1, 1)[5] && plat.Walkable(4, 4) && !plat.Walkable(1 * 7 + 4, 1 * 7 + 5), "a 0.75 step with no stairs is unreachable");
         check(!plat.BlockCanEnter(5, 1, 4, 1), "stone blocks only slide over level ground");
 
-        // editor: floors layer, stair brush, files, play-test
-        var keys = new FakeKeys();
-        var eg = new Game { FixedSeed = 1, Keys = keys };
-        var ed = eg.Editor;
-        void Frame(int[] hit = null, int[] held = null, float mx = -1, float my = -1)
-        {
-            keys.Hit.Clear(); keys.Held.Clear();
-            foreach (var k in hit ?? Array.Empty<int>()) keys.Hit.Add(k);
-            foreach (var k in held ?? Array.Empty<int>()) keys.Held.Add(k);
-            var inp = eg.Binds.Read(keys, false);
-            inp.MouseX = mx; inp.MouseY = my;
-            eg.Update(inp, 1f / 35f);
-        }
-        eg.OpenEditor();
-        ed.NewMap(20, 16);
-        Frame(new[] { Keys.Letter('G') }); Frame(new[] { Keys.Letter('G') });
-        check(ed.Mode == Editor.Layer.Floors, "G, G reaches the floors layer");
-        Frame(new[] { Keys.Digit(1) }); Frame(new[] { Keys.Letter('K') });
-        check(ed.StairBrush && ed.CurrentFloor == '1', "1 picks 0.25 and K turns on the stair brush");
-        for (int x = 5; x <= 8; x++)
-        {
-            float mx = x * ed.CellSize + 3, my = 8 * ed.CellSize + 3;
-            Frame(x == 5 ? new[] { Keys.Mouse1 } : null, new[] { Keys.Mouse1 }, mx, my);
-            Frame(null, new[] { Keys.Mouse1 }, mx, my);
-        }
-        Frame();
-        check(new string(Enumerable.Range(5, 4).Select(x => ed.Doc.Floors[8 * 20 + x]).ToArray()) == "1234", "dragging the stair brush builds a staircase 1-2-3-4");
-        ed.Undo();
-        check(ed.Doc.Floors[8 * 20 + 6] == '.', "undo removes the staircase");
-        ed.Redo();
-        var back = MapDoc.Parse(ed.Doc.Serialize());
-        check(back.Floors.SequenceEqual(ed.Doc.Floors) && back.Heights.SequenceEqual(ed.Doc.Heights), "floors survive save and load");
-        Frame(new[] { Keys.Letter('G') });
-        check(ed.Mode == Editor.Layer.Tiles, "G cycles back to tiles");
-        ed.Doc[2, 2] = '.'; ed.Doc[4, 8] = '@';
-        Frame(new[] { Keys.Letter('P') });
+        // a map file with a staircase: floors survive save and load, and you can walk up them
+        var stairs = new MapDoc(20, 16);
+        stairs[4, 8] = '@';
+        for (int x = 5; x <= 8; x++) stairs.Floors[8 * 20 + x] = (char)('1' + x - 5);
+        var back = MapDoc.Parse(stairs.Serialize());
+        check(back.Floors.SequenceEqual(stairs.Floors) && back.Heights.SequenceEqual(stairs.Heights), "floors survive save and load");
+        var eg = new Game { FixedSeed = 1 };
+        eg.StartTest(back.ToDef(), PClass.Fighter);
         check(eg.Mode == GameMode.Playing && eg.Level.FloorAt(8.5f, 8.5f) == 1f && eg.Level.HeightAt(8.5f, 8.5f) >= 2f,
-              "play-testing uses the painted floors (with headroom kept above them)");
+              "a map file's floors are what you play (with headroom kept above them)");
         eg.P.Angle = 0;
         for (int k = 0; k < 35 * 3 && eg.P.X < 8.5f; k++) eg.Update(new Input { Move = 1 }, 1f / 35f);
-        check(eg.P.FloorZ == 1f && eg.P.X >= 8.5f, "and you can walk up the painted staircase");
+        check(eg.P.FloorZ == 1f && eg.P.X >= 8.5f, "and you can walk up its staircase");
     }
 
     static void StyleChecks(Action<bool, string> check)
@@ -1976,48 +1843,21 @@ public static class Headless
         }
         g.Style = GameStyle.Classic;
 
-        // level editor: a fresh map with help, a built-in map as a template, the open dialog, and a play-test
+        // a custom map (as made in tools/editor/index.html) being play-tested
         {
-            string mdir = Path.Combine(Path.GetTempPath(), $"hexensharp-shots-{Environment.ProcessId}");
-            g.MapsDir = mdir;
-            g.GoToTitle();
-            g.OpenEditor();
-            var ed = g.Editor;
-            ed.NewMap(32, 24);
-            ed.Doc.Name = "My Grotto";
-            void Box(int x0, int y0, int x1, int y1, char c) { for (int x = x0; x <= x1; x++) { ed.Doc[x, y0] = c; ed.Doc[x, y1] = c; } for (int y = y0; y <= y1; y++) { ed.Doc[x0, y] = c; ed.Doc[x1, y] = c; } }
-            Box(8, 3, 20, 12, 'M'); ed.Doc[8, 7] = 'D'; ed.Doc[14, 12] = 'Z';
-            for (int y = 4; y < 12; y++) for (int x = 9; x < 20; x++) ed.Doc[x, y] = ',';
-            ed.Doc[12, 6] = 'e'; ed.Doc[17, 9] = 'd'; ed.Doc[18, 4] = '$'; ed.Doc[10, 10] = 'T'; ed.Doc[15, 5] = '&'; ed.Doc[4, 18] = 'E';
-            ed.Doc[14, 14] = '%'; ed.BrushIndex = Array.FindIndex(Editor.Palette, b => b.Glyph == 'd');
-            ed.CursorX = 17; ed.CursorY = 9;
-            Tick(default, 1);
-            Shot("27_editor_help");
-            ed.ShowHelp = false;
-            Tick(default, 1);
-            Shot("28_editor_map");
-            ed.Load(MapDoc.FromDef(Maps.Hub[2]), "Opened");
-            ed.ZoomIndex = 1; ed.CursorX = 23; ed.CursorY = 9;
-            Tick(default, 1);
-            Shot("29_editor_crypt");
-            ed.ShowOpenList();
-            Shot("30_editor_open");
-            ed.OpenList = null;
-            ed.NewMap(32, 24);
-            ed.Doc.Name = "My Grotto";
-            Box(8, 3, 20, 12, 'M'); ed.Doc[8, 7] = 'D';
-            for (int y = 4; y < 12; y++) for (int x = 9; x < 20; x++) ed.Doc[x, y] = ',';
-            ed.Doc[12, 6] = 'e'; ed.Doc[17, 9] = 'd'; ed.Doc[18, 4] = '$'; ed.Doc[10, 10] = 'T'; ed.Doc[15, 5] = '&';
-            ed.Doc[2, 2] = '.'; ed.Doc[3, 7] = '@';
-            ed.PlayTest();
+            var doc = new MapDoc(32, 24) { Name = "My Grotto" };
+            void Box(int x0, int y0, int x1, int y1, char c) { for (int x = x0; x <= x1; x++) { doc[x, y0] = c; doc[x, y1] = c; } for (int y = y0; y <= y1; y++) { doc[x0, y] = c; doc[x1, y] = c; } }
+            Box(8, 3, 20, 12, 'M'); doc[8, 7] = 'D';
+            for (int y = 4; y < 12; y++) for (int x = 9; x < 20; x++) doc[x, y] = ',';
+            doc[12, 6] = 'e'; doc[17, 9] = 'd'; doc[18, 4] = '$'; doc[10, 10] = 'T'; doc[15, 5] = '&';
+            doc[3, 7] = '@'; doc[4, 18] = 'E';
+            g.StartTest(MapDoc.Parse(doc.Serialize()).ToDef(), PClass.Fighter);
             g.P.Angle = 0.12f;
             g.Vars.Freeze = true;
             Tick(default, 60);
-            Shot("31_editor_playtest");
+            Shot("31_custom_map_playtest");
             g.Vars.Freeze = false;
-            g.ReturnToEditor();
             g.GoToTitle();
-            g.MapsDir = null;
         }
 
         // raised roofs: looking up in the great hall, and the wall above the start room's door
@@ -2036,15 +1876,9 @@ public static class Headless
         Tick(default, 1);
         Shot("34_courtyard_walls");
         g.Vars.Freeze = false;
-        g.OpenEditor();
-        g.Editor.Load(MapDoc.FromDef(Maps.Hub[0]), "Opened");
-        g.Editor.HeightMode = true; g.Editor.ShowHelp = false; g.Editor.ZoomIndex = 2; g.Editor.CursorX = 14; g.Editor.CursorY = 5;
-        Tick(default, 1);
-        Shot("35_editor_heights");
-        g.Editor.HeightMode = false;
         g.GoToTitle();
 
-        // stairs: up to the dais, the view from the top, the Keep terrace, and the floors layer in the editor
+        // stairs: up to the dais, the view from the top and the Keep terrace
         g.FixedSeed = 1;
         g.NewGame(PClass.Fighter);
         g.Level.Things.RemoveAll(t => t is Monster);
@@ -2069,13 +1903,6 @@ public static class Headless
         Tick(default, 50);
         Shot("39_keep_terrace");
         g.Vars.Freeze = false;
-        g.OpenEditor();
-        g.Editor.Load(MapDoc.FromDef(Maps.Hub[0]), "Opened");
-        g.Editor.Mode = Editor.Layer.Floors; g.Editor.StairBrush = true; g.Editor.ShowHelp = false;
-        g.Editor.ZoomIndex = 3; g.Editor.CursorX = 15; g.Editor.CursorY = 4;
-        Tick(default, 1);
-        Shot("40_editor_floors");
-        g.Editor.Mode = Editor.Layer.Tiles;
         g.GoToTitle();
 
         // the six sci-fi artifacts lined up on a pedestal row
