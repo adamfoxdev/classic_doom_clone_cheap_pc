@@ -202,6 +202,12 @@ public sealed class DevConsole
             if ((int)s < 0) { Print("usage: skill <vitality|power|agility|focus|thrusters>"); return; }
             Print(_g.SpendSkill(s) ? $"{s.ToString().ToLowerInvariant()} is now rank {_g.Profile.Rank(s)}" : "no points to spend, or that skill is maxed");
         });
+        Add("demo", "", "on a practice course: watch the demo play it (1/2/3 speed, E step by step, move to take over)", a =>
+        {
+            if (!_g.Practicing) { Print("demo: start a practice course first (title menu > Practice)"); return; }
+            _g.StartDemo();
+            Open = false;
+        });
         Add("name", "[name]", "the name your practice course times go on the leaderboard under", a =>
         {
             if (a.Length < 2) { Print($"name = {_g.RunnerName}"); return; }

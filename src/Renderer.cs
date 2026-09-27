@@ -68,7 +68,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int PauseTop = 64, PauseRow = 12, PauseFooter = 156, OptionsTop = 33, OptionsRow = 12, OptionsFooter = 188;
+    public const int PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 33, OptionsRow = 12, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected)
     {
@@ -983,6 +983,7 @@ public sealed class Renderer
         }
         DrawSpeed(g);
         if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
+        if (g.Practicing) DrawDemoBanner(g);
         switch (style)
         {
             case HudStyle.Full: DrawStatusBar(g, label); break;
@@ -1001,6 +1002,27 @@ public sealed class Renderer
         string s = $"SPEED {pct}%";
         uint c = pct >= 200 ? Col.Rgb(255, 120, 60) : pct >= 150 ? Col.Rgb(255, 220, 90) : Col.Rgb(200, 230, 255);
         CenterText(s, ViewH / 2 + 20, c);
+    }
+
+    /// <summary>
+    /// Watching the demo: what it's doing now (the step of the technique), the game speed, and the controls; stopped on a
+    /// step, the prompt to go on. Practising in slow motion yourself: the speed, and that the run won't count.
+    /// </summary>
+    void DrawDemoBanner(Game g)
+    {
+        int y = (g.Level.Flight ? ViewH - 28 : ViewH) - 60;
+        uint gold = Col.Rgb(230, 190, 80), dim = Col.Rgb(200, 190, 170), green = Col.Rgb(120, 255, 140);
+        string pct = g.PracticeSpeed < 1 ? $"  {g.PracticeSpeed * 100:0}% SPEED" : "";
+        if (!g.Demo)
+        {
+            if (g.PracticeSpeed < 1) CenterText($"SLOW MO {g.PracticeSpeed * 100:0}%: RUNS DON'T COUNT (1: FULL)", y + 36, gold);
+            return;
+        }
+        CenterText((g.DemoSteps ? "DEMO: STEP BY STEP" : "DEMO") + pct, y, gold);
+        var lines = Wrap(g.Pilot.Caption.ToUpperInvariant(), (W - 16) / Font.CharW).Take(2).ToList();
+        for (int i = 0; i < lines.Count; i++) CenterText(lines[i], y + 11 + i * 9, Col.Rgb(250, 245, 230));
+        if (g.DemoPaused) CenterText(((int)(g.Time * 3) & 1) == 0 ? "ENTER: NEXT STEP" : "", y + 36, green);
+        else CenterText("1/2/3 SPEED  E STEPS  MOVE: TAKE OVER", y + 36, dim);
     }
 
     /// <summary>On the practice course: the run's time and your best, in the top-right corner (messages keep clear of it).</summary>

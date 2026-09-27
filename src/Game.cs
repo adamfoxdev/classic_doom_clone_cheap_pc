@@ -81,6 +81,14 @@ public sealed class ClassDef
 
 public sealed class Player
 {
+    /// <summary>A copy to play forward in a separate game (the practice demo's lookahead), sharing nothing that changes.</summary>
+    public Player Copy()
+    {
+        var p = (Player)MemberwiseClone();
+        p.HasWeapon = (bool[])HasWeapon.Clone();
+        return p;
+    }
+
     public PClass Class;
     public ClassDef Def => ClassDef.All[(int)Class];
     public float X, Y, Angle, Pitch;
@@ -229,10 +237,97 @@ public sealed class Game
         HubSource = () => new[] { c.Map().Build() };
         TestingMap = true;
         Practicing = true;
+        Demo = DemoPaused = DemoSteps = false; Pilot = null; DemoTrack = null; PracticeSpeed = 1f;
         NewGame(cls); // sets the course up (SetUpCourse) once the map is built
         if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
         float best = Course.Timed ? Profile.CourseBestTime(Course.Key(P.Class)) : 0;
         if (best > 0) Say($"Your best as the {P.Def.Name}: {best:0.00}s.");
+    }
+
+    /// <summary>The demo is playing the course for you to watch (Esc > Watch demo, or 'demo').</summary>
+    public bool Demo;
+    /// <summary>Step mode: the demo stops at each step of the technique until you press Enter.</summary>
+    public bool DemoSteps, DemoPaused;
+    public DemoPilot Pilot;
+    /// <summary>The last demo's run, raced as a ghost on your next go, and its time.</summary>
+    public GhostTrack DemoTrack;
+    public float DemoTime;
+    /// <summary>Game speed on a practice course (1/2/3: 100%, 50%, 25%), for the demo or your own slow-motion runs.</summary>
+    public float PracticeSpeed = 1f;
+    float _demoClock;
+
+    /// <summary>Starts the demo from the start line.</summary>
+    public void StartDemo()
+    {
+        if (!Practicing) return;
+        MoveTo(Level.StartX, Level.StartY, Course.StartAngle);
+        P.TeleportFlash = 0;
+        Demo = true; DemoPaused = false;
+        Pilot = new DemoPilot();
+        ResetRun();
+        Messages.Clear();
+        Say("Demo: watch the keys light up and the turn gauge. 1/2/3 speed, E step by step, move to take over.");
+    }
+
+    /// <summary>Stops the demo (pause menu > Stop demo).</summary>
+    public void EndDemo() { if (Demo) StopDemo("Demo stopped. Your turn!"); }
+
+    /// <summary>Ends the demo and hands you the controls back at the start line.</summary>
+    void StopDemo(string message)
+    {
+        Demo = false; DemoPaused = false; DemoSteps = false; Pilot = null;
+        MoveTo(Level.StartX, Level.StartY, Course.StartAngle);
+        P.TeleportFlash = 0;
+        ResetRun();
+        Messages.Clear();
+        Say(message);
+    }
+
+    /// <summary>
+    /// Practice-only controls, before the player moves: 1/2/3 set the game speed; during the demo, E toggles step mode,
+    /// Enter steps on, any movement takes over, and otherwise the pilot supplies the input. False when the frame stops
+    /// here (paused on a step).
+    /// </summary>
+    bool PracticeControls(ref Input inp, ref float dt)
+    {
+        if (inp.Slot is >= 1 and <= 3)
+        {
+            PracticeSpeed = inp.Slot == 1 ? 1f : inp.Slot == 2 ? 0.5f : 0.25f;
+            Say(Demo ? $"Demo at {PracticeSpeed * 100:0}% speed." : $"Game speed {PracticeSpeed * 100:0}%" + (PracticeSpeed < 1 ? ": practise slowly (slow runs don't go on the leaderboard)." : "."));
+            inp.Slot = 0;
+        }
+        if (Demo)
+        {
+            bool takeOver = inp.Move != 0 || inp.Strafe != 0 || inp.Jump || inp.JetHeld || inp.Fire || MathF.Abs(inp.LookX) > 3;
+            if (takeOver && Course.Timed) { StopDemo("Your turn! Race the demo's ghost."); return false; }
+            if (takeOver) { StopDemo("Your turn!"); return false; }
+            if (inp.Use)
+            {
+                DemoSteps = !DemoSteps; DemoPaused = false;
+                Say(DemoSteps ? "Step by step: the demo stops at each step. Enter for the next." : "Step by step off.");
+            }
+            if (DemoPaused)
+            {
+                if (!inp.Confirm) return false;
+                DemoPaused = false;
+            }
+            // the demo runs on a fixed clock of 72 ticks a second (slowed by the game speed), so it plays the same on
+            // every machine; step by step, it stops before each new step of the technique
+            _demoClock = MathF.Min(_demoClock + dt * PracticeSpeed, 0.1f);
+            while (Demo && _demoClock >= DemoPilot.Tick)
+            {
+                string before = Pilot.Caption;
+                var pilot = Pilot.Next(this, DemoPilot.Tick);
+                if (DemoSteps && Pilot.Caption != before && before != "") { DemoPaused = true; _demoClock = 0; break; }
+                _demoClock -= DemoPilot.Tick;
+                PlayTime += DemoPilot.Tick;
+                UpdatePlayer(pilot, DemoPilot.Tick);
+                UpdateWorld(DemoPilot.Tick);
+            }
+            return false;
+        }
+        dt *= PracticeSpeed;
+        return true;
     }
 
     /// <summary>On a fresh copy of the course (starting, or Restart): face down the course, hand out the free-roam jetpack, reset the run.</summary>
@@ -276,6 +371,24 @@ public sealed class Game
     /// <summary>Crossed the finish: report the time and its place on your class's leaderboard, and start the run over.</summary>
     void FinishRun()
     {
+        if (Demo)
+        {
+            Recording.Record(RunTime, P.X, P.Y, P.FloorZ + P.Z);
+            DemoTrack = Recording; DemoTime = RunTime;
+            var dm = Course.MedalFor(P.Class, RunTime);
+            StopDemo($"The demo made it in {RunTime:0.00}s" + (dm != Medal.None ? $" ({Medals.Name(dm)})" : "") + ". Your turn: race its ghost!");
+            return;
+        }
+        if (PracticeSpeed < 1)
+        {
+            Messages.Clear();
+            Say($"Cleared in {RunTime:0.00}s at {PracticeSpeed * 100:0}% speed. Press 1 for full speed to set times.");
+            Level.CheckpointsReached.Clear(); Checkpoint = null;
+            MoveTo(Level.StartX, Level.StartY, Course.StartAngle);
+            ResetRun();
+            return;
+        }
+        DemoTrack = null; // your own run: back to racing your own best
         string key = Course.Key(P.Class);
         float best = Profile.CourseBestTime(key);
         var had = Course.MedalFor(P.Class, best);
@@ -331,10 +444,14 @@ public sealed class Game
     public void ShowGhost()
     {
         if (Ghost != null) { Ghost.Removed = true; Level.Things.Remove(Ghost); Ghost = null; }
-        if (!Practicing || !Course.Timed || !Vars.Ghost || !Profile.Ghosts.TryGetValue(Course.Key(P.Class), out var saved)) return;
-        var track = GhostTrack.Decode(saved.Path);
+        if (!Practicing || !Course.Timed || !Vars.Ghost || Demo) return;
+        GhostTrack track;
+        float time;
+        if (DemoTrack != null) (track, time) = (DemoTrack, DemoTime); // after a demo, race it
+        else if (Profile.Ghosts.TryGetValue(Course.Key(P.Class), out var saved)) (track, time) = (GhostTrack.Decode(saved.Path), saved.Time);
+        else return;
         if (track.Points.Count < 2) return;
-        Ghost = new GhostRunner(track, saved.Time) { Level = Level };
+        Ghost = new GhostRunner(track, time) { Level = Level };
         Ghost.Seek(RunTime);
         Level.Things.Add(Ghost);
     }
@@ -422,7 +539,7 @@ public sealed class Game
     {
         SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
-        Practicing = false;
+        Practicing = false; Demo = false; PracticeSpeed = 1f;
         Mode = GameMode.Title;
         Paused = false;
         Menu.Close();
@@ -605,6 +722,8 @@ public sealed class Game
         if (inp.CycleHud) CycleHud(1);
         if (!string.IsNullOrEmpty(inp.Typed) && Mode == GameMode.Playing)
             foreach (char c in inp.Typed) Con.FeedCheat(c);
+
+        if (Practicing && Mode == GameMode.Playing && !PracticeControls(ref inp, ref dt)) return;
 
         PlayTime += dt;
         UpdatePlayer(inp, dt);
@@ -875,7 +994,8 @@ public sealed class Game
                 RunTime += dt;
                 Recording.Record(RunTime, p.X, p.Y, p.FloorZ + p.Z);
             }
-            if (Vars.Ghost != (Ghost != null) && (Ghost != null || (Course.Timed && Profile.Ghosts.ContainsKey(Course.Key(p.Class))))) ShowGhost();
+            bool wantGhost = Vars.Ghost && !Demo && Course.Timed && (DemoTrack != null || Profile.Ghosts.ContainsKey(Course.Key(p.Class)));
+            if (wantGhost != (Ghost != null)) ShowGhost();
             Ghost?.Seek(RunTime);
         }
 
@@ -1097,7 +1217,8 @@ public sealed class Game
             }
         }
 
-        bool onLift = lv.Marks[cell] == '=' && p.OnGround;
+        // on the lift pad itself: down at its floor, not standing on a ledge's lip with your middle over it
+        bool onLift = lv.Marks[cell] == '=' && p.OnGround && MathF.Abs(p.FloorZ - lv.Floors[cell]) < 0.01f;
         if (onLift && !_onLift)
         {
             if (Checkpoint != null && Checkpoint.Level == lv)
