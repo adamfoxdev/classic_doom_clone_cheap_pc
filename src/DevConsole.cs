@@ -2,6 +2,12 @@ using System.Globalization;
 
 namespace HexenSharp;
 
+/// <summary>
+/// How much the HUD shows. Full is the classic status bar; the others drop it for a full-height view with
+/// a small overlay (Compact: health, armor, ammo, keys and items; Minimal: just health and ammo) or none (Off).
+/// </summary>
+public enum HudStyle { Full, Compact, Minimal, Off }
+
 /// <summary>Tweakable game mechanics, changed from the console with "set name value".</summary>
 public sealed class GameVars
 {
@@ -9,6 +15,7 @@ public sealed class GameVars
     public float FireRate = 1f, ManaCost = 1f, Fog = 1f, Fov = 74f;
     public float Gravity = 12f, JumpPower = 3.3f, SlideSpeed = 4.5f, Chests = 2f;
     public bool God, NoClip, NoTarget, Freeze, InfiniteMana, InfiniteFuel, FullBright, ShowFps, InvertMouse;
+    public HudStyle Hud;
 
     public sealed record Var(string Name, string Help, Func<GameVars, float> Get, Action<GameVars, float> Set, bool IsBool = false);
 
@@ -36,6 +43,7 @@ public sealed class GameVars
         new("infinitefuel", "the jetpack never runs dry", v => B(v.InfiniteFuel), (v, x) => v.InfiniteFuel = x != 0, true),
         new("fullbright", "disable lighting and fog", v => B(v.FullBright), (v, x) => v.FullBright = x != 0, true),
         new("showfps", "show frames per second", v => B(v.ShowFps), (v, x) => v.ShowFps = x != 0, true),
+        new("hud", "HUD style: 0 full, 1 compact, 2 minimal, 3 off", v => (int)v.Hud, (v, x) => v.Hud = (HudStyle)Math.Clamp((int)MathF.Round(x), 0, 3)),
     };
 
     static float B(bool b) => b ? 1f : 0f;

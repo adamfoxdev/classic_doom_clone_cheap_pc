@@ -6,7 +6,10 @@ namespace HexenSharp;
 /// </summary>
 public sealed class Renderer
 {
-    public const int W = 320, H = 200, HudH = 32, ViewH = H - HudH;
+    public const int W = 320, H = 200, HudH = 32, StatusViewH = H - HudH;
+
+    /// <summary>Rows of 3D view this frame: above the status bar, or the whole screen when the HUD style drops it.</summary>
+    public int ViewH { get; private set; } = StatusViewH;
     float PlaneLen = 0.75f;                    // set from the fov setting each frame
     float Proj = (W / 2f) / 0.75f;             // pixels per world unit at distance 1
     float _fogDist;
@@ -15,7 +18,7 @@ public sealed class Renderer
     public readonly uint[] Fb = new uint[W * H];
     /// <summary>Distance of whatever was drawn at a 3D-view pixel (for tests).</summary>
     public float DepthAt(int x, int y) => _depth[y * W + x];
-    readonly float[] _depth = new float[W * ViewH];
+    readonly float[] _depth = new float[W * H];
     readonly List<(float d, int side, float wallX, int cell)> _doors = new();
     readonly List<(Thing t, float depth)> _sprites = new();
 
@@ -25,6 +28,7 @@ public sealed class Renderer
 
     public void Render(Game g)
     {
+        ViewH = g.Vars.Hud == HudStyle.Full || g.Mode is GameMode.Title or GameMode.ClassSelect or GameMode.Victory ? StatusViewH : H;
         switch (g.Mode)
         {
             case GameMode.Title:
@@ -704,7 +708,7 @@ public sealed class Renderer
         var a = g.Level.Arena;
         if (a == null || !a.Started) return;
         string status = a.InIntermission ? $"WAVE {a.Wave} CLEARED" : $"WAVE {a.Wave}   ENEMIES {a.Remaining}";
-        Text(W - 4 - Font.Width(status), g.Vars.ShowFps ? 12 : 3, status, Col.Rgb(230, 120, 255));
+        if (g.Vars.Hud != HudStyle.Off) Text(W - 4 - Font.Width(status), g.Vars.ShowFps ? 12 : 3, status, Col.Rgb(230, 120, 255));
         if (a.BannerTime > 0)
         {
             string big = a.InIntermission ? "WAVE CLEARED!" : $"WAVE {a.Wave}";
@@ -795,22 +799,43 @@ public sealed class Renderer
     void DrawHud(Game g)
     {
         var p = g.P;
+        var style = g.Vars.Hud;
+        uint label = Col.Rgb(200, 180, 140);
+        // the bottom of the view the corner readouts sit on: above the cockpit's dashboard when flying
+        int bottom = g.Level.Flight ? ViewH - 28 : ViewH;
+        if (style != HudStyle.Off)
+        {
+            // what sits in the view's corners is lifted clear of the compact and minimal readouts
+            int lift = style switch { HudStyle.Compact => 22, HudStyle.Minimal => 12, _ => 0 };
+            if (p.HasJetpack) DrawFuel(p, label, bottom - lift);
+            if (!g.Level.Flight && style != HudStyle.Minimal) DrawLevelBar(g, bottom - lift); // the cockpit dashboard fills that corner when flying
+            if (g.Level.Ship != null) DrawShipPanel(g);
+            if (p.Blocks > 0 && !g.Level.Flight)
+            {
+                // above the level bar and its +XP pop-up
+                int y = bottom - lift - (style == HudStyle.Minimal ? 16 : 34);
+                Icon(Art.Rubble, 4, y, 12);
+                Text(19, y + 4, $"x{p.Blocks}", Col.Rgb(230, 220, 200));
+            }
+        }
+        switch (style)
+        {
+            case HudStyle.Full: DrawStatusBar(g, label); break;
+            case HudStyle.Compact: DrawCompactHud(g, bottom); break;
+            case HudStyle.Minimal: DrawMinimalHud(g, bottom); break;
+        }
+    }
+
+    /// <summary>The classic status bar along the bottom of the screen.</summary>
+    void DrawStatusBar(Game g, uint label)
+    {
+        var p = g.P;
         var hb = Art.HudBack;
         for (int y = 0; y < HudH; y++)
             for (int x = 0; x < W; x++)
                 Fb[(ViewH + y) * W + x] = Col.Shade(hb.Px[(y & (hb.H - 1)) * hb.W + (x & (hb.W - 1))], y == 0 ? 400 : y == 1 ? 60 : 200);
 
         int by = ViewH + 3;
-        uint label = Col.Rgb(200, 180, 140);
-        if (p.HasJetpack) DrawFuel(p, label);
-        if (!g.Level.Flight) DrawLevelBar(g); // the cockpit dashboard fills that corner when flying
-        if (g.Level.Ship != null) DrawShipPanel(g);
-        if (p.Blocks > 0 && !g.Level.Flight)
-        {
-            // above the level bar and its +XP pop-up
-            Icon(Art.Rubble, 4, ViewH - 34, 12);
-            Text(19, ViewH - 30, $"x{p.Blocks}", Col.Rgb(230, 220, 200));
-        }
         if (g.Relaxed) { DrawDiscoveryHud(g, by, label); return; }
         Text(6, by, "HEALTH", label);
         uint hcol = p.Health > p.MaxHealth / 2 ? Col.Rgb(240, 230, 210) : p.Health > p.MaxHealth / 4 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
@@ -845,11 +870,86 @@ public sealed class Renderer
         Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
     }
 
+    static uint HealthColour(Player p) =>
+        p.Health > p.MaxHealth / 2 ? Col.Rgb(240, 230, 210) : p.Health > p.MaxHealth / 4 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
+
+    static readonly uint BlueCol = Col.Rgb(60, 120, 255), GreenCol = Col.Rgb(60, 210, 80);
+
+    /// <summary>A small red cross, the health marker on the overlay HUDs.</summary>
+    void Cross(int x, int y)
+    {
+        Rect(x - 1, y + 1, 9, 5, Col.Rgb(20, 12, 12));
+        Rect(x + 1, y - 1, 5, 9, Col.Rgb(20, 12, 12));
+        Rect(x, y + 2, 7, 3, Col.Rgb(230, 50, 40));
+        Rect(x + 2, y, 3, 7, Col.Rgb(230, 50, 40));
+    }
+
+    /// <summary>No status bar: health and armor in the bottom-left corner, items beside them, ammo and keys on the right.</summary>
+    void DrawCompactHud(Game g, int bottom)
+    {
+        var p = g.P;
+        int y = bottom - 18;
+        if (g.Relaxed)
+        {
+            uint val = Col.Rgb(240, 230, 210), lab = Col.Rgb(200, 180, 140);
+            Text(4, y, $"{Words.T("RELICS")} {p.Relics}/{g.RelicsTotal}   LORE {p.LoreRead}/{g.LoreTotal}", val);
+            Text(4, y + 9, $"SECRETS {p.Secrets}/{g.SecretsTotal}   EXPLORED {(int)(Discovery.Explored(g.Hub) * 100)}%", lab);
+        }
+        else
+        {
+            Cross(4, y + 4);
+            string hp = p.Health.ToString();
+            Text(15, y, hp, HealthColour(p), 2);
+            int ax = 19 + Font.Width(hp, 2);
+            Rect(ax, y + 3, 6, 8, Col.Rgb(20, 22, 30));
+            Rect(ax + 1, y + 4, 4, 6, Col.Rgb(170, 190, 230));
+            Text(ax + 9, y + 3, p.Armor.ToString(), Col.Rgb(170, 190, 230));
+            // healing items
+            int ix = ax + 12 + Font.Width(p.Armor.ToString());
+            Icon(Art.Flask, ix, y + 2, 12);
+            Text(ix + 12, y + 6, p.Flasks.ToString(), Col.Rgb(240, 230, 210));
+            Icon(Art.Urn, ix + 20, y + 2, 12);
+            Text(ix + 32, y + 6, p.Urns.ToString(), Col.Rgb(240, 230, 210));
+
+            // ammo: both kinds, the one your weapon uses lit up
+            var w = p.CurWeapon;
+            string blue = $"{Words.T("BLUE")} {p.BlueMana}", green = $"{Words.T("GREEN")} {p.GreenMana}";
+            Text(W - 4 - Font.Width(blue), y, blue, w.Mana == 1 ? BlueCol : Col.Shade(BlueCol, 130));
+            Text(W - 4 - Font.Width(green), y + 9, green, w.Mana == 2 ? GreenCol : Col.Shade(GreenCol, 130));
+        }
+        int kx = W - 4 - Font.Width($"{Words.T("GREEN")} 000") - 14;
+        if (p.SteelKey) Icon(Art.SteelKey, kx, y - 1, 12);
+        if (p.FireKey) Icon(Art.FireKey, kx, y + 8, 12);
+    }
+
+    /// <summary>Just the essentials: health in the bottom-left corner, ammo for the weapon in hand in the bottom-right.</summary>
+    void DrawMinimalHud(Game g, int bottom)
+    {
+        var p = g.P;
+        int y = bottom - 10;
+        if (g.Relaxed)
+            Text(4, y, $"{Words.T("RELICS")} {p.Relics}/{g.RelicsTotal}", Col.Rgb(240, 230, 210));
+        else
+        {
+            Cross(4, y);
+            Text(14, y, p.Health.ToString(), HealthColour(p));
+            var w = p.CurWeapon;
+            if (w.Mana > 0)
+            {
+                string ammo = (w.Mana == 1 ? p.BlueMana : p.GreenMana).ToString();
+                Text(W - 4 - Font.Width(ammo), y, ammo, w.Mana == 1 ? BlueCol : GreenCol);
+            }
+        }
+        int kx = 40;
+        if (p.SteelKey) { Icon(Art.SteelKey, kx, y - 2, 10); kx += 11; }
+        if (p.FireKey) Icon(Art.FireKey, kx, y - 2, 10);
+    }
+
     /// <summary>Your level and experience, in the bottom-left corner of the view, with a pop-up as XP comes in.</summary>
-    void DrawLevelBar(Game g)
+    void DrawLevelBar(Game g, int bottom)
     {
         var pr = g.Profile;
-        int y = ViewH - 9;
+        int y = bottom - 9;
         string lv = $"LV {pr.Level}";
         Text(4, y, lv, pr.Points > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
         int bx = 8 + Font.Width(lv);
@@ -884,10 +984,10 @@ public sealed class Renderer
     }
 
     /// <summary>Jetpack fuel gauge, tucked into the bottom-right corner of the view.</summary>
-    void DrawFuel(Player p, uint label)
+    void DrawFuel(Player p, uint label, int bottom)
     {
         const int h = 40, bw = 6;
-        int x = W - 12, y0 = ViewH - 6 - h;
+        int x = W - 12, y0 = bottom - 6 - h;
         string name = Words.T("WINGS");
         Text(W - 3 - Font.Width(name), y0 - 9, name, p.Flying ? Col.Rgb(255, 230, 120) : label);
         Rect(x - 1, y0 - 1, bw + 2, h + 2, Col.Rgb(20, 20, 24));

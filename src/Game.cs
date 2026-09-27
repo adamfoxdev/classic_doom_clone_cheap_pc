@@ -9,7 +9,7 @@ public struct Input
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
     public bool Fire, Walk, JumpHeld, SlideHeld; // held
-    public bool Use, UseItem, Place, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character; // pressed
+    public bool Use, UseItem, Place, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character, CycleHud; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
@@ -245,6 +245,22 @@ public sealed class Game
     public int Rand(int lo, int hi) => _rng.Next(lo, hi + 1);
     public float RandF() => (float)_rng.NextDouble();
 
+    /// <summary>Steps the HUD style (Full, Compact, Minimal, Off) forward or back, and says which one you're on.</summary>
+    public void CycleHud(int dir)
+    {
+        int n = Enum.GetValues<HudStyle>().Length;
+        Vars.Hud = (HudStyle)(((int)Vars.Hud + dir + n) % n);
+        Say("HUD: " + HudName(Vars.Hud));
+    }
+
+    public static string HudName(HudStyle h) => h switch
+    {
+        HudStyle.Full => "FULL",
+        HudStyle.Compact => "COMPACT",
+        HudStyle.Minimal => "MINIMAL",
+        _ => "OFF",
+    };
+
     public void Say(string s)
     {
         Messages.Add((Words.T(s), 3.5f));
@@ -390,6 +406,7 @@ public sealed class Game
             return;
         }
         if (inp.Map) ShowMap = !ShowMap;
+        if (inp.CycleHud) CycleHud(1);
         if (!string.IsNullOrEmpty(inp.Typed) && Mode == GameMode.Playing)
             foreach (char c in inp.Typed) Con.FeedCheat(c);
 

@@ -92,6 +92,8 @@ public static class Headless
         Console.WriteLine("Character progression:");
         RpgChecks(Check);
 
+        Console.WriteLine("HUD styles:");
+        HudChecks(Check);
         Console.WriteLine("Rendered art pack:");
         RenderedArtChecks(Check);
         Console.WriteLine("Map files and the HTML editor:");
@@ -681,6 +683,66 @@ public static class Headless
             check(code == 0 && sw.ToString().Trim() == "ok", $"--check-map passes a good map ({sw.ToString().Trim()})");
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    static void HudChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        g.NewGame(PClass.Fighter);
+        g.Vars.Freeze = true;
+        g.Update(default, 1f / 35f);
+        g.Messages.Clear();
+        var r = new Renderer();
+        check(g.Vars.Hud == HudStyle.Full, "the classic status bar is the default HUD");
+
+        // what each style draws in the bottom strip where the status bar lives, and how tall the 3D view is
+        var strips = new Dictionary<HudStyle, uint[]>();
+        var heights = new Dictionary<HudStyle, int>();
+        foreach (var style in Enum.GetValues<HudStyle>())
+        {
+            g.Vars.Hud = style;
+            r.Render(g);
+            strips[style] = r.Fb[(Renderer.StatusViewH * Renderer.W)..];
+            heights[style] = r.ViewH;
+        }
+        var hb = Art.HudBack;
+        check(heights[HudStyle.Full] == Renderer.StatusViewH && strips[HudStyle.Full][Renderer.W * 10 + 150] != 0,
+              "Full keeps the 3D view above the status bar");
+        check(new[] { HudStyle.Compact, HudStyle.Minimal, HudStyle.Off }.All(h => heights[h] == Renderer.H),
+              "the other styles drop the status bar and give the view the whole screen");
+        int Diff(uint[] a, uint[] b) => a.Zip(b).Count(t => t.First != t.Second);
+        check(Diff(strips[HudStyle.Full], strips[HudStyle.Off]) > Renderer.W * 20, "with the HUD off, the floor shows where the status bar was");
+        check(Diff(strips[HudStyle.Compact], strips[HudStyle.Off]) > Diff(strips[HudStyle.Minimal], strips[HudStyle.Off])
+              && Diff(strips[HudStyle.Minimal], strips[HudStyle.Off]) > 40,
+              "Compact shows more than Minimal, and Minimal more than Off");
+        g.P.Health = 20;
+        g.Vars.Hud = HudStyle.Minimal;
+        r.Render(g);
+        var low = r.Fb[(Renderer.StatusViewH * Renderer.W)..];
+        check(Diff(low, strips[HudStyle.Minimal]) > 0, "the minimal HUD still tracks your health");
+        g.Vars.Hud = HudStyle.Full;
+
+        // switching: the H key cycles through the styles, the options menu steps either way, and it's saved
+        var seen = new List<HudStyle>();
+        for (int i = 0; i < 4; i++) { g.Update(new Input { CycleHud = true }, 1f / 35f); seen.Add(g.Vars.Hud); }
+        check(seen.SequenceEqual(new[] { HudStyle.Compact, HudStyle.Minimal, HudStyle.Off, HudStyle.Full }), "H cycles Full, Compact, Minimal, Off and back");
+        check(g.Messages.Any(m => m.Item1.Contains("HUD: OFF")), "and says which style you're on");
+        check(Bindings.Find("cyclehud") is { Key1: var k } && k == Keys.Letter('H'), "cycling the HUD is a rebindable action on H");
+        g.Menu.Show(MenuPage.Options);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "HUD style");
+        check(g.Menu.Value(g.Menu.Cursor) == "FULL", "Options shows HUD style: FULL");
+        g.Menu.Update(new Input { Left = true }, 1f / 35f);
+        check(g.Vars.Hud == HudStyle.Off && g.Menu.Value(g.Menu.Cursor) == "OFF", "Left steps back to OFF");
+        g.Menu.Update(new Input { Right = true }, 1f / 35f);
+        g.Menu.Update(new Input { Right = true }, 1f / 35f);
+        check(g.Vars.Hud == HudStyle.Compact, "Right steps forward to COMPACT");
+        g.Menu.Close();
+        check(Settings.Lines(g).Contains("hud 1"), "the style is saved with the settings");
+        g.Con.Execute("hud 2");
+        check(g.Vars.Hud == HudStyle.Minimal, "'hud 2' sets it from the console");
+        g.Con.Execute("hud 9");
+        check(g.Vars.Hud == HudStyle.Off, "out-of-range values clamp");
+        g.Vars.Hud = HudStyle.Full;
     }
 
     static void RpgChecks(Action<bool, string> check)
@@ -1828,7 +1890,7 @@ public static class Headless
         g.NewGame(PClass.Fighter);
         g.Level.Things.RemoveAll(t => t is Monster or Decor or Chest or LoreStone);
         var r = new Renderer();
-        float proj = 160f / MathF.Tan(g.Vars.Fov * MathF.PI / 360f), horizon = Renderer.ViewH / 2f;
+        float proj = 160f / MathF.Tan(g.Vars.Fov * MathF.PI / 360f), horizon = Renderer.StatusViewH / 2f;
         int RowOf(float z, float d) => (int)(horizon - (z - 0.5f) * proj / d);
 
         // great hall, facing the north wall 7.5 away: its top reaches far higher than one storey
@@ -1950,7 +2012,7 @@ public static class Headless
         g.P.X = 15.5f; g.P.Y = 8.5f; g.P.FloorZ = 0; g.P.Z = 0; g.P.Angle = -MathF.PI / 2; g.P.Pitch = 0;
         r.Render(g);
         float proj = 160f / MathF.Tan(g.Vars.Fov * MathF.PI / 360f);
-        int riserRow = (int)(Renderer.ViewH / 2f - (0.12f - 0.5f) * proj / 3.5f);
+        int riserRow = (int)(Renderer.StatusViewH / 2f - (0.12f - 0.5f) * proj / 3.5f);
         check(MathF.Abs(r.DepthAt(160, riserRow) - 3.5f) < 0.15f, "the first step's face is drawn 3.5 away");
         var flatDef = Maps.Hub[0] with { Floors = null };
         g.Level = flatDef.Build();
@@ -2608,6 +2670,15 @@ public static class Headless
         Shot("76_rendered_weapon_ingame");
         g.SetRenderedArt(false);
         Shot("77_procedural_weapon_ingame");
+
+        // the HUD styles, on the same view with a key, some items and a jetpack to show
+        g.P.SteelKey = true; g.P.Flasks = 2; g.P.HasJetpack = true; g.P.FireAnim = 0;
+        foreach (var (style, name) in new[] { (HudStyle.Compact, "78_hud_compact"), (HudStyle.Minimal, "79_hud_minimal"), (HudStyle.Off, "80_hud_off") })
+        {
+            g.Vars.Hud = style;
+            Shot(name);
+        }
+        g.Vars.Hud = HudStyle.Full;
         g.Vars.Freeze = false;
 
         // character progression: the HUD's level bar with an XP pop-up, and the character screen
