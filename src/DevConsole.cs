@@ -22,6 +22,8 @@ public sealed class GameVars
     public float Accel = 10f, AirAccel = 10f, Friction = 6f, MaxHop = 3f;
     /// <summary>Race a ghost of your best run on the practice course.</summary>
     public bool Ghost = true;
+    /// <summary>The on-screen strafe helper: 0 off, 1 on the practice course, 2 everywhere.</summary>
+    public int StrafeHelp = 1;
     public bool God, NoClip, NoTarget, Freeze, InfiniteMana, InfiniteFuel, FullBright, ShowFps, InvertMouse;
     public HudStyle Hud;
     public CrosshairStyle Crosshair;
@@ -47,6 +49,7 @@ public sealed class GameVars
         new("accel", "ground acceleration (Quake movement)", v => v.Accel, (v, x) => v.Accel = Math.Clamp(x, 1f, 100f)),
         new("airaccel", "air acceleration (Quake movement)", v => v.AirAccel, (v, x) => v.AirAccel = Math.Clamp(x, 0f, 100f)),
         new("friction", "ground friction (Quake movement)", v => v.Friction, (v, x) => v.Friction = Math.Clamp(x, 0f, 20f)),
+        new("strafehelp", "strafe-jumping helper: 0 off, 1 on the practice course, 2 everywhere", v => v.StrafeHelp, (v, x) => v.StrafeHelp = Math.Clamp((int)MathF.Round(x), 0, 2)),
         new("ghost", "race a ghost of your best run on the practice course", v => B(v.Ghost), (v, x) => v.Ghost = x != 0, true),
         new("maxhop", "top speed from strafe jumping, times your run speed", v => v.MaxHop, (v, x) => v.MaxHop = Math.Clamp(x, 1f, 5f)),
         new("chests", "chests per 200 floor cells (next game)", v => v.Chests, (v, x) => v.Chests = Math.Clamp(x, 0f, 20f)),

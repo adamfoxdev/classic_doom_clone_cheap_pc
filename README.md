@@ -260,7 +260,23 @@ of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells:
   becomes it if there isn't one yet. It has no body, so you run straight through it. Turn it off with
   **Options → Practice ghost** or `ghost 0`. It's saved with your profile (about 10 KB for a 40-second run).
 
+- A **strafe helper** above your aim shows what to press:
+  - **Keys:** A, W and D, and a JUMP bar. The keys to hold light up (green once you're holding them, red if you're
+    holding one that costs you speed, such as W on its own in the air).
+  - **Jumping:** JUMP lights once you're up to speed, and again as you land, for the bunny-hop timing.
+  - **In the air:** a turn gauge. The green band is the range of view angles where strafing adds speed, the yellow
+    tick is the best one, and the white mark is your view. Turn the mouse to keep the tick on the mark, following the
+    **TURN >** or **< TURN** prompt.
+  - **Keep turning:** you can't hold the angle still, because your velocity swings round as you gain speed. When
+    you're in the zone it says **GOOD, KEEP TURNING** in the direction your strafe key curves you.
+  - **The zone narrows as you speed up:** about 9 degrees wide at a run, under 5 at double speed.
+  - **Tested:** a test player that does nothing but what the helper shows reaches about 165% of a run in six hops.
+
+  It's on for the practice course by default. **Options → Strafe helper** (or `strafehelp 0|1|2`) switches between
+  off, the practice course only, and everywhere.
+
 ![Racing the ghost of your best run](docs/practice_ghost.png)
+![The strafe helper: hold D, keep turning right](docs/strafe_helper.png)
 ![Strafe jumping over the Velocity Hangar's 5-wide gap](docs/velocity_hangar.png)
 ![The practice course leaderboard](docs/leaderboard.png)
 
@@ -462,7 +478,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
 `gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off), `crosshair` (0 off, 1 dot, 2 cross, 3 circle),
-`quakemove` (1 Quake movement, 0 classic) and its tuning: `accel`, `airaccel`, `friction`, `maxhop` (top speed as a multiple of your run speed), `ghost` (race your best practice run).
+`quakemove` (1 Quake movement, 0 classic) and its tuning: `accel`, `airaccel`, `friction`, `maxhop` (top speed as a multiple of your run speed), `ghost` (race your best practice run), `strafehelp` (0 off, 1 practice course, 2 everywhere).
 
 Hexen's cheat codes work when typed during play (or in the console):
 `satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys), `icarus` (jetpack),

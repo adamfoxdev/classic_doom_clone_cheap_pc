@@ -98,6 +98,8 @@ public static class Headless
         PracticeChecks(Check);
         Console.WriteLine("Practice ghost:");
         GhostChecks(Check);
+        Console.WriteLine("Strafe helper:");
+        StrafeHelperChecks(Check);
         Console.WriteLine("HUD styles:");
         HudChecks(Check);
         Console.WriteLine("Rendered art pack:");
@@ -1071,6 +1073,107 @@ public static class Headless
               "the pause menu's items all fit above its footer");
         check(Renderer.OptionsTop + (opts - 1) * Renderer.OptionsRow + 9 < Renderer.OptionsFooter && Renderer.OptionsFooter + 8 <= Renderer.H,
               $"so do all {opts} Options items");
+    }
+
+    static void StrafeHelperChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        float fps = 35;
+        void Tick(Input i, int n = 1) { for (int k = 0; k < n; k++) g.Update(i, 1f / fps); }
+        g.StartPractice(PClass.Fighter);
+        g.Vars.NoClip = true; // room to run circles
+        var p = g.P;
+        float run = g.RunSpeed, deg = 180 / MathF.PI;
+
+        // the zone, from Quake's air acceleration: just past square-on to your velocity, narrowing with speed
+        p.VX = run; p.VY = 0;
+        var (best, lo, hi) = g.StrafeZone(MathF.PI / 2);
+        check(best * deg > 0 && best * deg < 5 && lo < 0 && hi > best, $"holding D at run speed, the best view is {best * deg:0.0} degrees right of your velocity, in a zone {lo * deg:0.0} to {hi * deg:0.0}");
+        var (bestA, loA, hiA) = g.StrafeZone(-MathF.PI / 2);
+        check(MathF.Abs(bestA + best) < 1e-5f && MathF.Abs(loA + hi) < 1e-5f, "holding A mirrors it");
+        check(MathF.Abs(g.StrafeZone(MathF.PI / 4).best - (MathF.PI / 4 + best)) < 1e-4f, "with W and D the view sits 45 degrees further round");
+        p.VX = run * 2;
+        var (_, lo2, hi2) = g.StrafeZone(MathF.PI / 2);
+        check(hi2 - lo2 < (hi - lo) * 0.7f, $"at double speed the zone is narrower ({(hi2 - lo2) * deg:0.0} vs {(hi - lo) * deg:0.0} degrees)");
+
+        // it's right: aiming at the best angle gains speed, outside the zone loses it
+        float Hop(float offset)
+        {
+            p.X = g.Level.StartX; p.Y = g.Level.StartY; p.Z = 0; p.VZ = 0; p.VX = run * 1.5f; p.VY = 0; p.Angle = 0;
+            Tick(new Input { Jump = true, Strafe = 1 });
+            while (!p.OnGround) { p.Angle = MathF.Atan2(p.VY, p.VX) + g.StrafeZone(MathF.PI / 2).best + offset; Tick(new Input { Strafe = 1 }); }
+            return p.HSpeed / (run * 1.5f);
+        }
+        float atBest = Hop(0), past = Hop(10 / deg), square = Hop(-12 / deg);
+        check(atBest > 1.02f && past < 1f && square < 1.005f, $"a hop at the best angle gains ({atBest:0.000}x); past the zone you lose speed ({past:0.000}x), short of it you gain none ({square:0.000}x)");
+
+        // following the helper, and nothing else, builds speed: hold the key it lights, turn the way it says, jump when it says
+        float Follow(int hops)
+        {
+            p.X = g.Level.StartX; p.Y = g.Level.StartY; p.Z = 0; p.VZ = 0; p.VX = p.VY = 0; p.Angle = 0;
+            for (int k = 0; k < 2 * fps && g.StrafeAdvice() is not { Jump: true }; k++) Tick(new Input { Move = 1 });
+            for (int h = 0; h < hops; h++)
+            {
+                Tick(new Input { Jump = true, Move = 1 });
+                while (!p.OnGround)
+                {
+                    if (g.StrafeAdvice() is not { } tip) { Tick(default); continue; }
+                    Tick(new Input { Strafe = tip.Side, Move = tip.WantForward ? 1 : 0, LookX = tip.Target / (0.0025f * g.Vars.Sens) });
+                }
+            }
+            return p.HSpeed / run;
+        }
+        float followed = Follow(6);
+        check(followed > 1.5f, $"doing what the helper shows builds speed: {followed * 100:0}% of a run after six hops");
+        fps = 120;
+        float fast = Follow(6);
+        fps = 35;
+        check(fast > 1.5f, $"at 120 frames a second too ({fast * 100:0}%)");
+
+        // what it shows
+        p.X = g.Level.StartX; p.Y = g.Level.StartY; p.Z = 0; p.VX = run; p.VY = 0; p.Angle = 0;
+        p.VX = 0;
+        Tick(new Input { Move = 1 });
+        check(g.StrafeAdvice() is { Air: false, WantForward: true, Jump: false }, "on the ground it says run forward");
+        Tick(new Input { Move = 1 }, 20);
+        check(g.StrafeAdvice() is { Air: false, Jump: true }, "and jump once you're up to speed");
+        Tick(new Input { Jump = true, Move = 1 });
+        p.Angle = MathF.Atan2(p.VY, p.VX) + 0.3f;
+        Tick(default);
+        var air = g.StrafeAdvice().Value;
+        check(air.Air && air.Side == 1 && !air.HeldOk && air.Target < 0 && !air.InZone, "in the air, looking right of your velocity, it asks for D and a turn back left");
+        Tick(new Input { Strafe = 1 });
+        p.Angle = MathF.Atan2(p.VY, p.VX) + g.StrafeZone(MathF.PI / 2).best;
+        air = g.StrafeAdvice().Value;
+        check(air.HeldOk && air.InZone && MathF.Abs(air.Target) < 0.01f / deg, "holding D and aimed at the best angle, you're in the zone with the tick on your view");
+        Tick(new Input { Strafe = 1 });
+        air = g.StrafeAdvice().Value;
+        check(air.Target > 0, "a frame later your velocity has swung right, so it says keep turning right");
+        var r = new Renderer();
+        r.Render(g); var shown = (uint[])r.Fb.Clone();
+        g.Vars.StrafeHelp = 0;
+        check(g.StrafeAdvice() == null, "'strafehelp 0' turns it off");
+        r.Render(g);
+        int drawn = shown.Zip(r.Fb).Count(t => t.First != t.Second);
+        check(drawn > 150, $"it's drawn above the aim point ({drawn} pixels)");
+        g.Vars.StrafeHelp = 1;
+        g.Vars.QuakeMove = false;
+        check(g.StrafeAdvice() == null, "it's hidden with classic movement");
+        g.Vars.QuakeMove = true;
+        while (!p.OnGround) Tick(default);
+
+        var hub = new Game { FixedSeed = 1 };
+        hub.NewGame(PClass.Fighter);
+        hub.P.VX = hub.RunSpeed;
+        hub.Update(new Input { Move = 1 }, 1f / 35f);
+        check(hub.StrafeAdvice() == null, "by default it only shows on the practice course");
+        hub.Con.Execute("strafehelp 2");
+        check(hub.StrafeAdvice() != null && Settings.Lines(hub).Contains("strafehelp 2"), "'strafehelp 2' shows it everywhere, saved with the settings");
+        hub.Menu.Show(MenuPage.Options);
+        hub.Menu.Cursor = Array.IndexOf(hub.Menu.Items(MenuPage.Options), "Strafe helper");
+        check(hub.Menu.Value(hub.Menu.Cursor) == "ALWAYS", "Options shows Strafe helper: ALWAYS");
+        hub.Menu.Update(new Input { Right = true }, 1f / 35f);
+        check(hub.Vars.StrafeHelp == 0 && hub.Menu.Value(hub.Menu.Cursor) == "OFF", "and steps round to OFF");
     }
 
     static void HudChecks(Action<bool, string> check)
@@ -3164,6 +3267,19 @@ public static class Headless
         PlaceCam(5.2f, 5.5f, 2.5f, 0, 0.02f, -8);
         g.Messages.Clear();
         Shot("86_practice_ghost");
+
+        // the strafe helper mid-hop at 170% of a run, holding D: a little behind the turn, then in the zone
+        g.Ghost.Seek(0.2f);
+        PlaceCam(8.5f, 5.5f, 2.5f, 0.35f, 0, -4);
+        g.P.Flying = false; g.P.VZ = 0.8f;
+        float hv = g.RunSpeed * 1.7f, head = 0.35f;
+        g.P.VX = MathF.Cos(head) * hv; g.P.VY = MathF.Sin(head) * hv;
+        g.InMove = 0; g.InStrafe = 1;
+        g.P.Angle = head + g.StrafeZone(MathF.PI / 2).best - 9 * MathF.PI / 180;
+        Shot("88_strafe_helper_turn");
+        g.P.Angle = head + g.StrafeZone(MathF.PI / 2).best;
+        Shot("89_strafe_helper_zone");
+        g.P.VX = g.P.VY = 0; g.P.Z = 0;
         g.Paused = true; g.Menu.Show(MenuPage.Pause);
         Shot("87_practice_pause");
         g.Menu.Close(); g.Paused = false; g.Vars.Freeze = false;

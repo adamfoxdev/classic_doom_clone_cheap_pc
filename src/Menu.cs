@@ -62,7 +62,7 @@ public sealed class MenuSystem
         MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
-        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Back" },
+        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
     };
 
@@ -82,6 +82,7 @@ public sealed class MenuSystem
             8 => v.Crosshair.ToString().ToUpperInvariant(),
             9 => v.QuakeMove ? "QUAKE" : "CLASSIC",
             10 => v.Ghost ? "ON" : "OFF",
+            11 => v.StrafeHelp switch { 0 => "OFF", 1 => "PRACTICE", _ => "ALWAYS" },
             _ => "",
         };
     }
@@ -189,6 +190,10 @@ public sealed class MenuSystem
                     v.Ghost = !v.Ghost;
                     Say(v.Ghost ? "Your best practice run races you as a ghost." : "No practice ghost.");
                     break;
+                case 11:
+                    v.StrafeHelp = (v.StrafeHelp + dir + 3) % 3;
+                    Say(v.StrafeHelp switch { 0 => "No strafe helper.", 1 => "Strafe helper on the practice course.", _ => "Strafe helper everywhere." });
+                    break;
                 default: if (inp.Confirm) Back(); return;
             }
             _g.PlaySound(Sfx.Pickup, 0.6f);
@@ -241,6 +246,7 @@ public static class Settings
         yield return "crosshair " + (int)g.Vars.Crosshair;
         yield return "quakemove " + (g.Vars.QuakeMove ? 1 : 0);
         yield return "ghost " + (g.Vars.Ghost ? 1 : 0);
+        yield return "strafehelp " + g.Vars.StrafeHelp;
         yield return "name " + g.RunnerName;
     }
 

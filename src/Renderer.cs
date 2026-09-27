@@ -49,6 +49,7 @@ public sealed class Renderer
         DrawWeapon(g);
         DrawScreenTint(g);
         DrawCrosshair(g);
+        if (g.Vars.Hud != HudStyle.Off && !g.ShowMap) DrawStrafeHelper(g);
         if (g.ShowMap) DrawAutomap(g);
         DrawHud(g);
         DrawMessages(g);
@@ -67,7 +68,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int PauseTop = 64, PauseRow = 12, PauseFooter = 156, OptionsTop = 38, OptionsRow = 12, OptionsFooter = 188;
+    public const int PauseTop = 64, PauseRow = 12, PauseFooter = 156, OptionsTop = 33, OptionsRow = 12, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected)
     {
@@ -97,7 +98,7 @@ public sealed class Renderer
                 break;
 
             case MenuPage.Options:
-                CenterText("OPTIONS", 12, Col.Rgb(230, 190, 80), 2);
+                CenterText("OPTIONS", 8, Col.Rgb(230, 190, 80), 2);
                 for (int i = 0; i < items.Length; i++)
                 {
                     int y = OptionsTop + i * OptionsRow;
@@ -730,6 +731,53 @@ public sealed class Renderer
                 for (int dx = -1; dx <= 1; dx++)
                     if ((dx == 0) != (dy == 0)) Put(cx + x + dx, cy + y + dy, dark);
         foreach (var (x, y) in pts) Put(cx + x, cy + y, light);
+    }
+
+    /// <summary>
+    /// The strafe helper, above the aim point: the keys to hold (green when you're holding them, red for a key that's
+    /// costing you speed), a JUMP bar that lights as you land, and in the air a turn gauge: the green band is the
+    /// view angles that gain speed, the yellow tick the best one, the white mark your view. Turn the mouse to keep the
+    /// tick on the mark: it keeps moving, since your velocity swings round as you strafe.
+    /// </summary>
+    void DrawStrafeHelper(Game g)
+    {
+        if (g.StrafeAdvice() is not { } tip) return;
+        int cx = W / 2, cy = (int)MathF.Round(ViewH / 2f + g.P.Pitch);
+        uint on = Col.Rgb(90, 230, 120), want = Col.Rgb(255, 220, 90), wrong = Col.Rgb(240, 80, 60), idle = Col.Rgb(70, 74, 86), ink = Col.Rgb(12, 12, 16);
+        bool blink = ((int)(g.Time * 6) & 1) == 0;
+
+        void Key(int x, int y, int w, string label, bool wanted, bool held)
+        {
+            uint fill = held ? (wanted ? on : wrong) : wanted ? (blink ? want : Col.Shade(want, 150)) : idle;
+            Rect(x - 1, y - 1, w + 2, 12, ink);
+            Rect(x, y, w, 10, fill);
+            Font.Draw(Fb, W, H, x + (w - Font.Width(label)) / 2, y + 1, label, held || wanted ? ink : Col.Rgb(150, 154, 166), 1, false);
+        }
+        int ky = cy - 50;
+        bool wantW = !tip.Air || tip.WantForward, wantA = tip.Air && tip.Side < 0, wantD = tip.Air && tip.Side > 0;
+        Key(cx - 21, ky, 12, "A", wantA, g.InStrafe < 0);
+        Key(cx - 6, ky, 12, "W", wantW, g.InMove > 0);
+        Key(cx + 9, ky, 12, "D", wantD, g.InStrafe > 0);
+        Key(cx - 21, ky + 13, 42, "JUMP", tip.Jump, false);
+
+        if (!tip.Air) return;
+        // the turn gauge: 2 pixels a degree, 30 degrees each side of your view
+        const float px = 2 * 180 / MathF.PI;
+        int gy = cy - 22, half = 60;
+        Rect(cx - half, gy, half * 2 + 1, 1, idle);
+        int zl = Math.Clamp(cx + (int)MathF.Round(tip.Lo * px), cx - half, cx + half), zh = Math.Clamp(cx + (int)MathF.Round(tip.Hi * px), cx - half, cx + half);
+        if (zh > zl) Rect(zl, gy - 1, zh - zl + 1, 3, tip.InZone ? on : Col.Shade(on, 150));
+        int tx = cx + (int)MathF.Round(tip.Target * px);
+        if (tx < cx - half) Text(cx - half - 8, gy - 3, "<", want);
+        else if (tx > cx + half) Text(cx + half + 3, gy - 3, ">", want);
+        else Rect(tx, gy - 3, 1, 7, want);
+        Rect(cx, gy + 2, 1, 3, Col.Rgb(250, 250, 250));
+        Rect(cx - 1, gy + 4, 3, 1, Col.Rgb(250, 250, 250));
+        // your velocity swings round as you gain speed, so there's no holding still: in the zone, keep turning the way
+        // your strafe key curves you; outside it, turn toward the tick (faster, or ease off)
+        string hint = tip.InZone ? (tip.Side > 0 ? "GOOD, KEEP TURNING >" : "< GOOD, KEEP TURNING") : tip.Target > 0 ? "TURN >" : "< TURN";
+        uint hc = tip.InZone ? on : want;
+        Text(cx - Font.Width(hint) / 2, gy + 7, hint, hc);
     }
 
     void DrawScreenTint(Game g)
