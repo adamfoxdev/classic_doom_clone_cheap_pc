@@ -89,6 +89,8 @@ public static class Headless
         CheckpointChecks(Check);
         Console.WriteLine("Rendered art pack:");
         RenderedArtChecks(Check);
+        Console.WriteLine("Map files and the HTML editor:");
+        MapFileChecks(Check);
 
         Console.WriteLine("Audio synthesis:");
         SoundChecks(Check);
@@ -241,6 +243,67 @@ public static class Headless
         WalkTo(10.5f, 13.5f); WalkTo(9.9f, 16.5f);
         for (int k = 0; k < 35 * 3 && p.FloorZ == 0; k++) { Face(11.5f, 17.5f); Tick(new Input { Move = 1 }); }
         check(p.FloorZ == 8.5f && g.Messages.Any(m => m.text.Contains("beams you up")), "stepping on the lift pad takes you back up to the summit");
+    }
+
+    static void MapFileChecks(Action<bool, string> check)
+    {
+        // the HTML editor's built-in map menu must match the maps in src/Level.cs
+        var js = MapFiles.EditorMapsPath;
+        if (js != null && File.Exists(js))
+            check(File.ReadAllText(js).Replace("\r", "") == MapFiles.BuiltinMapsJs(),
+                  "tools/editor/builtin-maps.js is up to date (else run: dotnet run -- --export-editor-maps)");
+        else Console.WriteLine("  skip builtin-maps.js check (not running from the repository)");
+
+        var dir = Path.Combine(Path.GetTempPath(), $"hexen_maps_{Environment.ProcessId}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var outWriter = Console.Out;
+            Console.SetOut(TextWriter.Null);
+            MapFiles.Export(dir);
+            Console.SetOut(outWriter);
+            var files = Directory.GetFiles(dir, "*.hxm");
+            check(files.Length == Maps.Hub.Length && files.All(f => MapDoc.Parse(File.ReadAllText(f)).Rows().Length > 0),
+                  $"--export-maps writes every built-in map ({files.Length})");
+
+            // a map to play-test: start, exit, a wall between them with a door
+            string path = Path.Combine(dir, "test.hxm");
+            var doc = new MapDoc(12, 8) { Name = "Reload Test" };
+            doc[2, 2] = '@'; doc[9, 5] = 'E';
+            File.WriteAllText(path, doc.Serialize());
+            check(MapFiles.TryLoad(path, out _) != null && MapFiles.TryLoad(Path.Combine(dir, "missing.hxm"), out var err) == null && err != null,
+                  "map files load, and a missing one reports why");
+            File.WriteAllText(Path.Combine(dir, "nostart.hxm"), new MapDoc(6, 6).Serialize());
+            check(MapFiles.TryLoad(Path.Combine(dir, "nostart.hxm"), out var err2) == null && err2.Contains("player start"), "a map without a start is refused");
+
+            var g = new Game { FixedSeed = 1 };
+            var loaded = MapFiles.TryLoad(path, out _);
+            g.Editor.Doc = loaded;
+            g.StartTest(loaded.ToDef(), PClass.Mage);
+            var watcher = new MapWatcher(path);
+            g.P.X = 6.5f; g.P.Y = 3.5f; g.P.Angle = 1.2f;
+            check(!watcher.Poll(g, 1f), "nothing reloads until the file changes");
+            doc[6, 5] = 'e';
+            File.WriteAllText(path, doc.Serialize());
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(5));
+            check(watcher.Poll(g, 1f) && g.TestingMap && g.Level.Things.Any(t => t is Monster) && g.P.Class == PClass.Mage,
+                  "saving the file reloads the play-test with the new map");
+            check(MathF.Abs(g.P.X - 6.5f) < 0.01f && MathF.Abs(g.P.Y - 3.5f) < 0.01f && MathF.Abs(g.P.Angle - 1.2f) < 0.01f,
+                  "and keeps you where you were");
+            check(g.Editor.Doc.Cells[5 * 12 + 6] == 'e', "Back to editor shows the reloaded map");
+            File.WriteAllText(path, "garbage");
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(10));
+            check(!watcher.Poll(g, 1f) && g.Messages.Last().text.StartsWith("Can't reload"), "a broken save is reported, and the game keeps running");
+
+            // --check-map prints the same checks as the editors
+            var sw = new StringWriter();
+            Console.SetOut(sw);
+            File.WriteAllText(path, doc.Serialize());
+            int code = MapFiles.Check(path);
+            Console.SetOut(outWriter);
+            check(code == 0 && sw.ToString().Trim() == "ok", $"--check-map passes a good map ({sw.ToString().Trim()})");
+        }
+        finally { Directory.Delete(dir, true); }
     }
 
     static void RenderedArtChecks(Action<bool, string> check)

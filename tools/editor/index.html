@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hexen Sharp Map Editor</title>
+<style>
+  :root {
+    --bg: #15171c; --panel: #1d2027; --panel2: #252932; --line: #333845; --text: #e4e1da; --dim: #9aa0ad;
+    --accent: #e8b44a; --accent2: #6fb3ff; --bad: #ff6b5a; --warn: #f0c050; --ok: #7ddc8a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+         display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+  button, select, input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+         border-radius: 5px; padding: 4px 8px; }
+  button { cursor: pointer; }
+  button:hover { border-color: #56607a; }
+  button.on { background: #3b3322; border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=number] { width: 64px; }
+  header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; background: var(--panel);
+           border-bottom: 1px solid var(--line); }
+  header .title { font-weight: 700; color: var(--accent); margin-right: 8px; white-space: nowrap; }
+  header .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+  header .group { display: flex; gap: 3px; }
+  main { display: grid; grid-template-columns: 230px 1fr 280px; min-height: 0; }
+  aside { background: var(--panel); overflow-y: auto; padding: 8px; min-height: 0; }
+  aside.left { border-right: 1px solid var(--line); }
+  aside.right { border-left: 1px solid var(--line); }
+  h3 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  h3:first-child { margin-top: 0; }
+  .pal { display: grid; grid-template-columns: 1fr; gap: 2px; }
+  .pal button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 3px 6px; border-color: transparent;
+                background: transparent; }
+  .pal button:hover { background: var(--panel2); }
+  .pal button.on { background: #3b3322; border-color: var(--accent); color: var(--text); }
+  .pal canvas { width: 22px; height: 22px; image-rendering: pixelated; border-radius: 3px; flex: none; }
+  .pal .glyph { margin-left: auto; font-family: ui-monospace, monospace; color: var(--dim); }
+  #search { width: 100%; margin-bottom: 6px; }
+  #view { position: relative; overflow: auto; background: #0e0f12; min-height: 0; }
+  #view.pan { cursor: grab; }
+  #map { display: block; margin: 24px; image-rendering: pixelated; }
+  .field { display: grid; grid-template-columns: 90px 1fr; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .field input[type=text], .field select { width: 100%; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .issues { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+  .issues li { padding: 5px 7px; border-radius: 5px; background: var(--panel2); border-left: 3px solid var(--warn); cursor: default; }
+  .issues li.block { border-left-color: var(--bad); }
+  .issues li.hint { border-left-color: var(--accent2); color: var(--dim); }
+  .issues li.ok { border-left-color: var(--ok); }
+  .issues li[data-cells] { cursor: pointer; }
+  .stats { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; color: var(--dim); }
+  .stats b { color: var(--text); font-weight: 600; text-align: right; }
+  code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+  .cmd { display: block; background: #101217; border: 1px solid var(--line); border-radius: 5px; padding: 6px; margin: 4px 0;
+         white-space: pre-wrap; word-break: break-all; user-select: all; }
+  footer { display: flex; gap: 16px; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line);
+           color: var(--dim); white-space: nowrap; overflow: hidden; }
+  footer b { color: var(--text); font-weight: 600; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; max-width: 760px; width: 90vw; }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog textarea { width: 100%; height: 50vh; background: #101217; color: var(--text); border: 1px solid var(--line);
+                    border-radius: 5px; font: 12px/1.3 ui-monospace, monospace; padding: 8px; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+  .keys kbd { font-family: ui-monospace, monospace; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px;
+              padding: 0 5px; white-space: nowrap; }
+  .drop { position: fixed; inset: 0; background: rgba(232,180,74,.12); border: 3px dashed var(--accent); display: none;
+          align-items: center; justify-content: center; font-size: 22px; color: var(--accent); pointer-events: none; z-index: 5; }
+  body.dragging .drop { display: flex; }
+  .toast { position: fixed; bottom: 34px; left: 50%; transform: translateX(-50%); background: #2b3a2c; border: 1px solid var(--ok);
+           padding: 6px 14px; border-radius: 6px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  @media (max-width: 900px) { main { grid-template-columns: 180px 1fr; } aside.right { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="title">Hexen Sharp · Map Editor</span>
+  <div class="group">
+    <button id="bNew" title="New map">New</button>
+    <button id="bOpen" title="Open a .hxm file (Ctrl+O)">Open…</button>
+    <select id="builtin" title="Start from one of the game's built-in maps"><option value="">Built-in maps…</option></select>
+    <button id="bSave" title="Save (Ctrl+S)">Save</button>
+    <button id="bSaveAs" title="Save as a new file">Save as…</button>
+    <button id="bText" title="View, copy or paste the map as text">Text</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <button id="bUndo" title="Undo (Ctrl+Z)">↶</button>
+    <button id="bRedo" title="Redo (Ctrl+Y)">↷</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group" id="layers">
+    <button data-layer="tiles" title="Walls, doors, markers, monsters and items (1)">Tiles</button>
+    <button data-layer="ceil" title="Ceiling heights (2)">Ceilings</button>
+    <button data-layer="floor" title="Floor heights: stairs, ledges, towers (3)">Floors</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group" id="tools">
+    <button data-tool="brush" title="Brush (B). Right-drag erases">Brush</button>
+    <button data-tool="rect" title="Rectangle (R). Shift = hollow room outline">Rect</button>
+    <button data-tool="fill" title="Flood fill (F)">Fill</button>
+    <button data-tool="pick" title="Pick (I, or middle / Alt+click)">Pick</button>
+    <button id="bStairs" title="Stair brush (K, floors layer): each cell one step higher">Stairs</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <button id="bZoomOut" title="Zoom out (-)">−</button>
+    <button id="bZoomIn" title="Zoom in (+)">+</button>
+    <button id="bGrid" class="on" title="Grid lines (G)">Grid</button>
+    <button id="bReach" title="Shade what you can reach from the start (V)">Reach</button>
+    <button id="bNames" title="Show sci-fi or fantasy names">Sci-fi names</button>
+    <button id="bHelp" title="Keys and tips (H)">?</button>
+  </div>
+</header>
+
+<main>
+  <aside class="left">
+    <input id="search" type="search" placeholder="Filter pieces…">
+    <div id="palette"></div>
+  </aside>
+  <div id="view"><canvas id="map"></canvas></div>
+  <aside class="right">
+    <h3>Map</h3>
+    <div class="field"><label for="fName">Name</label><input id="fName" type="text"></div>
+    <div class="field"><label for="fTheme">Theme</label><select id="fTheme"></select></div>
+    <div class="field"><label for="fHeight">Ceiling</label>
+      <select id="fHeight" title="Default ceiling height for cells without their own"></select></div>
+    <div class="field"><label>Size</label>
+      <div class="row" style="margin:0"><input id="fW" type="number" min="3" max="128"> × <input id="fH" type="number" min="3" max="128">
+      <button id="bResize" title="Resize, keeping the top-left corner">Apply</button></div></div>
+    <h3>Checks</h3>
+    <ul class="issues" id="issues"></ul>
+    <h3>Contents</h3>
+    <div class="stats" id="stats"></div>
+    <h3>Play-test in the game</h3>
+    <div style="color:var(--dim)">Save the map, then run from the repository root:</div>
+    <code class="cmd" id="playCmd"></code>
+    <div style="color:var(--dim)">The game reloads the map each time you save it here, keeping your position.
+      Add <code>--class cleric</code> / <code>mage</code> or <code>--relaxed</code> to change how you play.</div>
+  </aside>
+</main>
+
+<footer>
+  <span id="sCell">–</span><span id="sInfo"></span><span id="sFile" style="margin-left:auto"></span>
+</footer>
+
+<input id="fileInput" type="file" accept=".hxm,.txt" hidden>
+<div class="drop">Drop a .hxm map to open it</div>
+<div class="toast" id="toast"></div>
+
+<dialog id="dText">
+  <h3>Map as text (the game's .hxm format)</h3>
+  <textarea id="tText" spellcheck="false"></textarea>
+  <div class="row" style="margin-top:8px">
+    <button id="bCopy">Copy</button>
+    <button id="bLoadText">Load this text</button>
+    <span id="tErr" style="color:var(--bad)"></span>
+    <button id="bCloseText" style="margin-left:auto">Close</button>
+  </div>
+</dialog>
+
+<dialog id="dNew">
+  <h3>New map</h3>
+  <div class="row">
+    <button data-size="32x24">32 × 24</button><button data-size="48x32">48 × 32</button><button data-size="20x16">20 × 16</button>
+    <span>or</span><input id="nW" type="number" value="32" min="3" max="128"> × <input id="nH" type="number" value="24" min="3" max="128">
+    <button id="bNewCustom">Create</button>
+  </div>
+  <div class="row"><button id="bCloseNew" style="margin-left:auto">Cancel</button></div>
+</dialog>
+
+<dialog id="dHelp">
+  <h3>Keys</h3>
+  <div class="keys">
+    <kbd>Left drag</kbd><span>paint with the current tool</span>
+    <kbd>Right drag</kbd><span>erase (floor, or the default height)</span>
+    <kbd>Middle / Alt+click</kbd><span>pick up the piece under the cursor</span>
+    <kbd>Space + drag</kbd><span>pan · <kbd>Ctrl+wheel</kbd> or <kbd>+</kbd>/<kbd>−</kbd> zoom</span>
+    <kbd>1 2 3</kbd><span>tiles / ceilings / floors layer (Tab cycles)</span>
+    <kbd>B R F I</kbd><span>brush, rectangle (Shift: hollow room), fill, pick</span>
+    <kbd>K</kbd><span>stair brush (floors layer): each cell you drag over is one step higher</span>
+    <kbd>[ ]</kbd><span>previous / next piece</span>
+    <kbd>G V</kbd><span>grid, reachability shading</span>
+    <kbd>Ctrl+Z / Ctrl+Y</kbd><span>undo / redo</span>
+    <kbd>Ctrl+S / Ctrl+O</kbd><span>save / open</span>
+  </div>
+  <h3>Tips</h3>
+  <p style="color:var(--dim)">
+    Heights: ceilings go from 1 to 10 units, floors from 0 to 8.75. You can walk up a rise of 0.5 and jump about
+    0.9 more; anything taller needs the jetpack (<code>J</code>). Ledges then count as reachable in the checks.
+    Checkpoint pads (<code>+</code>) claim the ledge they sit on; the lift pad (<code>=</code>) returns you to the
+    highest one reached. Portal digits only link maps in the built-in hub. Your work is kept in this browser
+    between visits, but Save writes the real file.
+  </p>
+  <div class="row"><button id="bCloseHelp" style="margin-left:auto">Close</button></div>
+</dialog>
+
+<script src="builtin-maps.js"></script>
+<script>
+"use strict";
+// ============================================================ the game's map format (mirrors src/Editor.cs and src/Level.cs)
+
+const THEMES = ["hall", "ice", "crypt", "arena", "spire"];
+const WALLS = "#BWMIODSFPLXZ";          // Level.WallGlyphs: these cells are solid...
+const DOORS = "DSFPZ";                  // ...except doors, gates and secret walls, which open
+const MAX_STEP = 0.5, JUMP_RISE = 0.9;  // Level.Rise(Walk) and Rise(Jump)
+const MIN_H = 1, MAX_H = 10;
+const HEIGHT_PAL = ".23456789abcdefghijk".split("");     // Editor.HeightPalette
+const FLOOR_PAL = ".123456789acegikmoqsuwy".split("");   // Editor.FloorPalette
+const STAIR_SEQ = ".123456789abcdefghijklmnopqrstuvwxyz"; // what the stair brush steps through
+
+// [glyph, fantasy name, sci-fi name, group]: Editor.Palette, with the sci-fi names from Words.cs
+const PIECES = [
+  ["#", "Stone wall", "Station wall panels", "Walls"], ["B", "Brick wall", "Pipe wall", "Walls"],
+  ["W", "Wood wall", "Bulkhead", "Walls"], ["M", "Mossy wall", "Hydroponics wall", "Walls"],
+  ["I", "Ice wall", "Frosted wall", "Walls"], ["O", "Marble wall", "White hull plating", "Walls"],
+  [".", "Floor (indoor)", "Floor (indoor)", "Floors"], [",", "Floor (outdoor, sky)", "Floor (open to space)", "Floors"],
+  ["D", "Door", "Door", "Doors"], ["S", "Steel key door", "Blue keycard door", "Doors"],
+  ["F", "Fire key door", "Red keycard door", "Doors"], ["P", "Portcullis", "Force field", "Doors"],
+  ["L", "Lever", "Switch", "Doors"], ["Z", "Secret wall", "Secret panel", "Doors"],
+  ["X", "Push block", "Push crate", "Puzzles"], ["^", "Pressure plate", "Pressure pad", "Puzzles"],
+  ["@", "Player start", "Player start", "Markers"], ["E", "Exit", "Exit teleporter", "Markers"],
+  ["1", "Portal 1", "Teleporter 1", "Markers"], ["2", "Portal 2", "Teleporter 2", "Markers"],
+  ["3", "Portal 3", "Teleporter 3", "Markers"], ["4", "Portal 4", "Teleporter 4", "Markers"],
+  ["*", "Arena spawn rune", "Arena spawn pad", "Markers"], ["!", "Arena altar", "Arena start pad", "Markers"],
+  ["+", "Checkpoint pad", "Checkpoint pad", "Markers"], ["=", "Lift pad (to checkpoint)", "Lift pad (to checkpoint)", "Markers"],
+  ["e", "Ettin", "Brute mech", "Monsters"], ["a", "Afrit", "Drone", "Monsters"], ["c", "Centaur", "Strider", "Monsters"],
+  ["C", "Slaughtaur", "Siege strider", "Monsters"], ["d", "Dark Bishop", "Psi wraith", "Monsters"],
+  ["H", "Heresiarch", "Overmind", "Monsters"],
+  ["h", "Crystal vial", "Stim pack", "Items"], ["q", "Quartz flask", "Medkit", "Items"], ["u", "Mystic urn", "Nano canister", "Items"],
+  ["b", "Blue mana", "Energy cells", "Items"], ["g", "Green mana", "Plasma cells", "Items"], ["r", "Mesh armor", "Armor vest", "Items"],
+  ["k", "Steel key", "Blue keycard", "Items"], ["f", "Fire key", "Red keycard", "Items"],
+  ["w", "Weapon piece 2", "Weapon crate 2", "Items"], ["x", "Weapon piece 3", "Weapon crate 3", "Items"],
+  ["$", "Chest", "Supply crate", "Items"], ["%", "Secret treasure", "Secret cache", "Items"],
+  ["&", "Lore stone", "Data terminal", "Items"], ["J", "Wings of Wrath", "Jetpack", "Items"],
+  ["t", "Torch", "Light pylon", "Decor"], ["p", "Pillar", "Pillar", "Decor"], ["T", "Tree", "Tree", "Decor"],
+];
+const KNOWN = new Set(PIECES.map(p => p[0]));
+const MONSTERS = "eacCdH", PICKUPS = "hqubgkfrwx%J", DECOR = "tpT";
+
+function heightFromGlyph(c, fallback) {
+  if (c >= "1" && c <= "9") return Math.min(MAX_H, Math.max(MIN_H, (c.charCodeAt(0) - 48) * 0.5));
+  if (c >= "a" && c <= "k") return 5 + (c.charCodeAt(0) - 97) * 0.5;
+  return fallback;
+}
+const isHeightGlyph = c => (c >= "2" && c <= "9") || (c >= "a" && c <= "k");
+function glyphFromHeight(h) {
+  const n = Math.min(MAX_H * 2, Math.max(2, Math.round(h * 2)));
+  return n <= 9 ? String.fromCharCode(48 + n) : String.fromCharCode(97 + n - 10);
+}
+function floorFromGlyph(c) {
+  if (c >= "1" && c <= "9") return (c.charCodeAt(0) - 48) * 0.25;
+  if (c >= "a" && c <= "z") return (10 + c.charCodeAt(0) - 97) * 0.25;
+  return 0;
+}
+const isFloorGlyph = c => (c >= "1" && c <= "9") || (c >= "a" && c <= "z");
+const isWall = c => WALLS.includes(c) && !DOORS.includes(c);
+
+function newDoc(w, h) {
+  const d = { name: "Untitled", theme: "hall", height: 1.5, w, h, cells: [], heights: [], floors: [] };
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      d.cells.push(x === 0 || y === 0 || x === w - 1 || y === h - 1 ? "#" : ".");
+      d.heights.push("."); d.floors.push(".");
+    }
+  return d;
+}
+
+/** C#'s "0.#" for the default height. */
+const fmtHeight = h => { const r = Math.round(h * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1); };
+const rowsOf = (d, arr) => Array.from({ length: d.h }, (_, y) => arr.slice(y * d.w, (y + 1) * d.w).join(""));
+
+/** MapDoc.Serialize */
+function serialize(d) {
+  const hasH = d.heights.some(c => c !== "."), hasF = d.floors.some(c => c !== ".");
+  return `# Hexen Sharp map\nname: ${d.name}\ntheme: ${d.theme}\nheight: ${fmtHeight(d.height)}\n---\n`
+    + rowsOf(d, d.cells).join("\n") + "\n"
+    + (hasH || hasF ? "---\n" + rowsOf(d, d.heights).join("\n") + "\n" : "")
+    + (hasF ? "---\n" + rowsOf(d, d.floors).join("\n") + "\n" : "");
+}
+
+/** MapDoc.Parse + MapDoc.FromDef */
+function parse(text) {
+  let name = "Untitled", theme = "hall", height = 1;
+  const rows = [], heights = [], floors = [];
+  let section = 0;
+  for (const raw of text.replace(/\r/g, "").split("\n")) {
+    if (raw.trim() === "---") { section++; continue; }
+    if (section === 1) { if (raw.length) rows.push(raw); continue; }
+    if (section === 2) { if (raw.length) heights.push(raw); continue; }
+    if (section >= 3) { if (raw.length) floors.push(raw); continue; }
+    const line = raw.trim();
+    if (line.startsWith("name:")) name = line.slice(5).trim();
+    else if (line.startsWith("theme:")) theme = line.slice(6).trim();
+    else if (line.startsWith("height:")) {
+      const h = parseFloat(line.slice(7).trim());
+      if (!isNaN(h)) height = Math.min(MAX_H, Math.max(MIN_H, Math.round(h * 2) / 2));
+    }
+  }
+  if (!rows.length) throw new Error("map has no rows");
+  if (!THEMES.includes(theme)) theme = "hall";
+  const w = Math.max(...rows.map(r => r.length)), h = rows.length;
+  const d = { name, theme, height, w, h, cells: [], heights: [], floors: [] };
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const c = x < rows[y].length && KNOWN.has(rows[y][x]) ? rows[y][x] : ".";
+      const hg = y < heights.length && x < heights[y].length ? heights[y][x] : ".";
+      const fg = y < floors.length && x < floors[y].length ? floors[y][x] : ".";
+      d.cells.push(c);
+      // store only what differs from the default, so the default stays editable
+      d.heights.push(isHeightGlyph(hg) && heightFromGlyph(hg, 1) !== d.height ? hg : ".");
+      d.floors.push(isFloorGlyph(fg) ? fg : ".");
+    }
+  return d;
+}
+
+/** Editor.FileName */
+function fileName(name) {
+  let safe = Array.from(name).map(c => /[\p{L}\p{N}]/u.test(c) ? c.toLowerCase() : "_").join("").replace(/^_+|_+$/g, "");
+  return (safe || "untitled") + ".hxm";
+}
+
+// ============================================================ reachability and checks (mirrors Level.Reachable and Editor.Validate)
+
+function floorAt(d, i) { return floorFromGlyph(d.floors[i]); }
+function ceilAt(d, i) {
+  const f = floorAt(d, i);
+  if (DOORS.includes(d.cells[i])) return f + MIN_H;
+  return Math.max(heightFromGlyph(d.heights[i], Math.min(MAX_H, Math.max(MIN_H, d.height))), f + MIN_H);
+}
+function startCell(d) { let s = -1; d.cells.forEach((c, i) => { if (c === "@") s = i; }); return s; } // the last one wins, as in Level
+/** Where you appear (Level.ArrivalCell): the start, else the first portal (hub maps you arrive at by portal). */
+function arrivalCell(d) {
+  const s = startCell(d);
+  if (s >= 0) return s;
+  const p = d.cells.findIndex(c => c >= "0" && c <= "9");
+  return p >= 0 ? p : Math.min(d.cells.length - 1, d.w + 1);
+}
+
+function reachable(d, from, rise) {
+  const seen = new Uint8Array(d.w * d.h);
+  if (from < 0) return seen;
+  const q = [from]; seen[from] = 1;
+  while (q.length) {
+    const c = q.shift(), x = c % d.w, y = (c / d.w) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= d.w || ny >= d.h) continue;
+      const i = ny * d.w + nx;
+      if (seen[i] || isWall(d.cells[i])) continue;
+      if (floorAt(d, i) > floorAt(d, c) + rise + 0.001) continue;
+      seen[i] = 1; q.push(i);
+    }
+  }
+  return seen;
+}
+const hasJetpack = d => d.cells.includes("J");
+const moveRise = d => hasJetpack(d) ? Infinity : MAX_STEP;
+
+/** Exactly the game editor's checks (same messages; the self-test compares them via --check-map). */
+function validateCore(d) {
+  const issues = [];
+  const start = startCell(d);
+  if (start < 0) { issues.push("! Place a player start (@) first."); return issues; }
+  const reach = reachable(d, start, moveRise(d));
+  let unreachable = 0;
+  d.cells.forEach((c, i) => { if ((MONSTERS + PICKUPS + "$").includes(c) && !reach[i]) unreachable++; });
+  const exit = d.cells.indexOf("E");
+  if (exit < 0) issues.push("No exit (E): the map can't be won.");
+  else if (!reach[exit]) issues.push("The exit can't be reached from the start.");
+  if (unreachable > 0) issues.push(`${unreachable} monster(s)/item(s) can't be reached.`);
+  if (d.cells.some(c => c >= "0" && c <= "9")) issues.push("Portals only link maps in the built-in hub.");
+  return issues;
+}
+
+/** The core checks with the cells they're about, plus extra hints the game doesn't make. */
+function validate(d) {
+  const out = [];
+  const cellsOf = pred => d.cells.map((c, i) => pred(c, i) ? i : -1).filter(i => i >= 0);
+  const start = startCell(d);
+  const reach = start >= 0 ? reachable(d, start, moveRise(d)) : null;
+  for (const msg of validateCore(d)) {
+    let cells = [];
+    if (msg.includes("exit")) cellsOf(c => c === "E").forEach(i => cells.push(i));
+    if (msg.includes("monster(s)")) cells = cellsOf((c, i) => (MONSTERS + PICKUPS + "$").includes(c) && !reach[i]);
+    if (msg.includes("Portals")) cells = cellsOf(c => c >= "0" && c <= "9");
+    out.push({ kind: msg.startsWith("!") ? "block" : "warn", text: msg.replace(/^! /, ""), cells });
+  }
+  const count = c => d.cells.filter(x => x === c).length;
+  if (count("@") > 1) out.push({ kind: "warn", text: `${count("@")} player starts: the game uses the last one.`, cells: cellsOf(c => c === "@") });
+  if ((count("L") || count("^")) && !count("P")) out.push({ kind: "hint", text: "Levers and plates open portcullises (P), but there are none.", cells: cellsOf(c => c === "L" || c === "^") });
+  if (count("P") && !count("L") && !count("^")) out.push({ kind: "warn", text: "A portcullis (P) needs a lever (L) or pressure plates (^) to open.", cells: cellsOf(c => c === "P") });
+  if (count("^") > count("X")) out.push({ kind: "warn", text: `${count("^")} pressure plates but only ${count("X")} push blocks.`, cells: cellsOf(c => c === "^") });
+  if (count("S") && !count("k")) out.push({ kind: "warn", text: "Steel key doors (S) but no steel key (k).", cells: cellsOf(c => c === "S") });
+  if (count("F") && !count("f")) out.push({ kind: "warn", text: "Fire key doors (F) but no fire key (f).", cells: cellsOf(c => c === "F") });
+  if (count("H")) out.push({ kind: "hint", text: "The exit stays sealed until the Heresiarch dies." , cells: [] });
+  if (count("=") && !count("+")) out.push({ kind: "hint", text: "A lift pad (=) does nothing without checkpoint pads (+).", cells: cellsOf(c => c === "=") });
+  if (reach && !hasJetpack(d)) {
+    const jump = reachable(d, start, JUMP_RISE);
+    const jumpOnly = cellsOf((c, i) => !reach[i] && !isWall(c) && jump[i]);
+    if (jumpOnly.length) out.push({ kind: "hint", text: `${jumpOnly.length} cell(s) need a jump to reach.`, cells: jumpOnly });
+  }
+  if (!out.length) out.push({ kind: "ok", text: "Ready to play.", cells: [] });
+  return out;
+}
+
+// ============================================================ editor state
+
+const $ = id => document.getElementById(id);
+const canvas = $("map"), ctx = canvas.getContext("2d");
+const ZOOMS = [8, 12, 16, 20, 24, 32, 40];
+const st = {
+  doc: newDoc(32, 24), layer: "tiles", tool: "brush", zoom: 3, grid: true, reach: false, scifi: true, stairs: false,
+  brush: { tiles: "#", ceil: "5", floor: "2" }, hover: -1, handle: null, fileLabel: "not saved", dirty: false,
+  undo: [], redo: [], highlight: [], rectFrom: -1, rectTo: -1, stroke: null,
+};
+
+const snap = () => { const d = st.doc; return { ...d, cells: d.cells.slice(), heights: d.heights.slice(), floors: d.floors.slice() }; };
+function pushUndo() { st.undo.push(snap()); if (st.undo.length > 200) st.undo.shift(); st.redo = []; }
+function undo() { if (!st.undo.length) return; st.redo.push(snap()); st.doc = st.undo.pop(); changed(true); }
+function redo() { if (!st.redo.length) return; st.undo.push(snap()); st.doc = st.redo.pop(); changed(true); }
+
+function layerArr() { return st.layer === "tiles" ? st.doc.cells : st.layer === "ceil" ? st.doc.heights : st.doc.floors; }
+const eraseGlyph = () => ".";
+
+function setCell(i, g) {
+  const arr = layerArr();
+  if (arr[i] === g) return false;
+  arr[i] = g; return true;
+}
+
+function floodFill(i, g) {
+  const arr = layerArr(), d = st.doc, from = arr[i];
+  if (from === g) return;
+  const q = [i]; arr[i] = g;
+  while (q.length) {
+    const c = q.pop(), x = c % d.w, y = (c / d.w) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy, n = ny * d.w + nx;
+      if (nx < 0 || ny < 0 || nx >= d.w || ny >= d.h || arr[n] !== from) continue;
+      // in the height layers, keep the fill inside the room: stop at walls
+      if (st.layer !== "tiles" && isWall(d.cells[n])) continue;
+      arr[n] = g; q.push(n);
+    }
+  }
+}
+
+function rectCells(a, b) {
+  const w = st.doc.w, x0 = Math.min(a % w, b % w), x1 = Math.max(a % w, b % w);
+  const y0 = Math.min((a / w) | 0, (b / w) | 0), y1 = Math.max((a / w) | 0, (b / w) | 0);
+  return { x0, x1, y0, y1 };
+}
+
+function resize(w, h) {
+  w = Math.max(3, Math.min(128, w | 0)); h = Math.max(3, Math.min(128, h | 0));
+  const d = st.doc;
+  if (w === d.w && h === d.h) return;
+  pushUndo();
+  const nd = newDoc(w, h);
+  Object.assign(nd, { name: d.name, theme: d.theme, height: d.height });
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (x < d.w && y < d.h) {
+        const j = y * d.w + x;
+        nd.cells[i] = d.cells[j]; nd.heights[i] = d.heights[j]; nd.floors[i] = d.floors[j];
+      } else nd.cells[i] = x === w - 1 || y === h - 1 ? "#" : ".";
+    }
+  st.doc = nd;
+  changed(true);
+}
+
+// ============================================================ drawing
+
+const COLORS = {
+  "#": "#6b707b", B: "#8b5140", W: "#7c5b37", M: "#4e6d3f", I: "#93c6da", O: "#cfccc4",
+  ".": "#2a2d35", ",": "#26392b", X: "#9b8e74", L: "#6b707b", Z: "#6b707b",
+  D: "#a3722f", S: "#4f79b4", F: "#c0472c", P: "#6d7280",
+};
+const THING_COLOR = { M: "#ff6b5a", I: "#f0c050", D: "#9fd08a" };
+
+function neighbourFloor(i) {
+  const d = st.doc, x = i % d.w, y = (i / d.w) | 0;
+  let out = 0;
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const nx = x + dx, ny = y + dy;
+    if (nx >= 0 && ny >= 0 && nx < d.w && ny < d.h && d.cells[ny * d.w + nx] === ",") out++;
+  }
+  return out >= 2 ? COLORS[","] : COLORS["."];
+}
+
+/** One glyph as a small icon, used by both the map and the palette. */
+function drawGlyph(g, c, x, y, s, under) {
+  const col = COLORS[g];
+  const letter = (txt, color) => {
+    if (s < 12) return;
+    c.fillStyle = color; c.font = `bold ${Math.max(8, s * 0.55)}px ui-monospace, monospace`;
+    c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(txt, x + s / 2, y + s / 2 + 1);
+  };
+  if (WALLS.includes(g) || g === "." || g === ",") {
+    c.fillStyle = g === "Z" ? COLORS["#"] : col; c.fillRect(x, y, s, s);
+    if (isWall(g) || g === "Z") { c.fillStyle = "rgba(255,255,255,.18)"; c.fillRect(x, y, s, Math.max(1, s / 8)); }
+    if (g === "D" || g === "S" || g === "F") { c.fillStyle = "rgba(0,0,0,.35)"; c.fillRect(x + s * .45, y, s * .1, s); }
+    if (g === "P") { c.fillStyle = "#2a2d35"; for (let k = 1; k < 4; k++) c.fillRect(x + k * s / 4 - 1, y, Math.max(1, s / 12), s); }
+    if (g === "L") { c.strokeStyle = "#f0c050"; c.lineWidth = Math.max(1, s / 8); c.beginPath(); c.moveTo(x + s * .3, y + s * .8); c.lineTo(x + s * .7, y + s * .25); c.stroke(); }
+    if (g === "X") { c.strokeStyle = "rgba(0,0,0,.45)"; c.lineWidth = Math.max(1, s / 10); c.strokeRect(x + s * .15, y + s * .15, s * .7, s * .7); c.beginPath(); c.moveTo(x + s * .15, y + s * .15); c.lineTo(x + s * .85, y + s * .85); c.moveTo(x + s * .85, y + s * .15); c.lineTo(x + s * .15, y + s * .85); c.stroke(); }
+    if (g === "Z") letter("?", "#ffe070");
+    if (g === "S") letter("S", "#e8f0ff");
+    if (g === "F") letter("F", "#fff0e0");
+    return;
+  }
+  c.fillStyle = under || COLORS["."]; c.fillRect(x, y, s, s);
+  const cx = x + s / 2, cy = y + s / 2, r = s * 0.36;
+  const circle = (fill, rr = r) => { c.fillStyle = fill; c.beginPath(); c.arc(cx, cy, rr, 0, Math.PI * 2); c.fill(); };
+  if (g === "@") { circle("#3fd46a"); letter("@", "#0b1a0f"); }
+  else if (g === "E") { circle("#ff5a3c"); letter("E", "#fff"); }
+  else if (g >= "0" && g <= "9") { circle("#3f8cff"); letter(g, "#fff"); }
+  else if (g === "*") { circle("#a456e6"); letter("*", "#fff"); }
+  else if (g === "!") { circle("#f0c040"); letter("!", "#3a2a00"); }
+  else if (g === "+") { circle("#46e08a"); letter("+", "#062010"); }
+  else if (g === "=") { circle("#d6f0ff"); letter("=", "#123"); }
+  else if (g === "^") { c.fillStyle = "#4f8f86"; c.fillRect(x + s * .15, y + s * .15, s * .7, s * .7); }
+  else if (MONSTERS.includes(g)) { circle(g === "H" ? "#ff3aa0" : THING_COLOR.M, g === "H" ? r * 1.15 : r); letter(g, "#200"); }
+  else if (DECOR.includes(g)) {
+    c.fillStyle = g === "T" ? "#4f9a4a" : g === "t" ? "#ffb347" : "#9aa0ad";
+    c.fillRect(cx - s * .15, cy - s * .3, s * .3, s * .6); letter(g, "#111");
+  } else {
+    // items: diamonds
+    const color = { k: "#6fa8ff", f: "#ff7050", J: "#8fe3ff", "&": "#62e0c0", $: "#c89b52", "%": "#ffe070", u: "#e8c050" }[g] || THING_COLOR.I;
+    c.fillStyle = color; c.beginPath();
+    c.moveTo(cx, cy - r); c.lineTo(cx + r, cy); c.lineTo(cx, cy + r); c.lineTo(cx - r, cy); c.closePath(); c.fill();
+    letter(g, "#1a1a1a");
+  }
+}
+
+function heightTint(h) { // blue low → orange tall
+  const t = (h - MIN_H) / (MAX_H - MIN_H);
+  return `rgba(${40 + 200 * t | 0},${90 + 60 * Math.sin(t * Math.PI) | 0},${200 - 170 * t | 0},.72)`;
+}
+function floorTint(f) { // green → yellow, then pink for towers
+  if (f <= 2.25) { const t = f / 2.25; return `rgba(${40 + 200 * t | 0},${110 + 120 * t | 0},${60 + 60 * t | 0},.72)`; }
+  const u = Math.min(1, (f - 2.25) / 6.5); return `rgba(240,${230 - 130 * u | 0},${120 + 110 * u | 0},.78)`;
+}
+
+function draw() {
+  const d = st.doc, s = ZOOMS[st.zoom];
+  const W = d.w * s, H = d.h * s;
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+  ctx.clearRect(0, 0, W, H);
+  const reach = st.reach ? reachable(d, arrivalCell(d), moveRise(d)) : null;
+  for (let y = 0; y < d.h; y++)
+    for (let x = 0; x < d.w; x++) {
+      const i = y * d.w + x, g = d.cells[i], px = x * s, py = y * s;
+      drawGlyph(g, ctx, px, py, s, neighbourFloor(i));
+      const f = floorAt(d, i);
+      if (st.layer === "tiles") {
+        if (f > 0 && !isWall(g)) { // show ledges and stairs as lighter floor
+          ctx.fillStyle = `rgba(255,236,170,${Math.min(0.45, 0.08 + f * 0.05)})`; ctx.fillRect(px, py, s, s);
+          if (s >= 20) { ctx.fillStyle = "#ffe9a8"; ctx.font = `${s * .32}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(f.toFixed(f % 1 ? 2 : 0).replace(/0$/, ""), px + 2, py + 1); }
+        }
+      } else if (!isWall(g)) {
+        const val = st.layer === "ceil" ? ceilAt(d, i) : f;
+        const own = (st.layer === "ceil" ? d.heights : d.floors)[i] !== ".";
+        ctx.fillStyle = st.layer === "ceil" ? heightTint(val) : floorTint(val); ctx.fillRect(px, py, s, s);
+        if (s >= 14) {
+          ctx.fillStyle = own ? "#fff" : "rgba(255,255,255,.55)";
+          ctx.font = `${own ? "bold " : ""}${s * .38}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(String(Math.round(val * 100) / 100), px + s / 2, py + s / 2 + 1);
+        }
+      }
+      if (reach && !isWall(g) && !reach[i]) {
+        ctx.fillStyle = "rgba(255,60,40,.28)"; ctx.fillRect(px, py, s, s);
+      }
+    }
+  if (st.grid && s >= 12) {
+    ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = 0; x <= d.w; x++) { ctx.moveTo(x * s + .5, 0); ctx.lineTo(x * s + .5, H); }
+    for (let y = 0; y <= d.h; y++) { ctx.moveTo(0, y * s + .5); ctx.lineTo(W, y * s + .5); }
+    ctx.stroke();
+  }
+  // highlighted cells from a clicked check
+  ctx.strokeStyle = "#ff5a3c"; ctx.lineWidth = 2;
+  for (const i of st.highlight) ctx.strokeRect((i % d.w) * s + 1, ((i / d.w) | 0) * s + 1, s - 2, s - 2);
+  // rectangle preview
+  if (st.rectFrom >= 0 && st.rectTo >= 0) {
+    const r = rectCells(st.rectFrom, st.rectTo);
+    ctx.strokeStyle = "#e8b44a"; ctx.setLineDash([4, 3]);
+    ctx.strokeRect(r.x0 * s + 1, r.y0 * s + 1, (r.x1 - r.x0 + 1) * s - 2, (r.y1 - r.y0 + 1) * s - 2);
+    ctx.setLineDash([]);
+  }
+  if (st.hover >= 0) {
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+    ctx.strokeRect((st.hover % d.w) * s + .5, ((st.hover / d.w) | 0) * s + .5, s - 1, s - 1);
+  }
+}
+
+// ============================================================ UI
+
+const label = g => { const p = PIECES.find(p => p[0] === g); return p ? (st.scifi ? p[2] : p[1]) : g; };
+function layerLabel(g) {
+  if (st.layer === "ceil") return g === "." ? `Default (${fmtHeight(st.doc.height)})` : `Ceiling ${heightFromGlyph(g, 1)}`;
+  if (st.layer === "floor") return g === "." ? "Ground (0)" : `Floor ${floorFromGlyph(g)}`;
+  return label(g);
+}
+
+function buildPalette() {
+  const box = $("palette"), q = $("search").value.trim().toLowerCase();
+  box.innerHTML = "";
+  const addBtn = (parent, g, text) => {
+    const b = document.createElement("button");
+    b.dataset.glyph = g;
+    const cv = document.createElement("canvas"); cv.width = cv.height = 22;
+    const c = cv.getContext("2d");
+    if (st.layer === "tiles") drawGlyph(g, c, 0, 0, 22, COLORS["."]);
+    else {
+      c.fillStyle = st.layer === "ceil" ? heightTint(g === "." ? st.doc.height : heightFromGlyph(g, 1)) : floorTint(floorFromGlyph(g));
+      c.fillRect(0, 0, 22, 22);
+    }
+    b.append(cv, document.createTextNode(text));
+    const gl = document.createElement("span"); gl.className = "glyph"; gl.textContent = g; b.append(gl);
+    if (st.brush[st.layer] === g) b.classList.add("on");
+    b.onclick = () => { st.brush[st.layer] = g; if (st.tool === "pick") setTool("brush"); buildPalette(); status(); };
+    parent.append(b);
+  };
+  if (st.layer === "tiles") {
+    let group = null, grid = null;
+    for (const [g, f, s, grp] of PIECES) {
+      const text = st.scifi ? s : f;
+      if (q && !(text.toLowerCase().includes(q) || f.toLowerCase().includes(q) || g === q)) continue;
+      if (grp !== group) { group = grp; const h = document.createElement("h3"); h.textContent = grp; box.append(h); grid = document.createElement("div"); grid.className = "pal"; box.append(grid); }
+      addBtn(grid, g, text);
+    }
+  } else {
+    const h = document.createElement("h3"); h.textContent = st.layer === "ceil" ? "Ceiling height" : "Floor height"; box.append(h);
+    const grid = document.createElement("div"); grid.className = "pal"; box.append(grid);
+    for (const g of st.layer === "ceil" ? HEIGHT_PAL : FLOOR_PAL) addBtn(grid, g, layerLabel(g));
+    const note = document.createElement("p"); note.style.color = "var(--dim)";
+    note.textContent = st.layer === "ceil"
+      ? "Ceilings are absolute heights, kept at least one storey above a raised floor. Doors are always one storey."
+      : "Walk up a rise of 0.5, jump about 0.9 more; taller ledges need the jetpack. K toggles the stair brush.";
+    box.append(note);
+  }
+}
+
+function setLayer(l) {
+  st.layer = l;
+  document.querySelectorAll("#layers button").forEach(b => b.classList.toggle("on", b.dataset.layer === l));
+  $("bStairs").disabled = l !== "floor";
+  buildPalette(); draw(); status();
+}
+function setTool(t) {
+  st.tool = t;
+  document.querySelectorAll("#tools button[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool === t));
+  status();
+}
+
+function refreshProps() {
+  const d = st.doc;
+  $("fName").value = d.name; $("fTheme").value = d.theme; $("fHeight").value = String(d.height);
+  $("fW").value = d.w; $("fH").value = d.h;
+  const file = st.handle?.name || fileName(d.name);
+  $("playCmd").textContent = `dotnet run -c Release -- --play path/to/${file}`;
+}
+
+function refreshChecks() {
+  const list = $("issues"); list.innerHTML = "";
+  for (const it of validate(st.doc)) {
+    const li = document.createElement("li"); li.className = it.kind; li.textContent = it.text;
+    if (it.cells.length) {
+      li.dataset.cells = it.cells.join(",");
+      li.title = "Click to show where";
+      li.onclick = () => { st.highlight = it.cells; draw(); scrollToCell(it.cells[0]); };
+    }
+    list.append(li);
+  }
+  const d = st.doc, n = set => d.cells.filter(c => set.includes(c)).length;
+  const rows = [
+    ["Monsters", n(MONSTERS)], ["Items", n(PICKUPS + "$&")], ["Doors and gates", n("DSFP")], ["Secret walls", n("Z")],
+    ["Levers / plates / blocks", `${n("L")} / ${n("^")} / ${n("X")}`], ["Lore stones", n("&")],
+    ["Checkpoints", n("+")], ["Highest floor", Math.max(0, ...d.floors.map(floorFromGlyph))],
+    ["Tallest ceiling", Math.max(...d.cells.map((c, i) => isWall(c) ? 0 : ceilAt(d, i)))],
+  ];
+  $("stats").innerHTML = rows.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("");
+}
+
+function status() {
+  const d = st.doc, i = st.hover;
+  if (i >= 0) {
+    const x = i % d.w, y = (i / d.w) | 0, g = d.cells[i];
+    $("sCell").innerHTML = `(${x}, ${y}) <b>${escapeHtml(label(g))}</b> <span class="mono">${escapeHtml(g)}</span>`;
+    $("sInfo").textContent = isWall(g) ? "" : `floor ${floorAt(d, i)} · ceiling ${ceilAt(d, i)}`;
+  } else { $("sCell").textContent = `${d.w} × ${d.h}`; $("sInfo").textContent = ""; }
+  const tool = st.tool === "brush" && st.stairs && st.layer === "floor" ? "stairs" : st.tool;
+  $("sFile").innerHTML = `${tool} · <b>${escapeHtml(layerLabel(st.brush[st.layer]))}</b> · ${escapeHtml(st.fileLabel)}${st.dirty ? " *" : ""}`;
+}
+const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+let checkQueued = false;
+function changed(structural) {
+  st.dirty = true;
+  if (structural) refreshProps();
+  draw(); status();
+  if (!checkQueued) { checkQueued = true; requestAnimationFrame(() => { checkQueued = false; refreshChecks(); autosave(); }); }
+}
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 1800); }
+
+function scrollToCell(i) {
+  const s = ZOOMS[st.zoom], v = $("view"), d = st.doc;
+  v.scrollTo({ left: (i % d.w) * s - v.clientWidth / 2 + 24, top: ((i / d.w) | 0) * s - v.clientHeight / 2 + 24, behavior: "smooth" });
+}
+
+// ---- mouse
+
+function cellAt(ev) {
+  const r = canvas.getBoundingClientRect(), s = ZOOMS[st.zoom], d = st.doc;
+  const x = Math.floor((ev.clientX - r.left) / s), y = Math.floor((ev.clientY - r.top) / s);
+  return x >= 0 && y >= 0 && x < d.w && y < d.h ? y * d.w + x : -1;
+}
+
+function lineCells(a, b) { // Bresenham, so fast strokes leave no gaps
+  const w = st.doc.w; let x0 = a % w, y0 = (a / w) | 0; const x1 = b % w, y1 = (b / w) | 0;
+  const out = [], dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) { out.push(y0 * w + x0); if (x0 === x1 && y0 === y1) break; const e2 = 2 * err; if (e2 >= dy) { err += dy; x0 += sx; } if (e2 <= dx) { err += dx; y0 += sy; } }
+  return out;
+}
+
+function pick(i) {
+  const g = layerArr()[i];
+  st.brush[st.layer] = g;
+  buildPalette(); status();
+  toast(`Picked ${layerLabel(g)}`);
+}
+
+let panning = null, spaceDown = false;
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+canvas.addEventListener("pointerdown", ev => {
+  const i = cellAt(ev);
+  if (spaceDown) { panning = { x: ev.clientX, y: ev.clientY, l: $("view").scrollLeft, t: $("view").scrollTop }; canvas.setPointerCapture(ev.pointerId); return; }
+  if (i < 0) return;
+  st.highlight = [];
+  if (ev.button === 1 || (ev.button === 0 && ev.altKey) || (ev.button === 0 && st.tool === "pick")) { ev.preventDefault(); pick(i); return; }
+  const erase = ev.button === 2;
+  canvas.setPointerCapture(ev.pointerId);
+  if (st.tool === "fill") { pushUndo(); floodFill(i, erase ? eraseGlyph() : st.brush[st.layer]); changed(false); return; }
+  if (st.tool === "rect") { st.rectFrom = st.rectTo = i; st.stroke = { erase, rect: true }; draw(); return; }
+  pushUndo();
+  st.stroke = { erase, last: i, stair: st.stairs && st.layer === "floor" && !erase ? { cell: -1, glyph: null } : null };
+  paintAt(i);
+});
+function paintAt(i) {
+  const s = st.stroke;
+  if (s.stair) {
+    if (s.stair.cell === i) return;
+    const g = s.stair.glyph === null ? st.brush.floor : STAIR_SEQ[Math.min(STAIR_SEQ.length - 1, STAIR_SEQ.indexOf(s.stair.glyph) + 1)];
+    s.stair = { cell: i, glyph: g };
+    setCell(i, g);
+  } else setCell(i, s.erase ? eraseGlyph() : st.brush[st.layer]);
+  changed(false);
+}
+canvas.addEventListener("pointermove", ev => {
+  if (panning) { $("view").scrollLeft = panning.l - (ev.clientX - panning.x); $("view").scrollTop = panning.t - (ev.clientY - panning.y); return; }
+  const i = cellAt(ev);
+  if (i !== st.hover) { st.hover = i; status(); draw(); }
+  if (!st.stroke || i < 0) return;
+  if (st.stroke.rect) { if (i !== st.rectTo) { st.rectTo = i; draw(); } return; }
+  if (i !== st.stroke.last) {
+    for (const c of lineCells(st.stroke.last, i).slice(1)) paintAt(c);
+    st.stroke.last = i;
+  }
+});
+canvas.addEventListener("pointerleave", () => { if (!st.stroke) { st.hover = -1; status(); draw(); } });
+window.addEventListener("pointerup", ev => {
+  if (panning) { panning = null; return; }
+  const s = st.stroke;
+  if (!s) return;
+  st.stroke = null;
+  if (s.rect && st.rectFrom >= 0) {
+    pushUndo();
+    const r = rectCells(st.rectFrom, st.rectTo), g = s.erase ? eraseGlyph() : st.brush[st.layer], w = st.doc.w;
+    for (let y = r.y0; y <= r.y1; y++)
+      for (let x = r.x0; x <= r.x1; x++)
+        if (!ev.shiftKey || x === r.x0 || x === r.x1 || y === r.y0 || y === r.y1) setCell(y * w + x, g);
+    st.rectFrom = st.rectTo = -1;
+    changed(false);
+  }
+});
+$("view").addEventListener("wheel", ev => {
+  if (!ev.ctrlKey) return;
+  ev.preventDefault();
+  zoom(ev.deltaY < 0 ? 1 : -1, ev);
+}, { passive: false });
+
+function zoom(dir, ev) {
+  const nz = Math.max(0, Math.min(ZOOMS.length - 1, st.zoom + dir));
+  if (nz === st.zoom) return;
+  const v = $("view"), r = canvas.getBoundingClientRect(), old = ZOOMS[st.zoom], s = ZOOMS[nz];
+  const mx = ev ? ev.clientX - r.left : v.clientWidth / 2, my = ev ? ev.clientY - r.top : v.clientHeight / 2;
+  st.zoom = nz; draw();
+  v.scrollLeft += mx * (s / old - 1); v.scrollTop += my * (s / old - 1);
+}
+
+// ---- files
+
+function load(text, how, handle = null) {
+  const d = parse(text);
+  if (st.doc) pushUndo();
+  st.doc = d; st.handle = handle; st.fileLabel = handle ? handle.name : how; st.highlight = [];
+  refreshProps(); changed(true); st.dirty = false; status();
+  toast(`Opened '${d.name}'`);
+}
+
+async function openFile() {
+  if (window.showOpenFilePicker) {
+    try {
+      const [h] = await showOpenFilePicker({ types: [{ description: "Hexen Sharp map", accept: { "text/plain": [".hxm"] } }] });
+      load(await (await h.getFile()).text(), h.name, h);
+      return;
+    } catch (e) { if (e.name === "AbortError") return; }
+  }
+  $("fileInput").click();
+}
+$("fileInput").onchange = async () => { const f = $("fileInput").files[0]; if (f) load(await f.text(), f.name); $("fileInput").value = ""; };
+
+async function save(as) {
+  const text = serialize(st.doc);
+  if (window.showSaveFilePicker) {
+    try {
+      if (as || !st.handle) st.handle = await showSaveFilePicker({ suggestedName: fileName(st.doc.name), types: [{ description: "Hexen Sharp map", accept: { "text/plain": [".hxm"] } }] });
+      const w = await st.handle.createWritable(); await w.write(text); await w.close();
+      st.fileLabel = st.handle.name; st.dirty = false; status(); refreshProps(); toast(`Saved ${st.handle.name}`);
+      return;
+    } catch (e) { if (e.name === "AbortError") return; }
+  }
+  // no direct file access (e.g. Firefox): download it instead
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  a.download = fileName(st.doc.name); a.click(); URL.revokeObjectURL(a.href);
+  st.fileLabel = a.download + " (downloaded)"; st.dirty = false; status(); toast(`Downloaded ${a.download}`);
+}
+
+function autosave() { try { localStorage.setItem("hexen-editor-draft", serialize(st.doc)); } catch { /* storage unavailable */ } }
+
+// drag and drop
+let dragDepth = 0;
+window.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
+window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", async e => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+  const item = [...e.dataTransfer.items].find(i => i.kind === "file");
+  if (!item) return;
+  const h = item.getAsFileSystemHandle ? await item.getAsFileSystemHandle() : null;
+  const f = h ? await h.getFile() : item.getAsFile();
+  try { load(await f.text(), f.name, h); } catch (err) { toast("Can't open: " + err.message); }
+});
+
+// ---- wiring
+
+$("bNew").onclick = () => $("dNew").showModal();
+$("bCloseNew").onclick = () => $("dNew").close();
+document.querySelectorAll("#dNew [data-size]").forEach(b => b.onclick = () => { const [w, h] = b.dataset.size.split("x").map(Number); newMap(w, h); });
+$("bNewCustom").onclick = () => newMap(+$("nW").value, +$("nH").value);
+function newMap(w, h) {
+  $("dNew").close(); pushUndo();
+  st.doc = newDoc(Math.max(3, Math.min(128, w)), Math.max(3, Math.min(128, h)));
+  st.handle = null; st.fileLabel = "not saved"; refreshProps(); changed(true);
+}
+$("bOpen").onclick = openFile;
+$("bSave").onclick = () => save(false);
+$("bSaveAs").onclick = () => save(true);
+$("bUndo").onclick = undo; $("bRedo").onclick = redo;
+$("bText").onclick = () => { $("tText").value = serialize(st.doc); $("tErr").textContent = ""; $("dText").showModal(); };
+$("bCloseText").onclick = () => $("dText").close();
+$("bCopy").onclick = async () => { try { await navigator.clipboard.writeText($("tText").value); toast("Copied"); } catch { $("tText").select(); document.execCommand("copy"); toast("Copied"); } };
+$("bLoadText").onclick = () => { try { load($("tText").value, "pasted text"); $("dText").close(); } catch (e) { $("tErr").textContent = e.message; } };
+$("bHelp").onclick = () => $("dHelp").showModal();
+$("bCloseHelp").onclick = () => $("dHelp").close();
+$("bZoomIn").onclick = () => zoom(1); $("bZoomOut").onclick = () => zoom(-1);
+$("bGrid").onclick = () => { st.grid = !st.grid; $("bGrid").classList.toggle("on", st.grid); draw(); };
+$("bReach").onclick = () => { st.reach = !st.reach; $("bReach").classList.toggle("on", st.reach); draw(); };
+$("bNames").onclick = () => { st.scifi = !st.scifi; $("bNames").textContent = st.scifi ? "Sci-fi names" : "Fantasy names"; buildPalette(); status(); };
+$("bStairs").onclick = () => { st.stairs = !st.stairs; $("bStairs").classList.toggle("on", st.stairs); status(); };
+document.querySelectorAll("#layers button").forEach(b => b.onclick = () => setLayer(b.dataset.layer));
+document.querySelectorAll("#tools button[data-tool]").forEach(b => b.onclick = () => setTool(b.dataset.tool));
+$("search").oninput = buildPalette;
+$("fName").oninput = () => { st.doc.name = $("fName").value; changed(false); refreshProps(); };
+for (const t of THEMES) $("fTheme").add(new Option(t, t));
+for (let h = MIN_H; h <= MAX_H; h += 0.5) $("fHeight").add(new Option(fmtHeight(h), String(h)));
+$("fTheme").onchange = () => { pushUndo(); st.doc.theme = $("fTheme").value; changed(false); };
+$("fHeight").onchange = () => { pushUndo(); st.doc.height = parseFloat($("fHeight").value); changed(false); buildPalette(); };
+$("bResize").onclick = () => resize(+$("fW").value, +$("fH").value);
+
+const builtins = window.HEXEN_BUILTIN_MAPS || [];
+for (const m of builtins) $("builtin").add(new Option(m.name, m.file));
+if (!builtins.length) $("builtin").hidden = true;
+$("builtin").onchange = () => {
+  const m = builtins.find(m => m.file === $("builtin").value);
+  if (m) load(m.text, m.file + " (template)");
+  $("builtin").value = "";
+};
+
+window.addEventListener("keydown", ev => {
+  if (ev.target.matches("input, textarea, select") || document.querySelector("dialog[open]")) return;
+  const k = ev.key.toLowerCase();
+  if (ev.ctrlKey || ev.metaKey) {
+    if (k === "z" && !ev.shiftKey) { ev.preventDefault(); undo(); }
+    else if (k === "y" || (k === "z" && ev.shiftKey)) { ev.preventDefault(); redo(); }
+    else if (k === "s") { ev.preventDefault(); save(ev.shiftKey); }
+    else if (k === "o") { ev.preventDefault(); openFile(); }
+    return;
+  }
+  if (ev.key === " ") { spaceDown = true; $("view").classList.add("pan"); ev.preventDefault(); return; }
+  if (ev.key === "Tab") { ev.preventDefault(); const ls = ["tiles", "ceil", "floor"]; setLayer(ls[(ls.indexOf(st.layer) + 1) % 3]); return; }
+  const map = { 1: () => setLayer("tiles"), 2: () => setLayer("ceil"), 3: () => setLayer("floor"), b: () => setTool("brush"),
+    r: () => setTool("rect"), f: () => setTool("fill"), i: () => setTool("pick"), g: () => $("bGrid").click(), v: () => $("bReach").click(),
+    k: () => { if (st.layer === "floor") $("bStairs").click(); }, h: () => $("bHelp").click(), "+": () => zoom(1), "=": () => zoom(1), "-": () => zoom(-1),
+    "[": () => cycleBrush(-1), "]": () => cycleBrush(1) };
+  if (map[k]) { ev.preventDefault(); map[k](); }
+});
+window.addEventListener("keyup", ev => { if (ev.key === " ") { spaceDown = false; $("view").classList.remove("pan"); } });
+function cycleBrush(dir) {
+  const list = st.layer === "tiles" ? PIECES.map(p => p[0]) : st.layer === "ceil" ? HEIGHT_PAL : FLOOR_PAL;
+  const i = list.indexOf(st.brush[st.layer]);
+  st.brush[st.layer] = list[(i + dir + list.length) % list.length];
+  buildPalette(); status();
+}
+window.addEventListener("beforeunload", e => { if (st.dirty) { autosave(); } });
+
+// start with the last draft, if any
+try {
+  const draft = localStorage.getItem("hexen-editor-draft");
+  if (draft) { st.doc = parse(draft); st.fileLabel = "restored draft"; }
+} catch { /* no storage, or a bad draft: start fresh */ }
+setLayer("tiles"); setTool("brush"); refreshProps(); refreshChecks(); draw(); status();
+
+// for scripted tests (tools/editor/test_editor.cjs)
+window.hexenEditor = { parse, serialize, validateCore, validate, reachable, fileName, state: st, load, setLayer, setTool, newMap, undo, redo, ZOOMS };
+</script>
+</body>
+</html>

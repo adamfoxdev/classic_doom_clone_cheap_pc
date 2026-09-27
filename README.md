@@ -246,6 +246,35 @@ half steps, `.` = default) and a third `---` line followed by a grid of floor he
 by hand too; files without heights are one storey everywhere.
 The console command `playmap <name>` plays a saved map directly.
 
+### HTML map editor
+
+For bigger editing sessions there's a browser editor in `tools/editor/index.html`. It's a single file with no
+dependencies: open it straight from disk in any modern browser. It reads and writes the same `.hxm` files as the
+in-game editor, and its checks give exactly the same messages.
+
+![HTML map editor](docs/html_editor.png)
+
+- **Painting:** brush, rectangle (Shift for a hollow room outline), flood fill and pick tools, with left-drag to
+  paint, right-drag to erase and middle/Alt+click to pick. Every piece is in the palette, with sci-fi or fantasy
+  names and a filter box.
+- **Heights:** tiles, ceilings and floors layers, with heights shown as numbers over a colour scale and the full
+  0–8.75 floor and 1–10 ceiling range. The stair brush climbs a step per cell.
+- **Checks:** a live list (the game's checks plus extra hints such as missing keys or levers), with a click to
+  highlight the cells involved. The **Reach** overlay shades everything you can't get to from the start or the
+  arrival portal.
+- **Editing:** undo/redo, zoom and pan, resize, and a **Built-in maps** menu to start from any hub map.
+- **Files:** Save writes the file directly in Chrome and Edge (other browsers download it). You can also drag a
+  file onto the page, or view/paste the map as text. Your draft is kept in the browser between visits.
+
+**Edit and play side by side:** save the map from the browser, then start the game on it:
+
+```sh
+dotnet run -c Release -- --play path/to/my_map.hxm [--class cleric|mage] [--relaxed]
+```
+
+Every time you save in the browser the game reloads the map and keeps your position, so you can tweak and test
+without restarting. `Esc → Back to editor` opens it in the in-game editor too.
+
 ## Options and key bindings
 
 Open **Options** from the title menu, or press `Esc` in game and pick Options.
@@ -301,7 +330,17 @@ Hexen's cheat codes work when typed during play (or in the console):
 dotnet run -c Release -- --selftest       # validates maps (reachability) and runs scripted gameplay checks
 dotnet run -c Release -- --shots shots    # renders scripted screenshots headlessly into ./shots
 dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styles, as WAV files into ./sounds
+dotnet run -c Release -- --play map.hxm   # play-tests a map file, reloading it whenever it's saved
+dotnet run -c Release -- --check-map map.hxm   # prints the editor's checks for a map (exit code 1 if unplayable)
+dotnet run -c Release -- --export-maps maps    # writes every built-in hub map as a .hxm file
+dotnet run -c Release -- --export-editor-maps  # refreshes the HTML editor's built-in maps after changing src/Level.cs
+NODE_PATH=$(npm root -g) node tools/editor/test_editor.cjs [shots]   # drives the HTML editor in headless Chromium
 ```
+
+The self-test fails if `tools/editor/builtin-maps.js` is out of date with the maps in `src/Level.cs`. The editor test
+needs Playwright and a `dotnet build -c Release`. It checks that every built-in map loads and saves back
+byte-for-byte, that the web editor's checks match `--check-map`, and that painting, stairs, fill, undo and resizing
+work.
 
 ## Rendered art pack (Blender)
 
@@ -363,6 +402,8 @@ lineups of every monster in both looks (`56_…`, `57_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless.cs` | `--selftest`, `--shots` and `--sounds` |
+| `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
+| `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |
 
 ### Map legend
 

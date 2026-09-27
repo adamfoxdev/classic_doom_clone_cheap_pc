@@ -337,7 +337,13 @@ public sealed class Editor
     // ------------------------------------------------------------ validation and play-testing
 
     /// <summary>Problems with the map. Entries starting with "!" stop a play-test.</summary>
-    public List<string> Validate()
+    public List<string> Validate() => Validate(Doc);
+
+    /// <summary>
+    /// Problems with a map. Entries starting with "!" stop a play-test. The HTML editor (tools/editor) makes the same
+    /// checks with the same messages; the self-test compares them.
+    /// </summary>
+    public static List<string> Validate(MapDoc Doc)
     {
         var issues = new List<string>();
         int starts = Doc.Cells.Count(c => c == '@');
