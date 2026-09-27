@@ -19,7 +19,7 @@ public static class Art
     public static readonly Dictionary<string, Tex[]> Monsters = new();
     public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt, Seeker;
     public static Tex[] Torch, Relics;
-    public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, ChestClosed, ChestOpen, LoreStone, LoreStoneRead, WeaponPiece2, WeaponPiece3, Tree, Crystal;
+    public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, ChestClosed, ChestOpen, LoreStone, LoreStoneRead, WeaponPiece2, WeaponPiece3, Tree, Crystal, Jetpack;
     // HUD
     public static Tex HudBack;
     // First-person weapons, indexed [class*3 + slot][frame]
@@ -58,6 +58,7 @@ public static class Art
         PickupKind.Armor => Armor,
         PickupKind.Weapon2 => WeaponPiece2,
         PickupKind.Weapon3 => WeaponPiece3,
+        PickupKind.Jetpack => Jetpack,
         _ => Relics[variant % Relics.Length],
     };
 
@@ -494,6 +495,23 @@ public static class Art
         };
         ChestClosed = ChestTex(false);
         ChestOpen = ChestTex(true);
+        // Wings of Wrath: a pair of feathered wings
+        Jetpack = Item(c =>
+        {
+            c.Glow(32, 44, 10, Col.Rgb(255, 230, 150));
+            for (int side = -1; side <= 1; side += 2)
+                for (int f = 4; f >= 0; f--)
+                {
+                    // broad feathers fan out and up from the shoulder, longest at the top
+                    float ang = -0.25f - f * 0.3f, len = 30 - f * 2;
+                    float tx = 32 + side * MathF.Cos(ang) * len, ty = 48 + MathF.Sin(ang) * len;
+                    uint col = f % 2 == 0 ? Col.Rgb(240, 236, 224) : Col.Rgb(214, 206, 190);
+                    c.Tri(32 + side * 2, 38, 32 + side * 12, 56, tx, ty, col);
+                    c.Line(32 + side * 4, 46, tx, ty, 0.8f, Col.Rgb(160, 150, 128));
+                }
+            c.Ellipse(32, 46, 3, 8, Col.Rgb(210, 170, 60));
+            c.Circle(32, 43, 2, Col.Rgb(90, 200, 255));
+        }, 111);
         WeaponPiece2 = WeaponIcon(Col.Rgb(80, 150, 255));
         WeaponPiece3 = WeaponIcon(Col.Rgb(80, 230, 90));
 

@@ -15,6 +15,8 @@ public static class Words
         ["The Frozen Keep"] = "The Cryo Labs",
         ["Darkmere Crypt"] = "Hydroponics Bay",
         ["Chaos Arena"] = "Combat Sim",
+        ["Windspire"] = "Comms Spire",
+        ["The Windspire. Only the winged may reach the beacon at its crown."] = "The Comms Spire. Only a jetpack will get you to the summit console.",
         ["The Chaos Arena - step on the altar to begin"] = "The Combat Sim - step on the pad to begin",
         // classes
         ["Fighter"] = "Marine",
@@ -56,6 +58,11 @@ public static class Words
         ["Steel Key! It must open a door somewhere in the hub."] = "Blue keycard! It must open a door somewhere on the station.",
         ["Fire Key! A scorched door awaits it."] = "Red keycard! A sealed door awaits it.",
         ["Chest: "] = "Crate: ",
+        ["Wings of Wrath"] = "Jetpack",
+        ["Wings of Wrath: recharged"] = "Jetpack: refuelled",
+        ["Wings of Wrath! Jump, then hold Jump to fly. Hold Slide to sink."] = "Jetpack! Jump, then hold Jump to fly. Hold Slide to sink.",
+        ["The Wings of Wrath falter!"] = "Jetpack out of fuel!",
+        ["WINGS"] = "JET",
         // doors, switches and the boss
         ["You need the Steel Key to open this door."] = "You need the blue keycard to open this door.",
         ["You need the Fire Key to open this door."] = "You need the red keycard to open this door.",

@@ -67,20 +67,34 @@ public sealed class Level
     public readonly float[] Heights;
     /// <summary>Wall glyph used for the band of wall above an opening into a lower cell.</summary>
     public readonly char[] UpperLook;
-    public const float MinHeight = 1f, MaxHeight = 4.5f;
+    public const float MinHeight = 1f, MaxHeight = 10f;
 
-    /// <summary>Height grid glyphs: '2'..'9' are 1.0..4.5 in half steps; anything else means the map's default.</summary>
+    /// <summary>
+    /// Height grid glyphs: '2'..'9' are 1.0..4.5 in half steps, then 'a'..'k' carry on from 5.0 to 10.0;
+    /// anything else means the map's default.
+    /// </summary>
     public static float HeightFromGlyph(char c, float fallback) =>
-        c is >= '1' and <= '9' ? Math.Clamp((c - '0') * 0.5f, MinHeight, MaxHeight) : fallback;
-    public static char GlyphFromHeight(float h) => (char)('0' + Math.Clamp((int)MathF.Round(h * 2), 2, 9));
+        c is >= '1' and <= '9' ? Math.Clamp((c - '0') * 0.5f, MinHeight, MaxHeight)
+        : c is >= 'a' and <= 'k' ? 5f + (c - 'a') * 0.5f
+        : fallback;
+    public static char GlyphFromHeight(float h)
+    {
+        int n = Math.Clamp((int)MathF.Round(h * 2), 2, (int)(MaxHeight * 2));
+        return n <= 9 ? (char)('0' + n) : (char)('a' + n - 10);
+    }
+    public static bool IsHeightGlyph(char c) => c is >= '2' and <= '9' or >= 'a' and <= 'k';
 
     /// <summary>Floor height of each cell (0 = ground). Stairs are runs of cells a step higher each.</summary>
     public readonly float[] Floors;
     /// <summary>The tallest step you can walk up without jumping.</summary>
     public const float MaxStep = 0.5f, FloorStep = 0.25f;
 
-    /// <summary>Floor grid glyphs: '1'..'9' are 0.25..2.25; anything else is ground level.</summary>
-    public static float FloorFromGlyph(char c) => c is >= '1' and <= '9' ? (c - '0') * FloorStep : 0f;
+    /// <summary>Floor grid glyphs: '1'..'9' are 0.25..2.25, then 'a'..'z' carry on from 2.5 to 8.75; anything else is ground level.</summary>
+    public static float FloorFromGlyph(char c) =>
+        c is >= '1' and <= '9' ? (c - '0') * FloorStep
+        : c is >= 'a' and <= 'z' ? (10 + c - 'a') * FloorStep
+        : 0f;
+    public static bool IsFloorGlyph(char c) => c is >= '1' and <= '9' or >= 'a' and <= 'z';
 
     public float FloorAt(float x, float y)
     {
@@ -252,8 +266,16 @@ public sealed class Level
         return i >= 0 ? (i % W, i / W) : (1, 1);
     }
 
-    /// <summary>Walking distance (in cells) from a start cell to every cell; -1 where unreachable.</summary>
-    public int[] Distances(int sx, int sy)
+    /// <summary>How far up a move between neighbouring cells may climb: walking up steps, jumping, or flying with the jetpack.</summary>
+    public enum Move { Walk, Jump, Fly }
+
+    /// <summary>Tallest rise between neighbouring cells for each way of moving (a jump adds a bit under its apex).</summary>
+    public static float Rise(Move m) => m switch { Move.Walk => MaxStep, Move.Jump => MaxStep + 0.4f, _ => float.MaxValue };
+
+    bool CanMove(int a, int b, Move m) => Floors[b] <= Floors[a] + Rise(m) + 0.001f;
+
+    /// <summary>Walking (or jumping, or flying) distance in cells from a start cell to every cell; -1 where unreachable.</summary>
+    public int[] Distances(int sx, int sy, Move move = Move.Walk)
     {
         var d = new int[W * H];
         Array.Fill(d, -1);
@@ -271,7 +293,7 @@ public sealed class Level
                 if (d[i] >= 0) continue;
                 char ch = Cells[i];
                 if (ch != '\0' && !IsDoor(ch)) continue;
-                if (!Walkable(c, i)) continue;
+                if (!CanMove(c, i, move)) continue;
                 d[i] = d[c] + 1;
                 q.Enqueue(i);
             }
@@ -280,20 +302,20 @@ public sealed class Level
     }
 
     int[] _walkable;
-    /// <summary>Open floor cells reachable from the arrival point (cached; used for the explored percentage).</summary>
+    /// <summary>Open floor cells you can get to from the arrival point, by jetpack if need be (cached; used for the explored percentage).</summary>
     public int[] WalkableFloor
     {
         get
         {
             if (_walkable != null) return _walkable;
             var (sx, sy) = ArrivalCell();
-            var r = Reachable(sx, sy);
+            var r = Reachable(sx, sy, move: Move.Fly);
             return _walkable = Enumerable.Range(0, r.Length).Where(i => r[i] && (Cells[i] == '\0' || Cells[i] == 'X')).ToArray();
         }
     }
 
-    /// <summary>Flood fill of cells reachable on foot, treating every door and gate as passable.</summary>
-    public bool[] Reachable(int sx, int sy, HashSet<int> blocked = null)
+    /// <summary>Flood fill of cells reachable on foot (or by jumping or flying), treating every door and gate as passable.</summary>
+    public bool[] Reachable(int sx, int sy, HashSet<int> blocked = null, Move move = Move.Walk)
     {
         var seen = new bool[W * H];
         var q = new Queue<int>();
@@ -310,7 +332,7 @@ public sealed class Level
                 if (seen[i] || (blocked != null && blocked.Contains(i))) continue;
                 char ch = Cells[i];
                 if (ch != '\0' && !IsDoor(ch)) continue;
-                if (!Walkable(c, i)) continue;
+                if (!CanMove(c, i, move)) continue;
                 seen[i] = true;
                 q.Enqueue(i);
             }
@@ -410,7 +432,7 @@ public sealed record MapDef(string Name, string Entry, string ThemeId, string[] 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
 public static class Maps
 {
-    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena" };
+    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire" };
 
     public static Theme ThemeById(string id)
     {
@@ -423,6 +445,7 @@ public static class Maps
                 "ice" => (Col.Rgb(150, 196, 210), 12f, 250),
                 "crypt" => (Col.Rgb(6, 26, 18), 12f, 236),
                 "arena" => (Col.Rgb(30, 6, 12), 18f, 256),
+                "spire" => (Col.Rgb(8, 10, 26), 24f, 256),
                 _ => (Col.Rgb(4, 8, 16), 15f, 256),
             };
         }
@@ -466,6 +489,18 @@ public static class Maps
                 t.Walls['O'] = Art.Marble; t.Walls['I'] = Art.Ice;
                 return t;
             }
+            case "spire":
+            {
+                // an open-topped tower: long sight lines so you can see the ledges far above
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.FloorStone, Sky = Art.SkyDusk,
+                    FogColor = Col.Rgb(26, 16, 34), FogDist = 24f, Light = 256,
+                };
+                t.Walls['#'] = Art.Stone; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick; t.Walls['M'] = Art.Moss;
+                t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
             case "arena":
             {
                 var t = new Theme
@@ -489,9 +524,9 @@ public static class Maps
         Elevate(Raise(new("Winnowing Hall", "Winnowing Hall", "hall", new[]
         {
             "################################",
-            "#....&.#............&.#........#",
+            "#....&.#............&.#.......4#",
             "#.@....#..p.......p...#..b..e..#",
-            "#......D..............D........#",
+            "#...J..D..............D........#",
             "#..h...#......e.......#....w...#",
             "#......#..p.......p...#..b.....#",
             "###D####..............##########",
@@ -585,6 +620,38 @@ public static class Maps
             "OOOOOOOOOOOOOOOOOOOOOOOOOO",
         }),
             (1, 1, 5, 7, '3'), (7, 1, 24, 13, '7')),
+        // Windspire: an open-topped tower whose ledges climb far beyond any jump. Portal 4 in Winnowing Hall's
+        // north-east room leads here. Fly ledge to ledge with the jetpack (a spare waits by the portal) up to the
+        // beacon at the top; its lever opens the vault at the foot of the tower. A secret wall off the north-east
+        // ledge hides a nook that only a flyer can reach.
+        Elevate(Raise(new("Windspire", "The Windspire. Only the winged may reach the beacon at its crown.", "spire", new[]
+        {
+            "OOOOOOOOOOOOOOOOOOOOOOOOO",
+            "O&,,,,,,,,,,,,,,,,,,,O&.O",
+            "O,,q,,,,,,,,,,,,,,b,,Z.%O",
+            "O,,,,,,,,,,,,,,,,,,,,O..O",
+            "O,,,,,,,,,,,,d,,,,,,,OOOO",
+            "O,,,,,,,a,,,,,,,,,,,,OOOO",
+            "O,,,,,,,,,,,,,,,,,,,,OOOO",
+            "O,,,,,,,,,,,,,,,,,,,,OOOO",
+            "Og,,,,,,,,L,,,,,,,,,,OOOO",
+            "O,,,,,,,,,,,,,a,,,,,,OOOO",
+            "O,,,,,,,,,,,&,,,,,,,,OOOO",
+            "O,,,,,a,,,,,,,,,,,,,,OOOO",
+            "O,,,,,,,,,,,,,,,,,,h,OOOO",
+            "O,,r,,,,,,,,,,,,,,,,,OOOO",
+            "O&,,,,,,,,,,,,,,,,,,,OOOO",
+            "OOOOOOOOO..OOOOOOOOOOOOOO",
+            "O.....&.......O......OOOO",
+            "O.............O.u..r.OOOO",
+            "O..4..........P......OOOO",
+            "O......J......O.g..b.OOOO",
+            "O.............O......OOOO",
+            "OOOOOOOOOOOOOOOOOOOOOOOOO",
+        }),
+            (1, 1, 20, 14, 'k'), (9, 15, 10, 15, '4'), (1, 16, 13, 20, '4'), (15, 16, 20, 20, '3'), (22, 1, 23, 3, 'a')),
+            (16, 11, 20, 14, '6'), (19, 7, 20, 8, 'a'), (15, 1, 20, 3, 'e'), (10, 1, 11, 2, 'i'), (1, 1, 5, 3, 'm'),
+            (1, 7, 2, 8, 'q'), (1, 12, 5, 14, 'u'), (9, 7, 12, 10, 'y'), (21, 2, 23, 3, 'e'), (22, 1, 23, 1, 'e')),
     };
 
     public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();

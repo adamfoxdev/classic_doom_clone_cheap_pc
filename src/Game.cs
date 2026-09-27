@@ -8,7 +8,7 @@ public struct Input
 {
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
-    public bool Fire, Walk;               // held
+    public bool Fire, Walk, JumpHeld, SlideHeld; // held
     public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public float MouseX, MouseY;          // mouse position in framebuffer pixels (-1 when unknown)
@@ -100,6 +100,10 @@ public sealed class Player
     public float Z, VZ;                                   // height above the floor while jumping
     public float SlideTime, SlideCd, SlideDX, SlideDY, SlideLow;
     public const float SlideLength = 0.55f, Height = 0.55f;
+    /// <summary>Jetpack (Wings of Wrath in the fantasy style): fuel in seconds of hovering; it recharges on the ground.</summary>
+    public bool HasJetpack, Flying;
+    public float Fuel, JetSfx;
+    public const float FuelMax = 6f, ClimbSpeed = 2.6f, SinkSpeed = 3.2f;
     public bool OnGround => Z <= 0f;
     /// <summary>Camera height: eye level, raised by jumps and lowered while sliding.</summary>
     public float ViewZ => EyeZ + Z - SlideLow * 0.25f + StepLag;
@@ -364,7 +368,7 @@ public sealed class Game
         p.DamageFlash = MathF.Max(0, p.DamageFlash - dt * 2);
         p.PickupFlash = MathF.Max(0, p.PickupFlash - dt * 3);
         p.TeleportFlash = MathF.Max(0, p.TeleportFlash - dt * 1.5f);
-        if (Mode == GameMode.Dead) return;
+        if (Mode == GameMode.Dead) { p.Flying = false; p.Z = MathF.Max(0, p.Z - dt * 4f); return; }
 
         // look
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
@@ -384,7 +388,24 @@ public sealed class Game
             p.VZ = Vars.JumpPower;
             PlaySound(Sfx.Jump, 0.8f);
         }
-        if (!p.OnGround || p.VZ > 0)
+        // jetpack: hold Jump in the air to fly. Keep holding to climb, hold Slide to sink, let go of both to hover.
+        if (!p.Flying && p.HasJetpack && !p.OnGround && inp.JumpHeld && p.VZ < 0.6f && (p.Fuel > 0.25f || Vars.InfiniteFuel))
+        {
+            p.Flying = true; p.JetSfx = 0;
+            PlaySound(Sfx.JetStart, 0.9f);
+        }
+        if (p.Flying)
+        {
+            float target = inp.JumpHeld ? Player.ClimbSpeed : inp.SlideHeld ? -Player.SinkSpeed : 0f;
+            p.VZ += (target - p.VZ) * MathF.Min(1, dt * 6);
+            p.Z += p.VZ * dt;
+            if (!Vars.InfiniteFuel) p.Fuel -= (inp.JumpHeld ? 1f : 0.6f) * dt;
+            p.JetSfx -= dt;
+            if (p.JetSfx <= 0) { PlaySound(Sfx.Jet, inp.JumpHeld ? 0.6f : 0.35f); p.JetSfx = 0.1f; }
+            if (p.Fuel <= 0 && !Vars.InfiniteFuel) { p.Fuel = 0; p.Flying = false; PlaySound(Sfx.JetOut, 1); Say("The Wings of Wrath falter!"); }
+            if (p.Z <= 0) { p.Z = 0; p.VZ = 0; p.Flying = false; PlaySound(Sfx.Land, 0.4f); }
+        }
+        else if (!p.OnGround || p.VZ > 0)
         {
             p.VZ -= Vars.Gravity * dt;
             p.Z += p.VZ * dt;
@@ -436,6 +457,8 @@ public sealed class Game
         }
         p.FloorZ = floor;
         p.StepLag *= MathF.Exp(-dt * 14f);
+        if (p.Flying && p.Z <= 0) { p.Z = 0; p.VZ = 0; p.Flying = false; PlaySound(Sfx.Land, 0.4f); } // touched down on a ledge
+        if (p.OnGround && !p.Flying && p.HasJetpack) p.Fuel = MathF.Min(Player.FuelMax, p.Fuel + dt * 1.5f);
         // bump your head on low ceilings
         float headroom = Level.HeightAt(p.X, p.Y) - p.FloorZ - Player.Height - 0.05f;
         if (p.Z > headroom) { p.Z = MathF.Max(0, headroom); if (p.VZ > 0) p.VZ = 0; }
@@ -552,18 +575,54 @@ public sealed class Game
             return;
         }
 
+        float launchZ = p.FloorZ + p.Z + 0.32f;
+        float? vz = VerticalAim(launchZ, w.Speed);
         for (int i = 0; i < w.Count; i++)
         {
             float a = p.Angle + (i - (w.Count - 1) / 2f) * w.Spread;
             var pr = new Projectile
             {
                 Kind = w.Proj, FromPlayer = true, DmgMin = w.DmgMin, DmgMax = w.DmgMax, Splash = w.Splash, Owner = null,
-                X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = p.FloorZ + p.Z + 0.32f,
+                X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = launchZ,
                 VX = MathF.Cos(a) * w.Speed, VY = MathF.Sin(a) * w.Speed, Level = Level,
+                VZ = vz ?? 0f, Aimed = vz != null,
             };
             if (w.Proj == ProjKind.Hammer || w.Proj == ProjKind.Flame) { pr.SpriteW = pr.SpriteH = 0.4f; }
             Level.Things.Add(pr);
         }
+    }
+
+    /// <summary>
+    /// Climb rate for your shots when there's height to cover: straight at a monster above or below you
+    /// (Hexen-style vertical auto-aim), or along your view when you're up in the air or looking well up or down.
+    /// Null means the usual level shot, which follows the floor.
+    /// </summary>
+    float? VerticalAim(float launchZ, float speed)
+    {
+        var p = P;
+        Monster best = null;
+        float bestDiff = 0.15f, bestD = 0;
+        foreach (var t in Level.Things)
+        {
+            if (t is not Monster m || !m.Alive || m.Blurring) continue;
+            float d = Dist(m.X, m.Y, p.X, p.Y);
+            if (d > 24f || d < 0.3f) continue;
+            float diff = MathF.Abs(AngleDiff(MathF.Atan2(m.Y - p.Y, m.X - p.X), p.Angle));
+            if (diff >= bestDiff || !Level.Sight(p.X, p.Y, m.X, m.Y)) continue;
+            best = m; bestDiff = diff; bestD = d;
+        }
+        if (best != null)
+        {
+            float mz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
+            if (MathF.Abs(mz - launchZ) > 0.45f) return (mz - launchZ) * speed / bestD;
+            return null;
+        }
+        if (p.Z > 0.6f || MathF.Abs(p.Pitch) > 25f)
+        {
+            float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f);
+            return speed * p.Pitch / proj;
+        }
+        return null;
     }
 
     void UseLine(bool pull)
@@ -829,6 +888,11 @@ public sealed class Game
                 PlaySound(Sfx.Relic, 1);
                 Say(msg);
                 return;
+            case PickupKind.Jetpack:
+                if (p.HasJetpack && p.Fuel >= Player.FuelMax) return;
+                msg = p.HasJetpack ? "Wings of Wrath: recharged" : "Wings of Wrath! Jump, then hold Jump to fly. Hold Slide to sink.";
+                p.HasJetpack = true; p.Fuel = Player.FuelMax;
+                break;
             case PickupKind.Armor:
                 if (p.Armor >= 100) return;
                 p.Armor = Math.Min(100, p.Armor + 50); msg = "Mesh Armor"; break;
@@ -847,7 +911,7 @@ public sealed class Game
         }
         pk.Removed = true;
         p.PickupFlash = 1;
-        PlaySound(pk.Kind is PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.SteelKey or PickupKind.FireKey ? Sfx.Item : Sfx.Pickup, 1);
+        PlaySound(pk.Kind is PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.SteelKey or PickupKind.FireKey or PickupKind.Jetpack ? Sfx.Item : Sfx.Pickup, 1);
         Say(msg);
     }
 
@@ -860,7 +924,7 @@ public sealed class Game
             if (dest == null) continue;
             Level = lv;
             P.X = dest.Value.x; P.Y = dest.Value.y;
-            P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0;
+            P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0; P.Flying = false;
             P.PortalLock = true;
             P.TeleportFlash = 1;
             // drop any in-flight projectiles from the level we left
@@ -1116,6 +1180,11 @@ public sealed class Game
             ProjKind.Seeker => (6, 11, 4.8f),
             _ => (10, 18, 6.0f),
         };
+        // aim up or down at you when you're well above or below (on a ledge, or flying)
+        float launchZ = Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH * 0.45f;
+        float chest = P.FloorZ + P.Z + Player.Height * 0.55f, dist = MathF.Max(0.5f, Dist(m.X, m.Y, P.X, P.Y));
+        bool aimed = kind != ProjKind.Seeker && MathF.Abs(chest - launchZ) > 0.6f;
+        float vz = aimed ? (chest - launchZ) * speed / dist : 0f;
         for (int i = 0; i < m.Def.MissileCount; i++)
         {
             float a = baseA + (i - (m.Def.MissileCount - 1) / 2f) * m.Def.MissileSpread + (RandF() - 0.5f) * 0.06f;
@@ -1123,7 +1192,7 @@ public sealed class Game
             {
                 Kind = kind, FromPlayer = false, DmgMin = (int)(lo * m.DamageMult), DmgMax = (int)(hi * m.DamageMult), Owner = m, Level = Level,
                 X = m.X + MathF.Cos(a) * (m.Radius + 0.1f), Y = m.Y + MathF.Sin(a) * (m.Radius + 0.1f),
-                Z = Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH * 0.45f, VX = MathF.Cos(a) * speed, VY = MathF.Sin(a) * speed,
+                Z = launchZ, VX = MathF.Cos(a) * speed, VY = MathF.Sin(a) * speed, VZ = vz, Aimed = aimed,
                 Homing = kind == ProjKind.Seeker ? 1.9f : 0f, Life = kind == ProjKind.Seeker ? 4.5f : 6f,
             });
         }
@@ -1135,7 +1204,8 @@ public sealed class Game
         pr.Life -= dt;
         if (pr.Life <= 0) { pr.Removed = true; return; }
         // aim player shots gently toward eye-level as they fly
-        if (pr.FromPlayer) pr.Z += (Level.FloorAt(pr.X, pr.Y) + 0.4f - pr.Z) * MathF.Min(1, dt * 2);
+        if (pr.Aimed) pr.Z += pr.VZ * dt;
+        else if (pr.FromPlayer) pr.Z += (Level.FloorAt(pr.X, pr.Y) + 0.4f - pr.Z) * MathF.Min(1, dt * 2);
         // homing missiles steer toward you at a limited turn rate (tighter up close so they don't just
         // orbit you), and burn out after a few seconds; strafing hard shakes them off
         if (pr.Homing > 0 && Mode != GameMode.Dead && pr.Life > 1.5f)
@@ -1281,6 +1351,7 @@ public sealed class Game
         {
             var mark = lv.FindMark('1') ?? lv.FindMark('2') ?? lv.FindMark('E');
             if (mark != null) (x, y) = mark.Value;
+            else { var (cx, cy) = lv.ArrivalCell(); (x, y) = (cx + 0.5f, cy + 0.5f); } // e.g. the Windspire's portal 4
         }
         foreach (var t in Level.Things) if (t is Projectile or Puff) t.Removed = true;
         Level = lv;

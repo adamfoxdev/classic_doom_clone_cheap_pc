@@ -3,7 +3,7 @@ namespace HexenSharp;
 public enum Sfx
 {
     Swing, Hit, Shoot, Magic, Explode, Sight, Death, Pickup, Item, Door, Lever,
-    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Secret, Lore, Relic, Count
+    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Secret, Lore, Relic, JetStart, Jet, JetOut, Count
 }
 
 public abstract class Thing
@@ -39,7 +39,7 @@ public sealed class Decor : Thing
 
 // ---------------------------------------------------------------- pickups
 
-public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic }
+public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic, Jetpack }
 
 public sealed class Pickup : Thing
 {
@@ -156,6 +156,8 @@ public sealed class Projectile : Thing
     public int DmgMin, DmgMax;
     public float Splash;               // radius of splash damage, 0 = none
     public bool FromPlayer, Exploding;
+    /// <summary>Climbs or dives at VZ in a straight line (aimed up or down at a target) instead of levelling out.</summary>
+    public bool Aimed;
     public float Homing;               // turn rate toward the player in radians/second (0 = flies straight)
     public float Life = 6f, ExplodeTime;
     public Thing Owner;
@@ -229,6 +231,7 @@ public static class ThingFactory
             '$' => new Chest(),
             '&' => new LoreStone(),
             '%' => new Pickup(PickupKind.Relic, 0.42f),
+            'J' => new Pickup(PickupKind.Jetpack, 0.5f),
             _ => null,
         };
         if (t == null) return null;

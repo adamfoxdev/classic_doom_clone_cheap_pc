@@ -407,6 +407,22 @@ public static class SciFiArt
         Art.LoreStone = Terminal(false);
         Art.LoreStoneRead = Terminal(true);
         Art.Relics = BuildArtifacts();
+        // jetpack: twin fuel tanks on a harness, nozzles glowing
+        Art.Jetpack = Item(c =>
+        {
+            c.Glow(32, 58, 16, C(90, 190, 255));
+            c.Rect(26, 26, 12, 22, C(70, 74, 84));
+            foreach (int x in new[] { 18, 38 })
+            {
+                c.Ellipse(x + 4, 24, 5, 4, C(200, 206, 214));
+                c.Rect(x - 1, 24, 10, 26, C(200, 206, 214));
+                c.Rect(x + 1, 26, 2, 22, C(240, 244, 250));
+                c.Rect(x - 1, 34, 10, 3, C(230, 170, 40));
+                c.Tri(x, 50, x + 8, 50, x + 4, 56, C(90, 94, 104));
+                c.Tri(x + 1, 56, x + 7, 56, x + 4, 62, C(120, 220, 255));
+            }
+            c.Rect(28, 30, 8, 4, C(60, 220, 120));
+        }, 113);
 
         // HUD background: dark metal
         var hud = Panel(1301, (52, 56, 64), 16, 32);

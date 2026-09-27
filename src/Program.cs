@@ -10,6 +10,7 @@ public static class Program
         Art.Init();
         if (args.Contains("--selftest")) return Headless.SelfTest();
         if (args.Contains("--shots")) return Headless.Screenshots(args.SkipWhile(a => a != "--shots").Skip(1).FirstOrDefault() ?? "shots");
+        if (args.Contains("--sounds")) return Headless.ExportSounds(args.SkipWhile(a => a != "--sounds").Skip(1).FirstOrDefault() ?? "sounds");
         RunWindow();
         return 0;
     }

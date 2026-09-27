@@ -57,6 +57,14 @@ public static class Discovery
             "Past the vault field: the red keycard, locked away by crew who feared what waits in the Cryo Labs.",
             "Condensation has pooled in this forgotten service bay for years. It tastes of rust and coolant.",
         },
+        ["Windspire"] = new[]
+        {
+            "Relay deck 3. Technicians used to jet between these decks every shift. The antenna array above still hums.",
+            "Hidden storage locker. Whoever stashed this knew that nobody without a jetpack would ever find it.",
+            "Summit console: this switch unlocks the supply vault at the base of the spire. Authorised climbers only.",
+            "Maintenance ledge. Someone taped a note to the rail: 'Watch your fuel gauge. It's a long way down.'",
+            "Comms Spire access. The decks rise far beyond any jump. Grab a jetpack and fly to the summit console.",
+        },
         ["Chaos Arena"] = new[]
         {
             "The combat simulator trained the station's marines. The spawn pads still remember every drill.",
@@ -96,6 +104,14 @@ public static class Discovery
             "Beyond the gate lies the Fire Key, sealed away by those who feared what burns behind the Keep's door.",
             "Rain has pooled in this forgotten cell for centuries. It tastes of iron and old prayers.",
         },
+        ["Windspire"] = new[]
+        {
+            "Halfway up, the wind is old. It remembers when the spire's keepers flew every dawn to light the beacon.",
+            "A hidden eyrie. The spire's keepers hid their treasure where only the winged could ever steal it.",
+            "The beacon of the Windspire. Pull the lever, and the vault far below opens for whoever climbed this high.",
+            "Few reached this ledge without wings. Those who did carved their names here, and a warning: rest before you leap.",
+            "The Windspire. Its ledges climb far beyond any leap; only the Wings of Wrath will carry you to the beacon.",
+        },
         ["Chaos Arena"] = new[]
         {
             "The Chaos Arena was built for sport. The crowds are long gone, but the spawning runes still remember.",
@@ -110,7 +126,8 @@ public static class Discovery
     public static int ScatterRelics(Level lv, Random rng, int count, Func<string> nextName)
     {
         var (sx, sy) = lv.ArrivalCell();
-        var dist = lv.Distances(sx, sy);
+        // anywhere you can get to, flying up to high ledges included
+        var dist = lv.Distances(sx, sy, Level.Move.Fly);
         var candidates = new List<(int cell, float score)>();
         for (int i = 0; i < lv.Cells.Length; i++)
         {

@@ -146,6 +146,8 @@ public sealed class Bindings
         i.Fire = Down(k, Act.Attack);
         i.Use = Pressed(k, Act.Use);
         i.Jump = Pressed(k, Act.Jump);
+        i.JumpHeld = Down(k, Act.Jump);
+        i.SlideHeld = Down(k, Act.Slide);
         i.Slide = Pressed(k, Act.Slide);
         i.UseItem = Pressed(k, Act.UseItem);
         i.Map = Pressed(k, Act.Automap);

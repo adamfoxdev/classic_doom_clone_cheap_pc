@@ -675,7 +675,7 @@ public sealed class Renderer
                         Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + 13, py + k, Col.Rgb(255, 230, 80));
                     }
             }
-            int hy = 50;
+            int hy = Math.Max(50, Editor.PaletteY + (pal.Length + Editor.PaletteCols - 1) / Editor.PaletteCols * Editor.PaletteCell + 4);
             string what = floors ? "Floor " + Editor.FloorLabel(ed.CurrentFloor) : "Ceiling " + Editor.HeightLabel(ed.CurrentHeight, doc.DefaultHeight);
             foreach (var line in Wrap(what.ToUpperInvariant(), 12)) { Text(Editor.PaletteX, hy, line, Col.Rgb(255, 230, 120)); hy += 9; }
             if (floors) { Text(Editor.PaletteX, hy + 4, ed.StairBrush ? "K: STAIRS ON" : "K: STAIRS", ed.StairBrush ? Col.Rgb(120, 255, 140) : Col.Rgb(150, 140, 120)); hy += 9; }
@@ -762,6 +762,12 @@ public sealed class Renderer
     /// <summary>Floor-mode tint: ground dark green, rising to pale yellow.</summary>
     static uint FloorColor(float f)
     {
+        if (f > 2.25f)
+        {
+            // towers and high ledges shade on from yellow toward pink
+            float u = MathF.Min(1, (f - 2.25f) / 6.5f);
+            return Col.Rgb(240, (int)(230 - 130 * u), (int)(120 + 110 * u));
+        }
         float t = f / 2.25f;
         return Col.Rgb((int)(40 + 200 * t), (int)(110 + 120 * t), (int)(60 + 60 * t));
     }
@@ -914,6 +920,7 @@ public sealed class Renderer
 
         int by = ViewH + 3;
         uint label = Col.Rgb(200, 180, 140);
+        if (p.HasJetpack) DrawFuel(p, label);
         if (g.Relaxed) { DrawDiscoveryHud(g, by, label); return; }
         Text(6, by, "HEALTH", label);
         uint hcol = p.Health > 50 ? Col.Rgb(240, 230, 210) : p.Health > 25 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
@@ -946,6 +953,20 @@ public sealed class Renderer
 
         string cls = p.Def.Name.ToUpperInvariant();
         Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
+    }
+
+    /// <summary>Jetpack fuel gauge, tucked into the bottom-right corner of the view.</summary>
+    void DrawFuel(Player p, uint label)
+    {
+        const int h = 40, bw = 6;
+        int x = W - 12, y0 = ViewH - 6 - h;
+        string name = Words.T("WINGS");
+        Text(W - 3 - Font.Width(name), y0 - 9, name, p.Flying ? Col.Rgb(255, 230, 120) : label);
+        Rect(x - 1, y0 - 1, bw + 2, h + 2, Col.Rgb(20, 20, 24));
+        int fill = (int)MathF.Round(h * Math.Clamp(p.Fuel / Player.FuelMax, 0f, 1f));
+        float f = p.Fuel / Player.FuelMax;
+        uint c = f < 0.25f ? Col.Rgb(250, 70, 50) : Art.Style == ArtStyle.SciFi ? Col.Rgb(80, 190, 255) : Col.Rgb(250, 220, 120);
+        if (fill > 0) Rect(x, y0 + h - fill, bw, fill, c);
     }
 
     /// <summary>Relaxed-mode HUD: what you've discovered instead of health and ammo.</summary>
