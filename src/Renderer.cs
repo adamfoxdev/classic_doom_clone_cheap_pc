@@ -67,6 +67,7 @@ public sealed class Renderer
             case 'F': return Art.FireDoor;
             case 'P': return Art.Portcullis;
             case 'L': return lv.PulledLevers.Contains(cell) ? Art.LeverOn : Art.LeverOff;
+            case 'X': return Art.Block;
         }
         return lv.Theme.Walls.TryGetValue(c, out var t) ? t : Art.Stone;
     }
@@ -168,6 +169,7 @@ public sealed class Renderer
                     char mk = lv.Marks[ci];
                     if (mk == 'E') { ft = lv.BossDead ? Art.ExitFloor : Art.ExitFloorOff; fl = 300; }
                     else if (mk == '*') { ft = Art.SpawnFloor; fl = 280; }
+                    else if (mk == '^') ft = Art.PlateFloor;
                     else if (mk == '!') { ft = lv.Arena?.Started == true ? Art.AltarFloorOff : Art.AltarFloor; fl = 300; }
                     else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
                     else if (lv.Outdoor[ci]) ft = th.OutdoorFloor;
@@ -282,6 +284,7 @@ public sealed class Renderer
             int light = t.FullBright ? 256 : Light(th);
             int vis = t.FullBright ? Math.Max(Vis(th, depth), 160) : Vis(th, depth);
             bool painFlash = t is Monster m && m.State == AiState.Pain;
+            int alpha = t.Alpha;
             for (int x = x0; x < x1; x++)
             {
                 int u = Math.Clamp((int)((x - left) / sw * tex.W), 0, tex.W - 1);
@@ -293,7 +296,9 @@ public sealed class Renderer
                     uint c = tex.Px[v * tex.W + u];
                     if (Col.A(c) == 0) continue;
                     if (painFlash) c = Col.Lerp(c, Col.Rgb(255, 255, 255), 70);
-                    Fb[idx] = Col.Fog(c, light, vis, th.FogColor);
+                    c = Col.Fog(c, light, vis, th.FogColor);
+                    if (alpha < 256) { Fb[idx] = Col.Lerp(Fb[idx], c, alpha); continue; } // see-through: no depth write
+                    Fb[idx] = c;
                     _depth[idx] = depth;
                 }
             }
@@ -407,13 +412,14 @@ public sealed class Renderer
                 if (c == '\0')
                 {
                     char mk = lv.Marks[i];
-                    col = mk == 'E' ? Col.Rgb(200, 50, 40) : mk == '*' ? Col.Rgb(150, 50, 200) : mk == '!' ? Col.Rgb(230, 190, 60) : mk != '\0' ? Col.Rgb(60, 120, 255) : lv.Outdoor[i] ? Col.Rgb(34, 50, 30) : Col.Rgb(40, 36, 32);
+                    col = mk == 'E' ? Col.Rgb(200, 50, 40) : mk == '*' ? Col.Rgb(150, 50, 200) : mk == '!' ? Col.Rgb(230, 190, 60) : mk == '^' ? Col.Rgb(40, 120, 110) : mk != '\0' ? Col.Rgb(60, 120, 255) : lv.Outdoor[i] ? Col.Rgb(34, 50, 30) : Col.Rgb(40, 36, 32);
                 }
                 else col = c switch
                 {
                     'D' => Col.Rgb(210, 170, 60),
                     'S' => Col.Rgb(150, 170, 230),
                     'F' => Col.Rgb(240, 110, 40),
+                    'X' => Col.Rgb(80, 220, 200),
                     'P' => Col.Rgb(140, 140, 140),
                     'L' => Col.Rgb(80, 220, 90),
                     _ => Col.Rgb(150, 110, 70),
@@ -564,7 +570,7 @@ public sealed class Renderer
         if (((int)(g.Time * 2) & 1) == 0) CenterText("PRESS ENTER", 154, Col.Rgb(255, 230, 120), 2);
         CenterText("WASD MOVE  MOUSE LOOK  CLICK ATTACK  E USE", 172, Col.Rgb(170, 160, 140));
         CenterText("SPACE JUMP  C SLIDE  1-3 WEAPONS  F HEAL", 181, Col.Rgb(170, 160, 140));
-        CenterText("TAB MAP  ESC PAUSE  ~ CONSOLE", 190, Col.Rgb(170, 160, 140));
+        CenterText("SHIFT+E PULL  TAB MAP  ESC PAUSE  ~ CONSOLE", 190, Col.Rgb(170, 160, 140));
     }
 
     void DrawClassSelect(Game g)

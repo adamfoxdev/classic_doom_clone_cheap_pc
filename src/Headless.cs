@@ -55,6 +55,8 @@ public static class Headless
         Console.WriteLine("Chaos Arena waves:");
         ArenaChecks(Check);
 
+        Console.WriteLine("Dark Bishop:");
+        BishopChecks(Check);
         Console.WriteLine("Chests:");
         ChestChecks(Check);
 
@@ -169,12 +171,13 @@ public static class Headless
         Tick(new Input { Use = true }); Tick(default, 35);
         check(g.Level.DoorOpen[fire] == 0f, "fire door stays locked without the Fire Key");
 
-        // portal 2 leads to Darkmere Crypt, which holds the Fire Key behind a two-lever gate
+        // portal 2 leads to Darkmere Crypt, which holds the Fire Key behind a gate needing two levers and two plates
         var p2 = g.Level.FindMark('2').Value;
         g.P.X = p2.x; g.P.Y = p2.y; Tick(default);
         check(g.Level == g.Hub[2], "portal 2 leads to Darkmere Crypt");
         var crypt = g.Level;
-        check(crypt.LeverCount == 2, "crypt has two levers");
+        crypt.Things.RemoveAll(t => t is Monster);
+        check(crypt.LeverCount == 2 && crypt.PlateCount == 2, "crypt has two levers and two pressure plates");
         int gate = Array.IndexOf(crypt.Cells, 'P');
         var levers = Enumerable.Range(0, crypt.Cells.Length).Where(i => crypt.Cells[i] == 'L').ToList();
         foreach (var (li, n) in levers.Select((l, n) => (l, n)))
@@ -186,7 +189,38 @@ public static class Headless
             Tick(new Input { Use = true }); Tick(default, 35 * 2);
             if (n == 0) check(crypt.DoorOpen[gate] == 0f, "one lever is not enough");
         }
-        check(crypt.DoorOpen[gate] >= 1f, "both levers raise the crypt gate");
+        check(crypt.DoorOpen[gate] == 0f, "levers alone don't open the gate while plates are empty");
+
+        // the block puzzle in the south-east room, solved with real Use presses
+        const float N = -MathF.PI / 2, W_ = MathF.PI, E = 0f;
+        void Act(float x, float y, float angle, bool pull = false)
+        {
+            g.P.X = x; g.P.Y = y; g.P.Angle = angle;
+            Tick(new Input { Use = true, Walk = pull });
+        }
+        bool BlockAt(int x, int y) => crypt.Cell(x, y) == 'X';
+        check(BlockAt(23, 9) && BlockAt(24, 9), "two stone blocks start in the puzzle room");
+        Act(23.5f, 10.5f, N); check(BlockAt(23, 8) && !BlockAt(23, 9), "E pushes a block away from you");
+        Act(23.5f, 9.5f, N);
+        Act(24.5f, 7.5f, W_); Act(23.5f, 7.5f, W_);
+        check(BlockAt(21, 7) && crypt.PlatesCovered == 1, "block pushed onto the first plate");
+        Act(22.5f, 7.5f, W_); check(BlockAt(21, 7), "a block can't be pushed into a wall");
+        Tick(default, 35);
+        check(crypt.DoorOpen[gate] == 0f, "one plate is not enough");
+        Act(24.5f, 10.5f, N); Act(24.5f, 9.5f, N);
+        Act(23.5f, 7.5f, E); Act(24.5f, 7.5f, E);
+        check(BlockAt(26, 7) && crypt.PlatesCovered == 2, "block pushed onto the second plate");
+        Tick(default, 35 * 2);
+        check(crypt.DoorOpen[gate] >= 1f, "levers + plates raise the crypt gate");
+
+        // Shift+E pulls a block toward you; lifting a plate drops the gate again
+        Act(25.5f, 7.5f, E, pull: true);
+        check(BlockAt(25, 7) && !BlockAt(26, 7) && MathF.Abs(g.P.X - 24.5f) < 0.01f, "Shift+E pulls the block and steps you back");
+        Tick(default, 35 * 2);
+        check(crypt.DoorOpen[gate] == 0f, "gate closes when a plate is uncovered");
+        Act(24.5f, 7.5f, E);
+        Tick(default, 35 * 2);
+        check(BlockAt(26, 7) && crypt.DoorOpen[gate] >= 1f, "pushing it back reopens the gate");
         var key = crypt.Things.OfType<Pickup>().First(p => p.Kind == PickupKind.FireKey);
         g.P.X = key.X; g.P.Y = key.Y; Tick(default);
         check(g.P.FireKey, "Fire Key picked up");
@@ -313,6 +347,82 @@ public static class Headless
         check(hp6 > hp1, $"later waves are tougher (health x{hp1:0.00} -> x{hp6:0.00})");
         check(ArenaState.Compose(5, new Random(1)).Any(d => d.Boss), "wave 5 brings a Heresiarch");
         check(!ArenaState.Compose(1, new Random(1)).Any(d => d != Monster.Ettin), "wave 1 is only ettins");
+    }
+
+    static void BishopChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Mage);
+        g.Warp(2);
+        check(g.Level.Things.OfType<Monster>().Count(m => m.Def == Monster.Bishop) == 2, "Darkmere Crypt has two Dark Bishops");
+        check(g.Hub[1].Things.OfType<Monster>().Any(m => m.Def == Monster.Bishop), "a Dark Bishop haunts the Frozen Keep");
+        g.Level.Things.RemoveAll(t => t is Monster);
+        float px = 13.5f, py = 3.5f;
+
+        // a homing missile fired sideways curves round and hits; a plain one flies straight past
+        (bool hit, float curve) Fire(float homing)
+        {
+            g.P.X = px; g.P.Y = py; g.P.Health = 100; g.P.Armor = 0;
+            var pr = new Projectile { Kind = ProjKind.Seeker, DmgMin = 5, DmgMax = 5, X = px + 2.5f, Y = py, Z = 0.3f, VX = 0, VY = 4.8f, Homing = homing, Level = g.Level };
+            g.Level.Things.Add(pr);
+            float minX = pr.X;
+            for (int k = 0; k < 70 && !pr.Removed; k++) { Tick(default); minX = MathF.Min(minX, pr.X); }
+            pr.Removed = true;
+            return (g.P.Health < 100, px + 2.5f - minX);
+        }
+        var (hitStraight, _) = Fire(0f);
+        var (hitHoming, curve) = Fire(1.9f);
+        check(!hitStraight, "an unguided missile fired sideways misses");
+        check(hitHoming && curve > 1f, $"a homing missile curves toward you and hits (curved {curve:0.0} units)");
+
+        // ...but its height only follows you slowly, so a well-timed jump lets it pass underneath
+        {
+            g.P.X = px; g.P.Y = py; g.P.Health = 100; g.P.Armor = 0;
+            var pr = new Projectile { Kind = ProjKind.Seeker, DmgMin = 5, DmgMax = 5, X = px + 4f, Y = py, Z = 0.3f, VX = -4.8f, VY = 0, Homing = 1.9f, Life = 4.5f, Level = g.Level };
+            g.Level.Things.Add(pr);
+            for (int k = 0; k < 70 && !pr.Removed; k++)
+            {
+                bool jump = Game.Dist(pr.X, pr.Y, g.P.X, g.P.Y) < 1.4f && g.P.OnGround && g.P.VZ == 0;
+                Tick(new Input { Jump = jump });
+            }
+            pr.Removed = true;
+            Tick(default, 35);
+            check(g.P.Health == 100, "a well-timed jump dodges a homing missile");
+        }
+
+        // blur: untouchable while see-through, hittable afterwards
+        var b = new Monster(Monster.Bishop) { X = px + 3f, Y = py, Level = g.Level, State = AiState.Chase };
+        g.Level.Things.Add(b);
+        g.Vars.Freeze = true;
+        b.BlurTime = 10f;
+        check(b.Alpha < 256, "a blurring bishop is drawn see-through");
+        g.P.X = px; g.P.Y = py; g.P.Angle = 0;
+        Tick(new Input { Fire = true }); Tick(default, 20);
+        check(b.Health == b.Def.Health, "attacks pass through a blurring bishop");
+        b.BlurTime = 0;
+        for (int k = 0; k < 35 * 2 && b.Health == b.Def.Health; k++) Tick(new Input { Fire = true });
+        check(b.Health < b.Def.Health, "a solid bishop can be hurt");
+        g.Vars.Freeze = false;
+
+        // awake bishops blur on their own and fire homing missiles
+        g.Level.Things.RemoveAll(t => t is Monster or Projectile);
+        g.Vars.God = true;
+        var b2 = new Monster(Monster.Bishop) { X = px + 4f, Y = py, Level = g.Level };
+        g.Level.Things.Add(b2);
+        bool blurred = false, seekers = false;
+        for (int k = 0; k < 35 * 20; k++)
+        {
+            Tick(default);
+            blurred |= b2.Blurring;
+            seekers |= g.Level.Things.OfType<Projectile>().Any(p => p.Kind == ProjKind.Seeker && p.Homing > 0);
+        }
+        check(blurred, "a bishop blurs during a fight");
+        check(seekers, "a bishop fires homing missiles");
+
+        var r = new Random(2);
+        check(Enumerable.Range(0, 50).All(_ => !ArenaState.Compose(3, r).Contains(Monster.Bishop)), "no bishops before arena wave 4");
+        check(Enumerable.Range(0, 50).Any(_ => ArenaState.Compose(6, r).Contains(Monster.Bishop)), "bishops join the arena from wave 4");
     }
 
     static void ChestChecks(Action<bool, string> check)
@@ -541,6 +651,27 @@ public static class Headless
             Shot("17_chest_open");
             g.Vars.Freeze = false;
         }
+
+        // the crypt's block puzzle room
+        g.FixedSeed = 1;
+        g.NewGame(PClass.Cleric);
+        g.Warp(2);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.P.X = 21.6f; g.P.Y = 10.5f; g.P.Angle = -0.95f; g.P.Pitch = -8;
+        Tick(default, 50);
+        Shot("18_block_puzzle");
+
+        // Dark Bishops: one solid, one mid-blur, and a homing missile on its way
+        g.Level.Things.RemoveAll(t => t is Monster or Projectile);
+        g.P.X = 13.5f; g.P.Y = 6.5f; g.P.Angle = -MathF.PI / 2; g.P.Pitch = 12;
+        var bishopA = new Monster(Monster.Bishop) { X = 12.4f, Y = 3.6f, Level = g.Level, State = AiState.Chase };
+        var bishopB = new Monster(Monster.Bishop) { X = 14.9f, Y = 3.2f, Level = g.Level, State = AiState.Attack, BlurTime = 5f };
+        g.Level.Things.Add(bishopA); g.Level.Things.Add(bishopB);
+        g.Level.Things.Add(new Projectile { Kind = ProjKind.Seeker, X = 13.2f, Y = 4.8f, Z = 0.3f, Level = g.Level });
+        g.Vars.Freeze = true;
+        Tick(default, 2);
+        Shot("19_dark_bishop");
+        g.Vars.Freeze = false;
 
         // victory screen
         g.Mode = GameMode.Victory;

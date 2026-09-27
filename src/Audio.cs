@@ -78,6 +78,8 @@ public sealed unsafe class Audio : IDisposable
             Sfx.Chest => Gen(0.6f, (t, n) => t < 0.25f
                 ? Saw(t * (90 + 60 * t)) * 0.35f * Env(t, 0.02f, 0.25f)                                // creak
                 : MathF.Sin(MathF.Tau * t * (t < 0.37f ? 784 : t < 0.49f ? 988 : 1319)) * 0.35f * Env(t - 0.25f, 0.01f, 0.35f)),
+            Sfx.Push => Gen(0.45f, (t, n) => (r.Range(-1f, 1f) * 0.7f + Saw(t * 40) * 0.3f) * Env(t, 0.03f, 0.45f), lowpass: 0.06f),
+            Sfx.Blur => Gen(0.35f, (t, n) => MathF.Sin(MathF.Tau * (900 * t - 1400 * t * t)) * MathF.Sin(t * 140) * 0.4f * Env(t, 0.02f, 0.35f)),
             _ => new short[1],
         };
     }
