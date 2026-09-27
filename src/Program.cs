@@ -51,7 +51,9 @@ public static class Program
             ConfigPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HexenSharp", "settings.cfg"),
         };
         game.MapsDir = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "maps");
+        game.ProfilePath = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "profile.json");
         game.LoadSettings();
+        game.LoadProfile();
         var keys = new RaylibKeys();
         var renderer = new Renderer();
         Audio audio = null;
@@ -123,6 +125,7 @@ public static class Program
         }
 
         game.SaveSettings();
+        game.SaveProfile();
         Raylib.UnloadTexture(tex);
         audio?.Dispose();
         Raylib.CloseAudioDevice();

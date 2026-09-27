@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -25,7 +25,7 @@ public sealed class MenuSystem
     public void Show(MenuPage p)
     {
         if (Page != null) _back.Push((Page.Value, Cursor));
-        Page = p; Cursor = 0; Column = 0; Scroll = 0; Capturing = false;
+        Page = p; Cursor = 0; Column = 0; Scroll = 0; Capturing = false; NoticeTime = 0;
     }
 
     public void Close()
@@ -39,17 +39,21 @@ public sealed class MenuSystem
     {
         if (Page is MenuPage.Options or MenuPage.Bindings) _g.SaveSettings();
         if (_back.Count > 0) { (Page, Cursor) = _back.Pop(); Column = 0; Capturing = false; return; }
-        if (Page == MenuPage.Pause) { Close(); _g.Paused = false; }
+        if (Page is MenuPage.Pause or MenuPage.Character) { Close(); _g.Paused = false; }
     }
 
     void Say(string s) { Notice = s; NoticeTime = 3f; }
+
+    /// <summary>A skill's name in the current style (the jetpack is the Wings of Wrath in fantasy).</summary>
+    public static string SkillName(Skill s) => s == Skill.Thrusters && Art.Style == ArtStyle.Fantasy ? "Wings" : s.ToString();
 
     // ------------------------------------------------------------ page contents
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Options", "Quit" },
-        MenuPage.Pause => new[] { "Resume", "Options", "Restart", "Quit to title", "Quit game" },
+        MenuPage.Main => new[] { "New game", "Character", "Options", "Quit" },
+        MenuPage.Pause => new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
+        MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
@@ -95,7 +99,7 @@ public sealed class MenuSystem
             return;
         }
 
-        if (inp.Pause) { _g.PlaySound(Sfx.Swing, 0.5f); Back(); return; }
+        if (inp.Pause || (inp.Character && Page == MenuPage.Character)) { _g.PlaySound(Sfx.Swing, 0.5f); Back(); return; }
         if (inp.Up) { Cursor = (Cursor + items.Length - 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
         if (inp.Down) { Cursor = (Cursor + 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
 
@@ -117,6 +121,16 @@ public sealed class MenuSystem
                 else if (Cursor == Bindings.Count) { _g.Binds.Reset(); Say("Key bindings reset to defaults."); _g.PlaySound(Sfx.Item, 1); }
                 else Back();
             }
+            return;
+        }
+
+        if (Page == MenuPage.Character && (inp.Right || inp.Confirm))
+        {
+            if (Cursor >= Profile.Skills.Length) { if (inp.Confirm) Back(); return; }
+            var skill = Profile.Skills[Cursor];
+            var pr = _g.Profile;
+            if (_g.SpendSkill(skill)) { Say($"{SkillName(skill)} rank {pr.Rank(skill)}: {Profile.Effect(skill, pr.Rank(skill)).ToLowerInvariant()}"); _g.PlaySound(Sfx.Item, 1); }
+            else { Say(pr.Rank(skill) >= Profile.MaxRank ? $"{SkillName(skill)} is maxed out." : "No skill points. Earn experience to level up."); _g.PlaySound(Sfx.Locked, 0.6f); }
             return;
         }
 
@@ -150,13 +164,15 @@ public sealed class MenuSystem
             case (MenuPage.Main, 0): Show(MenuPage.Style); Cursor = (int)_g.Style; break;
             case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
             case (MenuPage.Style, 2): Back(); break;
-            case (MenuPage.Main, 1): Show(MenuPage.Options); break;
-            case (MenuPage.Main, 2): _g.QuitRequested = true; break;
+            case (MenuPage.Main, 1): Show(MenuPage.Character); break;
+            case (MenuPage.Main, 2): Show(MenuPage.Options); break;
+            case (MenuPage.Main, 3): _g.QuitRequested = true; break;
             case (MenuPage.Pause, 0): Close(); _g.Paused = false; break;
-            case (MenuPage.Pause, 1): Show(MenuPage.Options); break;
-            case (MenuPage.Pause, 2): Close(); _g.NewGame(_g.P.Class); break;
-            case (MenuPage.Pause, 3): Close(); _g.GoToTitle(); break;
-            case (MenuPage.Pause, 4): _g.QuitRequested = true; break;
+            case (MenuPage.Pause, 1): Show(MenuPage.Character); break;
+            case (MenuPage.Pause, 2): Show(MenuPage.Options); break;
+            case (MenuPage.Pause, 3): Close(); _g.NewGame(_g.P.Class); break;
+            case (MenuPage.Pause, 4): Close(); _g.GoToTitle(); break;
+            case (MenuPage.Pause, 5): _g.QuitRequested = true; break;
         }
     }
 }

@@ -78,7 +78,7 @@ public sealed class Renderer
         var m = g.Menu;
         var page = m.Page.Value;
         var items = m.Items(page);
-        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : 230);
+        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page == MenuPage.Character ? 246 : 230);
 
         switch (page)
         {
@@ -120,9 +120,65 @@ public sealed class Renderer
             case MenuPage.Bindings:
                 DrawBindings(g);
                 break;
+
+            case MenuPage.Character:
+                DrawCharacter(g);
+                break;
         }
 
-        if (m.NoticeTime > 0 && page != MenuPage.Bindings) CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character))
+            CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
+    }
+
+    /// <summary>The character screen: level and experience, skills to spend points on, and your weapons' levels.</summary>
+    void DrawCharacter(Game g)
+    {
+        var m = g.Menu;
+        var pr = g.Profile;
+        var items = m.Items(MenuPage.Character);
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255);
+        CenterText("CHARACTER", 6, gold, 2);
+        string xp = pr.Level >= Profile.MaxLevel ? "MAX LEVEL" : $"XP {pr.Xp}/{Profile.XpToNext(pr.Level)}";
+        CenterText($"LEVEL {pr.Level}    {xp}    POINTS {pr.Points}", 26, pr.Points > 0 ? Col.Rgb(120, 255, 140) : blue);
+        Bar(60, 36, 200, 3, pr.Level >= Profile.MaxLevel ? 1f : pr.Xp / (float)Profile.XpToNext(pr.Level), gold);
+
+        for (int i = 0; i < items.Length; i++)
+        {
+            int y = 46 + i * 13;
+            bool sel = i == m.Cursor;
+            if (i == Profile.Skills.Length) { MenuItem(items[i], y + 2, sel); break; }
+            var s = Profile.Skills[i];
+            int rank = pr.Rank(s);
+            if (sel) Rect(14, y - 3, 292, 12, Col.Rgb(70, 40, 20));
+            Text(20, y, items[i].ToUpperInvariant(), sel ? MenuSel : MenuText);
+            for (int k = 0; k < Profile.MaxRank; k++)
+                Rect(96 + k * 8, y, 6, 6, k < rank ? (sel ? MenuSel : gold) : Col.Rgb(60, 52, 44));
+            Text(180, y, rank > 0 ? Profile.Effect(s, rank) : "-", rank > 0 ? blue : MenuDim);
+        }
+
+        var cls = g.P?.Class ?? PClass.Fighter;
+        var def = ClassDef.All[(int)cls];
+        Text(20, 128, $"WEAPONS ({def.Name.ToUpperInvariant()})", MenuDim);
+        for (int slot = 0; slot < 3; slot++)
+        {
+            var w = pr.Weapon(cls, slot);
+            int y = 139 + slot * 10;
+            string name = def.Weapons[slot].Name.ToUpperInvariant();
+            Text(20, y, name.Length > 22 ? name[..22] : name, MenuText);
+            Text(160, y, $"LV {w.Level}", w.Level >= Profile.MaxWeaponLevel ? Col.Rgb(120, 255, 140) : blue);
+            Text(198, y, $"+{(w.Level - 1) * 8}%", MenuDim);
+            Bar(232, y + 2, 70, 3, w.Level >= Profile.MaxWeaponLevel ? 1f : w.Xp / (float)Profile.WeaponXpToNext(w.Level), gold);
+        }
+        if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), 174, Col.Rgb(120, 255, 140));
+        else CenterText("ENTER: SPEND A POINT    ESC: BACK", 174, MenuDim);
+        CenterText($"KILLS {pr.TotalKills}    WINS {pr.Wins}    TOTAL XP {pr.TotalXp}", 186, MenuDim);
+    }
+
+    void Bar(int x, int y, int w, int h, float fill, uint color)
+    {
+        Rect(x - 1, y - 1, w + 2, h + 2, Col.Rgb(20, 18, 16));
+        int f = (int)MathF.Round(w * Math.Clamp(fill, 0f, 1f));
+        if (f > 0) Rect(x, y, f, h, color);
     }
 
     void DrawBindings(Game g)
@@ -650,9 +706,10 @@ public sealed class Renderer
         int by = ViewH + 3;
         uint label = Col.Rgb(200, 180, 140);
         if (p.HasJetpack) DrawFuel(p, label);
+        DrawLevelBar(g);
         if (g.Relaxed) { DrawDiscoveryHud(g, by, label); return; }
         Text(6, by, "HEALTH", label);
-        uint hcol = p.Health > 50 ? Col.Rgb(240, 230, 210) : p.Health > 25 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
+        uint hcol = p.Health > p.MaxHealth / 2 ? Col.Rgb(240, 230, 210) : p.Health > p.MaxHealth / 4 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
         Text(8, by + 11, p.Health.ToString(), hcol, 2);
 
         Text(52, by, "ARMOR", label);
@@ -684,6 +741,19 @@ public sealed class Renderer
         Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
     }
 
+    /// <summary>Your level and experience, in the bottom-left corner of the view, with a pop-up as XP comes in.</summary>
+    void DrawLevelBar(Game g)
+    {
+        var pr = g.Profile;
+        int y = ViewH - 9;
+        string lv = $"LV {pr.Level}";
+        Text(4, y, lv, pr.Points > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
+        int bx = 8 + Font.Width(lv);
+        Bar(bx, y + 2, 48, 3, pr.Level >= Profile.MaxLevel ? 1f : pr.Xp / (float)Profile.XpToNext(pr.Level), Col.Rgb(230, 190, 80));
+        if (pr.Points > 0) Text(bx + 52, y, "+", Col.Rgb(120, 255, 140));
+        if (g.XpPopupTime > 0) Text(4, y - 10, $"+{g.XpPopup} XP", Col.Rgb(255, 230, 120));
+    }
+
     /// <summary>Jetpack fuel gauge, tucked into the bottom-right corner of the view.</summary>
     void DrawFuel(Player p, uint label)
     {
@@ -692,8 +762,8 @@ public sealed class Renderer
         string name = Words.T("WINGS");
         Text(W - 3 - Font.Width(name), y0 - 9, name, p.Flying ? Col.Rgb(255, 230, 120) : label);
         Rect(x - 1, y0 - 1, bw + 2, h + 2, Col.Rgb(20, 20, 24));
-        int fill = (int)MathF.Round(h * Math.Clamp(p.Fuel / Player.FuelMax, 0f, 1f));
-        float f = p.Fuel / Player.FuelMax;
+        int fill = (int)MathF.Round(h * Math.Clamp(p.Fuel / p.MaxFuel, 0f, 1f));
+        float f = p.Fuel / p.MaxFuel;
         uint c = f < 0.25f ? Col.Rgb(250, 70, 50) : Art.Style == ArtStyle.SciFi ? Col.Rgb(80, 190, 255) : Col.Rgb(250, 220, 120);
         if (fill > 0) Rect(x, y0 + h - fill, bw, fill, c);
     }
@@ -884,6 +954,8 @@ public sealed class Renderer
             CenterText($"KILLS: {p.Kills}    CHESTS: {p.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 116, stat);
             CenterText($"SECRETS: {p.Secrets}/{g.SecretsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}", 128, stat);
         }
+        if (!g.TestingMap)
+            CenterText($"LEVEL {g.Profile.Level}    +{g.RunXp} XP THIS RUN", 144, g.Profile.Points > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
         CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
     }
 }

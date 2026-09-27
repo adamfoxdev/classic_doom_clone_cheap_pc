@@ -9,7 +9,7 @@ public struct Input
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
     public bool Fire, Walk, JumpHeld, SlideHeld; // held
-    public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot; // pressed
+    public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
@@ -103,6 +103,9 @@ public sealed class Player
     public bool HasJetpack, Flying;
     public float Fuel, JetSfx;
     public const float FuelMax = 6f, ClimbSpeed = 2.6f, SinkSpeed = 3.2f;
+    /// <summary>Health and jetpack fuel limits, raised by the Vitality and Thrusters skills.</summary>
+    public int MaxHealth = 100;
+    public float MaxFuel = FuelMax;
     public bool OnGround => Z <= 0f;
     /// <summary>Camera height: eye level, raised by jumps and lowered while sliding.</summary>
     public float ViewZ => EyeZ + Z - SlideLow * 0.25f + StepLag;
@@ -224,6 +227,7 @@ public sealed class Game
 
     public void GoToTitle()
     {
+        SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
         Mode = GameMode.Title;
         Paused = false;
@@ -294,6 +298,9 @@ public sealed class Game
         ReadingLore = null;
         Level = Hub[0];
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
+        ApplyProfile();
+        P.Health = P.MaxHealth;
+        RunXp = 0; XpPopup = 0;
         P.FloorZ = Level.FloorUnder(P.X, P.Y, P.Radius);
         Messages.Clear();
         Mode = GameMode.Playing;
@@ -368,10 +375,10 @@ public sealed class Game
                 return;
         }
 
-        if (inp.Pause)
+        if (inp.Pause || inp.Character)
         {
             Paused = true;
-            Menu.Show(MenuPage.Pause);
+            Menu.Show(inp.Pause ? MenuPage.Pause : MenuPage.Character);
             PlaySound(Sfx.Swing, 0.6f);
             return;
         }
@@ -397,6 +404,7 @@ public sealed class Game
     void UpdatePlayer(Input inp, float dt)
     {
         var p = P;
+        XpPopupTime = MathF.Max(0, XpPopupTime - dt);
         p.DamageFlash = MathF.Max(0, p.DamageFlash - dt * 2);
         p.PickupFlash = MathF.Max(0, p.PickupFlash - dt * 3);
         p.TeleportFlash = MathF.Max(0, p.TeleportFlash - dt * 1.5f);
@@ -407,7 +415,7 @@ public sealed class Game
         p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), -70f, 70f);
 
         // move
-        float speed = 3.6f * p.Def.Speed * Vars.Speed * (inp.Walk ? 0.5f : 1f);
+        float speed = 3.6f * p.Def.Speed * Vars.Speed * Profile.SpeedMult * (inp.Walk ? 0.5f : 1f);
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
         float mx = (ca * inp.Move - sa * inp.Strafe), my = (sa * inp.Move + ca * inp.Strafe);
         float len = MathF.Sqrt(mx * mx + my * my);
@@ -490,7 +498,7 @@ public sealed class Game
         p.FloorZ = floor;
         p.StepLag *= MathF.Exp(-dt * 14f);
         if (p.Flying && p.Z <= 0) { p.Z = 0; p.VZ = 0; p.Flying = false; PlaySound(Sfx.Land, 0.4f); } // touched down on a ledge
-        if (p.OnGround && !p.Flying && p.HasJetpack) p.Fuel = MathF.Min(Player.FuelMax, p.Fuel + dt * 1.5f);
+        if (p.OnGround && !p.Flying && p.HasJetpack) p.Fuel = MathF.Min(p.MaxFuel, p.Fuel + dt * 1.5f * Profile.FuelMult);
         // bump your head on low ceilings
         float headroom = Level.HeightAt(p.X, p.Y) - p.FloorZ - Player.Height - 0.05f;
         if (p.Z > headroom) { p.Z = MathF.Max(0, headroom); if (p.VZ > 0) p.VZ = 0; }
@@ -514,6 +522,8 @@ public sealed class Game
             {
                 Mode = GameMode.Victory;
                 PlaySound(Sfx.Teleport, 1);
+                if (!TestingMap) { Profile.Wins++; GainXp(Xp.Victory); }
+                SaveProfile();
                 return;
             }
             if (_exitMsgCd <= 0)
@@ -560,7 +570,7 @@ public sealed class Game
         Say(P.Def.Weapons[w].Name);
     }
 
-    int ManaCost(WeaponDef w) => Vars.InfiniteMana ? 0 : (int)MathF.Ceiling(w.Cost * Vars.ManaCost);
+    int ManaCost(WeaponDef w) => Vars.InfiniteMana ? 0 : (int)MathF.Ceiling(w.Cost * Vars.ManaCost * Profile.ManaMult);
     bool HasMana(WeaponDef w) => w.Mana == 0 || (w.Mana == 1 ? P.BlueMana : P.GreenMana) >= ManaCost(w);
 
     void Fire()
@@ -578,7 +588,7 @@ public sealed class Game
         }
         if (powered && w.Mana == 1) p.BlueMana -= ManaCost(w);
         if (powered && w.Mana == 2) p.GreenMana -= ManaCost(w);
-        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate);
+        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate * Profile.FireRateMult);
         p.FireAnim = 0.22f;
         PlaySound(w.Sound, 1);
         WakeNear(p.X, p.Y, 10f);
@@ -598,12 +608,12 @@ public sealed class Game
             }
             if (best != null)
             {
-                int dmg = Rand(w.DmgMin, w.DmgMax);
+                int dmg = (int)MathF.Round(Rand(w.DmgMin, w.DmgMax) * PlayerDamageMult(p.Weapon));
                 if (!powered) dmg /= 2;
                 float bz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
                 if (powered && w.Mana > 0) SpawnPuff(Art.Bolt[1], best.X, best.Y, bz, 0.4f);
                 else SpawnPuff(Art.Fireball[1], best.X, best.Y, bz, 0.25f);
-                DamageMonster(best, dmg);
+                DamageMonster(best, dmg, p.Weapon);
                 PlaySound(Sfx.Hit, 1);
             }
             return;
@@ -611,12 +621,14 @@ public sealed class Game
 
         float launchZ = p.FloorZ + p.Z + 0.32f;
         float? vz = VerticalAim(launchZ, w.Speed);
+        float mult = PlayerDamageMult(p.Weapon);
         for (int i = 0; i < w.Count; i++)
         {
             float a = p.Angle + (i - (w.Count - 1) / 2f) * w.Spread;
             var pr = new Projectile
             {
-                Kind = w.Proj, FromPlayer = true, DmgMin = w.DmgMin, DmgMax = w.DmgMax, Splash = w.Splash, Owner = null,
+                Kind = w.Proj, FromPlayer = true, Splash = w.Splash, Owner = null, Slot = p.Weapon,
+                DmgMin = (int)MathF.Round(w.DmgMin * mult), DmgMax = (int)MathF.Round(w.DmgMax * mult),
                 X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = launchZ,
                 VX = MathF.Cos(a) * w.Speed, VY = MathF.Sin(a) * w.Speed, Level = Level,
                 VZ = vz ?? 0f, Aimed = vz != null,
@@ -728,7 +740,7 @@ public sealed class Game
         p.Health = Math.Max(c.Health, 50);
         p.Armor = Math.Max(p.Armor, c.Armor);
         p.EyeZ = 0.5f; p.DamageFlash = 0; p.Pitch = 0;
-        if (p.HasJetpack) p.Fuel = Player.FuelMax;
+        if (p.HasJetpack) p.Fuel = p.MaxFuel;
         Mode = GameMode.Playing;
         Messages.Clear();
         PlaySound(Sfx.Teleport, 1);
@@ -782,6 +794,7 @@ public sealed class Game
                         if (Level.SecretsFound.Add(i))
                         {
                             p.Secrets++;
+                            GainXp(Xp.Secret);
                             PlaySound(Sfx.Secret, 1);
                             Say($"A secret passage! ({p.Secrets}/{SecretsTotal} secrets)");
                         }
@@ -808,7 +821,7 @@ public sealed class Game
             best = s; bestD = d;
         }
         if (best == null) return false;
-        if (!best.Read) { best.Read = true; P.LoreRead++; }
+        if (!best.Read) { best.Read = true; P.LoreRead++; GainXp(Xp.Lore); }
         ReadingLore = best.Text;
         PlaySound(Sfx.Lore, 1);
         return true;
@@ -836,6 +849,7 @@ public sealed class Game
     {
         c.Opened = true;
         P.ChestsOpened++;
+        GainXp(Xp.Chest);
         PlaySound(Sfx.Chest, 1);
 
         // spill loot toward the player so it's easy to grab
@@ -953,12 +967,89 @@ public sealed class Game
             if (lv.Cells[k] == 'P' && lv.DoorOpen[k] < 1f) lv.DoorMove[k] = 1;
     }
 
+    // ================================================================ character progression
+
+    /// <summary>Your progress, kept between games (see Profile).</summary>
+    public Profile Profile = new();
+    /// <summary>Where the profile is saved; null (as in tests) keeps it in memory only.</summary>
+    public string ProfilePath;
+    /// <summary>Experience earned this game, and the "+XP" pop-up by the level bar.</summary>
+    public int RunXp, XpPopup;
+    public float XpPopupTime;
+
+    /// <summary>Experience for everything you do.</summary>
+    public static class Xp
+    {
+        public const int Secret = 50, Lore = 25, Chest = 15, Relic = 40, Victory = 300, BossBonus = 500, PerWave = 20;
+        public static int Kill(MonsterDef d) => Math.Max(5, d.Health / 2) + (d.Boss ? BossBonus : 0);
+    }
+
+    public void LoadProfile() => Profile = Profile.Load(ProfilePath);
+    public void SaveProfile() => Profile.Save(ProfilePath);
+
+    /// <summary>Pushes the profile's skills onto the player (after a new game or spending a point).</summary>
+    public void ApplyProfile()
+    {
+        var p = P;
+        if (p == null) return;
+        int oldMax = p.MaxHealth;
+        p.MaxHealth = Profile.MaxHealth;
+        if (p.MaxHealth > oldMax) p.Health += p.MaxHealth - oldMax;
+        p.Health = Math.Min(p.Health, p.MaxHealth);
+        float oldFuel = p.MaxFuel;
+        p.MaxFuel = Player.FuelMax * Profile.FuelMult;
+        if (p.HasJetpack && p.MaxFuel > oldFuel) p.Fuel += p.MaxFuel - oldFuel;
+    }
+
+    float PlayerDamageMult(int slot) => Profile.DamageMult * Profile.WeaponMult(P.Class, slot);
+
+    /// <summary>Adds experience, announcing level-ups.</summary>
+    public void GainXp(int amount)
+    {
+        if (amount <= 0 || TestingMap) return;
+        RunXp += amount;
+        XpPopup = XpPopupTime > 0 ? XpPopup + amount : amount;
+        XpPopupTime = 1.6f;
+        int levels = Profile.AddXp(amount);
+        if (levels > 0)
+        {
+            Say($"Level up! You are level {Profile.Level}. Press {Keys.Name(Binds.Get(Act.Character, 0))} to spend skill points.");
+            PlaySound(Sfx.Secret, 1);
+            if (P != null) P.PickupFlash = 1;
+            SaveProfile();
+        }
+    }
+
+    void KilledWith(Monster m, int slot)
+    {
+        if (TestingMap) return;
+        int xp = Xp.Kill(m.Def);
+        Profile.TotalKills++;
+        GainXp(xp);
+        if (Profile.AddWeaponXp(P.Class, slot, xp))
+        {
+            var w = P.Def.Weapons[slot];
+            Say($"{w.Name} is now level {Profile.Weapon(P.Class, slot).Level}!");
+            PlaySound(Sfx.Item, 1);
+            SaveProfile();
+        }
+    }
+
+    /// <summary>Spends a skill point; the effect applies at once.</summary>
+    public bool SpendSkill(Skill s)
+    {
+        if (!Profile.Spend(s)) return false;
+        ApplyProfile();
+        SaveProfile();
+        return true;
+    }
+
     void UseItem()
     {
         var p = P;
-        if (p.Health >= 100) { Say("You are already at full health."); return; }
-        if (p.Flasks > 0 && (p.Health > 50 || p.Urns == 0)) { p.Flasks--; p.Health = Math.Min(100, p.Health + 25); Say("Quartz Flask: +25 health"); }
-        else if (p.Urns > 0) { p.Urns--; p.Health = 100; Say("Mystic Urn: fully healed!"); }
+        if (p.Health >= p.MaxHealth) { Say("You are already at full health."); return; }
+        if (p.Flasks > 0 && (p.Health > p.MaxHealth / 2 || p.Urns == 0)) { p.Flasks--; p.Health = Math.Min(p.MaxHealth, p.Health + 25); Say("Quartz Flask: +25 health"); }
+        else if (p.Urns > 0) { p.Urns--; p.Health = p.MaxHealth; Say("Mystic Urn: fully healed!"); }
         else { Say("You have no healing items."); return; }
         p.PickupFlash = 1;
         PlaySound(Sfx.Heal, 1);
@@ -971,8 +1062,8 @@ public sealed class Game
         switch (pk.Kind)
         {
             case PickupKind.Vial:
-                if (p.Health >= 100) return;
-                p.Health = Math.Min(100, p.Health + 10); msg = "Crystal Vial"; break;
+                if (p.Health >= p.MaxHealth) return;
+                p.Health = Math.Min(p.MaxHealth, p.Health + 10); msg = "Crystal Vial"; break;
             case PickupKind.Flask:
                 if (p.Flasks >= 9) return;
                 p.Flasks++; msg = "Quartz Flask (press F to use)"; break;
@@ -991,6 +1082,7 @@ public sealed class Game
                 p.FireKey = true; msg = "Fire Key! A scorched door awaits it."; break;
             case PickupKind.Relic:
                 p.Relics++;
+                GainXp(Xp.Relic);
                 msg = $"Relic found: {pk.Name ?? "an ancient relic"} ({p.Relics}/{RelicsTotal})";
                 if (Relaxed && p.Relics >= RelicsTotal) msg += " - the exit portal awakens!";
                 pk.Removed = true;
@@ -999,9 +1091,9 @@ public sealed class Game
                 Say(msg);
                 return;
             case PickupKind.Jetpack:
-                if (p.HasJetpack && p.Fuel >= Player.FuelMax) return;
+                if (p.HasJetpack && p.Fuel >= p.MaxFuel) return;
                 msg = p.HasJetpack ? "Wings of Wrath: recharged" : "Wings of Wrath! Jump, then hold Jump to fly. Hold Slide to sink.";
-                p.HasJetpack = true; p.Fuel = Player.FuelMax;
+                p.HasJetpack = true; p.Fuel = p.MaxFuel;
                 break;
             case PickupKind.Armor:
                 if (p.Armor >= 100) return;
@@ -1345,7 +1437,7 @@ public sealed class Game
                 foreach (var t in Level.Things)
                     if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
                     {
-                        DamageMonster(m, Rand(pr.DmgMin, pr.DmgMax));
+                        DamageMonster(m, Rand(pr.DmgMin, pr.DmgMax), pr.Slot);
                         Explode(pr, m);
                         return;
                     }
@@ -1376,7 +1468,7 @@ public sealed class Game
             if (t is Monster m && m != direct && m.Alive)
             {
                 float d = Dist(m.X, m.Y, pr.X, pr.Y);
-                if (d < pr.Splash) DamageMonster(m, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)));
+                if (d < pr.Splash) DamageMonster(m, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), pr.FromPlayer ? pr.Slot : -1);
             }
     }
 
@@ -1385,7 +1477,8 @@ public sealed class Game
         Level.Things.Add(new Puff(tex, size, 0.3f, 1.2f) { X = x, Y = y, Z = z - size * 0.5f, Level = Level });
     }
 
-    void DamageMonster(Monster m, int dmg)
+    /// <summary>Hurts a monster. `slot` is the weapon you hit it with (-1 when it wasn't you), for experience.</summary>
+    void DamageMonster(Monster m, int dmg, int slot = -1)
     {
         if (!m.Alive || dmg <= 0 || m.Blurring) return;
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
@@ -1395,6 +1488,7 @@ public sealed class Game
             SetState(m, AiState.Dying);
             Sound(Sfx.Death, m.X, m.Y);
             P.Kills++;
+            if (slot >= 0) KilledWith(m, slot);
             if (m.Def.Boss)
             {
                 Level.BossDead = true;
@@ -1427,6 +1521,7 @@ public sealed class Game
             p.Dead = true;
             p.Z = 0; p.VZ = 0; p.SlideTime = 0; p.SlideLow = 0;
             Mode = GameMode.Dead;
+            SaveProfile();
             PlaySound(Sfx.PlayerDeath, 1);
             Say(CanRespawn ? "You have died. Press Enter to return to the checkpoint." : "You have died. Press Enter to try again.");
         }

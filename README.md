@@ -102,6 +102,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   you'll drop.
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
+- **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
 - **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
   invert mouse, field of view and FPS display. Settings are saved between sessions.
 - **Developer console (`~`)** for changing game mechanics, plus Hexen's classic cheat codes.
@@ -153,6 +154,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `Shift` | Walk |
 | `Tab` / `M` | Automap |
 | `Esc` | Pause menu (Resume, Options, Restart, Quit) |
+| `K` | Character screen: spend skill points, see your weapons' levels |
 | `F12` | Save a screenshot |
 | `~` | Developer console |
 
@@ -248,6 +250,43 @@ wall is drawn above the opening. New maps default to 1.5; the built-in maps use 
 
 Files without heights are one storey everywhere.
 
+## Levels, skills and weapon levels
+
+Everything you do earns experience, and your progress is saved between games (in `profile.json`, next to
+`settings.cfg`). Dying, restarting and starting a new game all keep it.
+
+![Character screen](docs/character_screen.png)
+![Level bar](docs/level_bar.png)
+
+**Experience** (a "+XP" pop-up shows by the level bar in the bottom-left corner of the view):
+
+| For | XP |
+|---|---|
+| Killing a monster | half its health: Afrit 17, Ettin 35, Bishop 45, Centaur 50, Slaughtaur 65 |
+| Killing the Heresiarch | 350, plus a 500 bonus |
+| Finding a secret / reading a lore stone (first time) | 50 / 25 |
+| A relic / opening a chest | 40 / 15 |
+| Clearing an arena wave | 20 × the wave number |
+| Winning the game | 300 |
+
+The first level takes 100 XP, and each after takes a bit more (282, 519, 800…), up to level 50. Custom maps you
+play-test don't award experience.
+
+**Skills:** each level gives a skill point. Press `K` (or pick **Character** on the title or pause menu) and spend
+points with `Enter`. Every skill has 10 ranks:
+
+| Skill | Per rank |
+|---|---|
+| Vitality | +10 max health (flasks, urns and vials heal up to it) |
+| Power | +8% damage with every weapon |
+| Agility | +4% movement speed |
+| Focus | −6% mana cost and +5% attack rate |
+| Thrusters (Wings in fantasy) | +15% jetpack fuel, and faster recharging |
+
+**Weapon levels:** each weapon (per class) gains experience from the kills it makes, levels up to 10, and hits 8%
+harder per level. The game announces each level-up, and the character screen shows every weapon's level and
+progress.
+
 ## Options and key bindings
 
 Open **Options** from the title menu, or press `Esc` in game and pick Options.
@@ -288,6 +327,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `playmap <file\|name>` | play a custom map file (made in the browser editor) |
 | `artstyle <scifi\|fantasy>` | switch the visual style |
 | `renderedart [0\|1]` | use the Blender-rendered sci-fi art pack (off by default) |
+| `xp <amount>`, `skill <name>` | give yourself experience / spend a skill point |
+| `profile [reset]` | show your level, skills and totals, or start your progress over |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -369,6 +410,7 @@ lineups of every monster in both looks (`56_…`, `57_…`).
 | `src/Art.cs` | Procedural textures, sprites and first-person weapons (fantasy style), style switching |
 | `src/SciFiArt.cs` | The sci-fi style: station textures, space skies, robots and aliens, gear and guns |
 | `src/Words.cs` | Names and messages in the current style (e.g. Heresiarch → Overmind) |
+| `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |
 | `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |

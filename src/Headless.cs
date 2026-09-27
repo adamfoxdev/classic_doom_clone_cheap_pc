@@ -87,6 +87,9 @@ public static class Headless
         VerticalAimChecks(Check);
         Console.WriteLine("Checkpoints:");
         CheckpointChecks(Check);
+        Console.WriteLine("Character progression:");
+        RpgChecks(Check);
+
         Console.WriteLine("Rendered art pack:");
         RenderedArtChecks(Check);
         Console.WriteLine("Map files and the HTML editor:");
@@ -302,6 +305,173 @@ public static class Headless
             check(code == 0 && sw.ToString().Trim() == "ok", $"--check-map passes a good map ({sw.ToString().Trim()})");
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    static void RpgChecks(Action<bool, string> check)
+    {
+        // levels and points
+        var pr = new Profile();
+        check(Profile.XpToNext(1) == 100 && Profile.XpToNext(2) == 282 && Profile.XpToNext(4) == 800, "the level curve: 100, 282, ... 800 XP");
+        check(pr.AddXp(99) == 0 && pr.Level == 1 && pr.AddXp(1) == 1 && pr.Level == 2 && pr.Points == 1 && pr.Xp == 0, "100 XP reaches level 2 and a skill point");
+        check(pr.AddXp(282 + 519) == 2 && pr.Level == 4 && pr.Points == 3, "big gains can level up more than once");
+        var maxed = new Profile();
+        maxed.AddXp(100_000_000);
+        check(maxed.Level == Profile.MaxLevel && maxed.Xp == 0 && maxed.Points == Profile.MaxLevel - 1, $"levels stop at {Profile.MaxLevel}");
+        check(pr.Spend(Skill.Power) && pr.Rank(Skill.Power) == 1 && pr.Points == 2, "a point buys a rank");
+        var none = new Profile();
+        check(!none.Spend(Skill.Power), "no points, no rank");
+        for (int i = 0; i < 12; i++) maxed.Spend(Skill.Agility);
+        check(maxed.Rank(Skill.Agility) == Profile.MaxRank && maxed.Points == Profile.MaxLevel - 1 - Profile.MaxRank, $"skills stop at rank {Profile.MaxRank}");
+        check(!pr.AddWeaponXp(PClass.Fighter, 1, 59) && pr.AddWeaponXp(PClass.Fighter, 1, 1) && pr.Weapon(PClass.Fighter, 1).Level == 2
+              && MathF.Abs(pr.WeaponMult(PClass.Fighter, 1) - 1.08f) < 0.001f && pr.Weapon(PClass.Mage, 1).Level == 1,
+              "each weapon levels up on its own, for +8% damage a level");
+
+        // saving
+        var path = Path.Combine(Path.GetTempPath(), $"hexen_profile_{Environment.ProcessId}.json");
+        pr.Save(path);
+        var loaded = Profile.Load(path);
+        check(loaded.ToJson() == pr.ToJson(), "the profile saves and loads back exactly");
+        File.WriteAllText(path, "{ not json");
+        check(Profile.Load(path).Level == 1, "a damaged profile file starts fresh instead of crashing");
+        File.Delete(path);
+        check(Profile.Load(path).Level == 1 && Profile.Load(null).Level == 1, "no file means a fresh profile");
+
+        // experience from play
+        var g = new Game { FixedSeed = 1 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        check(g.ProfilePath == null && g.Profile.Level == 1, "tests keep the profile in memory");
+        g.NewGame(PClass.Fighter);
+        var ettin = g.Level.Things.OfType<Monster>().First(m => (int)m.X == 14 && (int)m.Y == 4);
+        g.Level.Things.RemoveAll(t => t is Monster && t != ettin);
+        g.P.X = 12.8f; g.P.Y = 4.5f; g.P.Angle = 0;
+        g.Vars.God = true;
+        for (int k = 0; k < 35 * 20 && ettin.Alive; k++) Tick(new Input { Fire = true });
+        int killXp = Game.Xp.Kill(Monster.Ettin);
+        check(!ettin.Alive && g.Profile.TotalXp == killXp && g.RunXp == killXp && g.Profile.TotalKills == 1, $"killing an Ettin gives {killXp} XP");
+        check(g.Profile.Weapon(PClass.Fighter, 0).Xp == killXp, "and the same to the weapon that did it");
+        check(g.XpPopup == killXp && g.XpPopupTime > 0, "a +XP pop-up shows by the level bar");
+        g.GainXp(Profile.XpToNext(1));
+        check(g.Profile.Level == 2 && g.Messages.Any(m => m.text.StartsWith("Level up! You are level 2") && m.text.Contains("Press K")), "levelling up says so, and names the key");
+
+        var stone = g.Level.Things.OfType<LoreStone>().First();
+        int before = g.Profile.TotalXp;
+        g.P.X = stone.X - 0.8f; g.P.Y = stone.Y; g.P.Angle = 0;
+        if (g.Level.BlocksCircle(g.P.X, g.P.Y, g.P.Radius)) { g.P.X = stone.X + 0.8f; g.P.Angle = MathF.PI; }
+        if (g.Level.BlocksCircle(g.P.X, g.P.Y, g.P.Radius)) { g.P.X = stone.X; g.P.Y = stone.Y + 0.8f; g.P.Angle = -MathF.PI / 2; }
+        Tick(new Input { Use = true });
+        check(g.Profile.TotalXp == before + Game.Xp.Lore && g.ReadingLore != null, $"reading a lore stone gives {Game.Xp.Lore} XP");
+        g.ReadingLore = null;
+        Tick(new Input { Use = true }); g.ReadingLore = null;
+        check(g.Profile.TotalXp == before + Game.Xp.Lore, "but only the first time");
+
+        // skills change how you play
+        var p = g.P;
+        g.Profile.Points = 20;
+        check(g.SpendSkill(Skill.Vitality) && p.MaxHealth == 110, "Vitality: +10 max health");
+        p.Health = 100; p.Flasks = 1;
+        g.Con.Execute("give health");
+        check(p.Health == 110, "healing fills the bigger health bar");
+        p.Health = 90; p.Flasks = 1;
+        Tick(new Input { UseItem = true });
+        check(p.Health == 110 && p.Flasks == 0, "a flask can heal past 100");
+
+        float Walk()
+        {
+            var w = new Game { FixedSeed = 1, Profile = g.Profile };
+            w.NewGame(PClass.Fighter);
+            w.Level.Things.RemoveAll(t => t is Monster);
+            w.P.X = 10.5f; w.P.Y = 8.5f; w.P.Angle = 0;
+            for (int k = 0; k < 20; k++) w.Update(new Input { Move = 1 }, 1f / 35f);
+            return w.P.X - 10.5f;
+        }
+        float slow = Walk();
+        for (int i = 0; i < 5; i++) g.SpendSkill(Skill.Agility);
+        float fast = Walk();
+        check(MathF.Abs(fast / slow - 1.2f) < 0.02f, $"Agility: rank 5 walks 20% faster ({fast / slow:0.00}x)");
+
+        var mage = new Game { FixedSeed = 1, Profile = new Profile() };
+        mage.NewGame(PClass.Mage);
+        mage.Level.Things.RemoveAll(t => t is Monster);
+        int Shot()
+        {
+            mage.Level.Things.RemoveAll(t => t is Projectile);
+            mage.P.Cooldown = 0;
+            mage.Update(new Input { Fire = true }, 1f / 35f);
+            return mage.Level.Things.OfType<Projectile>().First().DmgMax;
+        }
+        int wand = Shot();
+        mage.Profile.Points = 20;
+        for (int i = 0; i < 5; i++) mage.SpendSkill(Skill.Power);
+        check(wand == 13 && Shot() == 18, "Power: rank 5 hits 40% harder");
+        mage.Profile.AddWeaponXp(PClass.Mage, 0, 60);
+        check(Shot() == 20 && mage.Level.Things.OfType<Projectile>().First().Slot == 0, "a levelled-up weapon hits harder still, and its shots remember it");
+
+        var focus = new Game { FixedSeed = 1, Profile = new Profile { Points = 20 } };
+        focus.NewGame(PClass.Mage);
+        focus.Level.Things.RemoveAll(t => t is Monster);
+        focus.P.HasWeapon[1] = true; focus.P.Weapon = 1; focus.P.BlueMana = 100;
+        (int, float) Shards()
+        {
+            int mana = focus.P.BlueMana;
+            focus.P.Cooldown = 0;
+            focus.Update(new Input { Fire = true }, 1f / 35f);
+            return (mana - focus.P.BlueMana, focus.P.Cooldown);
+        }
+        var (costBefore, cdBefore) = Shards();
+        for (int i = 0; i < 10; i++) focus.SpendSkill(Skill.Focus);
+        var (costAfter, cdAfter) = Shards();
+        check(costBefore == 3 && costAfter == 2 && cdAfter < cdBefore * 0.7f, $"Focus: cheaper, faster shots (mana {costBefore} -> {costAfter}, cooldown {cdBefore:0.00} -> {cdAfter:0.00})");
+
+        var jet = new Game { FixedSeed = 1, Profile = new Profile { Points = 5 } };
+        jet.NewGame(PClass.Fighter);
+        jet.Con.Execute("give jetpack");
+        jet.SpendSkill(Skill.Thrusters); jet.SpendSkill(Skill.Thrusters);
+        check(MathF.Abs(jet.P.MaxFuel - Player.FuelMax * 1.3f) < 0.01f && MathF.Abs(jet.P.Fuel - jet.P.MaxFuel) < 0.01f, "Thrusters: a bigger tank, topped up");
+        var jet2 = new Game { FixedSeed = 1, Profile = jet.Profile };
+        jet2.NewGame(PClass.Fighter);
+        check(MathF.Abs(jet2.P.MaxFuel - Player.FuelMax * 1.3f) < 0.01f && jet2.P.MaxHealth == 100, "skills carry into the next game");
+
+        // the character screen
+        var ui = new Game { FixedSeed = 1, Profile = new Profile() };
+        ui.NewGame(PClass.Cleric);
+        ui.Profile.AddXp(100);
+        check(ui.Binds.Get(Act.Character, 0) == Keys.Letter('K'), "K is the character key");
+        ui.Update(new Input { Character = true }, 1f / 35f);
+        check(ui.Paused && ui.Menu.Page == MenuPage.Character, "K opens the character screen and pauses");
+        check(ui.Menu.Items(MenuPage.Character).SequenceEqual(new[] { "Vitality", "Power", "Agility", "Focus", "Thrusters", "Back" }), "it lists the five skills");
+        ui.Update(new Input { Confirm = true }, 1f / 35f);
+        check(ui.Profile.Rank(Skill.Vitality) == 1 && ui.P.MaxHealth == 110 && ui.Profile.Points == 0, "Enter spends a point on the selected skill");
+        ui.Update(new Input { Confirm = true }, 1f / 35f);
+        check(ui.Profile.Rank(Skill.Vitality) == 1 && ui.Menu.Notice.StartsWith("No skill points"), "without points it says how to get more");
+        ui.Update(new Input { Character = true }, 1f / 35f);
+        check(!ui.Paused && !ui.Menu.Open, "K again closes it and resumes");
+        ui.Update(new Input { Pause = true }, 1f / 35f);
+        check(ui.Menu.Items(MenuPage.Pause)[1] == "Character" && ui.Menu.Items(MenuPage.Main)[1] == "Character", "the pause and title menus have Character too");
+        ui.Menu.Close(); ui.Paused = false;
+
+        // no experience from play-testing custom maps; a win pays out and counts
+        var test = new Game { FixedSeed = 1, Profile = new Profile() };
+        var doc = new MapDoc(10, 8); doc[2, 2] = '@'; doc[6, 5] = 'E';
+        test.StartTest(doc.ToDef(), PClass.Fighter);
+        test.GainXp(500);
+        check(test.Profile.TotalXp == 0, "play-testing a custom map earns no experience");
+        var win = new Game { FixedSeed = 1, Profile = new Profile() };
+        win.NewGame(PClass.Fighter);
+        win.Level.BossDead = true;
+        var exit = win.Level.FindMark('E').Value;
+        win.P.X = exit.x; win.P.Y = exit.y;
+        win.Update(default, 1f / 35f);
+        check(win.Mode == GameMode.Victory && win.Profile.Wins == 1 && win.Profile.TotalXp == Game.Xp.Victory, $"winning adds a win and {Game.Xp.Victory} XP");
+
+        // console
+        var c = new Game { FixedSeed = 1, Profile = new Profile() };
+        c.NewGame(PClass.Mage);
+        c.Con.Execute("xp 500");
+        check(c.Profile.Level == 3 && c.Profile.Points == 2, "'xp 500' levels you up");
+        c.Con.Execute("skill pow");
+        check(c.Profile.Rank(Skill.Power) == 1, "'skill pow' spends a point on Power");
+        c.Con.Execute("profile reset");
+        check(c.Profile.Level == 1 && c.Profile.Rank(Skill.Power) == 0 && c.Profile.TotalXp == 0, "'profile reset' starts over");
     }
 
     static void RenderedArtChecks(Action<bool, string> check)
@@ -949,12 +1119,12 @@ public static class Headless
 
         // title menu: New game / Options / Quit
         check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
-        Press(Keys.Down);
+        Press(Keys.Down); Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
         Press(Keys.Escape);
-        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 1, "Esc goes back to the main menu");
-        Press(Keys.Up); Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 2, "Esc goes back to the main menu");
+        Press(Keys.Up); Press(Keys.Up); Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
         Press(Keys.Enter);
         check(g.Mode == GameMode.ClassSelect && g.Style == GameStyle.Classic, "Classic goes to class select");
@@ -964,7 +1134,7 @@ public static class Headless
         // Esc in game: pause menu -> Options -> Key bindings
         Press(Keys.Escape);
         check(g.Paused && g.Menu.Page == MenuPage.Pause, "Esc during play opens the pause menu");
-        Press(Keys.Down); Press(Keys.Enter);
+        Press(Keys.Down); Press(Keys.Down); Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "pause menu opens Options");
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Bindings, "Options opens Key bindings");
@@ -1035,7 +1205,7 @@ public static class Headless
 
         // pause menu: quit to title, then Quit from the main menu
         Press(Keys.Escape);
-        for (int k = 0; k < 3; k++) Press(Keys.Down);
+        for (int k = 0; k < 4; k++) Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Mode == GameMode.Title && g.Menu.Page == MenuPage.Main, "Quit to title");
         Press(Keys.Up); Press(Keys.Enter);
@@ -1198,7 +1368,7 @@ public static class Headless
         var g = new Game { FixedSeed = 1, MapsDir = dir };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
 
-        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Options", "Quit" }),
+        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Character", "Options", "Quit" }),
               "the title menu no longer has a level editor (maps are made in tools/editor)");
         g.Con.Execute("edit");
         check(g.Con.Log.Last().Contains("unknown"), "the 'edit' console command is gone");
@@ -1233,8 +1403,9 @@ public static class Headless
         Tick(new Input { Confirm = true });
         check(g.Mode == GameMode.Playing && g.TestingMap && (int)g.P.X == 3 && g.P.Class == PClass.Cleric, "Enter on victory plays the map again");
         Tick(new Input { Pause = true });
-        check(g.Menu.Items(MenuPage.Pause)[3] == "Quit to title", "the pause menu quits to the title");
-        g.Menu.Cursor = 3; Tick(new Input { Confirm = true });
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Pause), "Quit to title");
+        check(g.Menu.Cursor >= 0, "the pause menu quits to the title");
+        Tick(new Input { Confirm = true });
         check(g.Mode == GameMode.Title && !g.TestingMap, "and that ends the play-test");
 
         // playmap: a file path, or a name in the maps folder
@@ -2000,6 +2171,27 @@ public static class Headless
         g.SetRenderedArt(false);
         Shot("57_procedural_monsters_ingame");
         g.Vars.Freeze = false;
+
+        // character progression: the HUD's level bar with an XP pop-up, and the character screen
+        {
+            var saved = g.Profile;
+            g.Profile = new Profile();
+            g.Profile.AddXp(1900);
+            foreach (var sk in new[] { Skill.Vitality, Skill.Vitality, Skill.Power, Skill.Agility, Skill.Thrusters }) g.Profile.Spend(sk);
+            g.Profile.AddWeaponXp(PClass.Fighter, 0, 400); g.Profile.AddWeaponXp(PClass.Fighter, 1, 150);
+            g.NewGame(PClass.Fighter);
+            g.Level.Things.RemoveAll(t => t is Monster);
+            g.GainXp(35);
+            g.Messages.Clear();
+            PlaceCam(12.5f, 8.5f, 0, 0, -MathF.PI / 2, 0);
+            Tick(default, 1);
+            Shot("58_level_bar");
+            g.Update(new Input { Character = true }, 1f / 35f);
+            g.Menu.Cursor = 1;
+            Shot("59_character_screen");
+            g.Menu.Close(); g.Paused = false;
+            g.Profile = saved;
+        }
         g.SetArtStyle(ArtStyle.Fantasy);
         PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
         Shot("50_windspire_fantasy");

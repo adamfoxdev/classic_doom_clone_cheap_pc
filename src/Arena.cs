@@ -111,6 +111,7 @@ public sealed class ArenaState
             BestWave = Math.Max(BestWave, Wave);
             g.PlaySound(Sfx.Item, 1);
             g.Say($"Wave {Wave} cleared! Supplies have appeared at the altar.");
+            g.GainXp(Game.Xp.PerWave * Wave);
             Reward(g);
         }
     }
