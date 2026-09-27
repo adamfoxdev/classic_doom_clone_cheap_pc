@@ -59,7 +59,24 @@ public sealed class Level
     public const string DoorGlyphs = "DSFP";
     public const string WallGlyphs = "#BWMIODSFPLXZ";
 
-    public Level(string name, string entry, string[] rows, Theme theme)
+    /// <summary>Ceiling height of each cell (1 = the original one-storey rooms). Doors are always 1 tall.</summary>
+    public readonly float[] Heights;
+    /// <summary>Wall glyph used for the band of wall above an opening into a lower cell.</summary>
+    public readonly char[] UpperLook;
+    public const float MinHeight = 1f, MaxHeight = 4.5f;
+
+    /// <summary>Height grid glyphs: '2'..'9' are 1.0..4.5 in half steps; anything else means the map's default.</summary>
+    public static float HeightFromGlyph(char c, float fallback) =>
+        c is >= '1' and <= '9' ? Math.Clamp((c - '0') * 0.5f, MinHeight, MaxHeight) : fallback;
+    public static char GlyphFromHeight(float h) => (char)('0' + Math.Clamp((int)MathF.Round(h * 2), 2, 9));
+
+    public float HeightAt(float x, float y)
+    {
+        int cx = (int)MathF.Floor(x), cy = (int)MathF.Floor(y);
+        return InBounds(cx, cy) ? Heights[cy * W + cx] : MinHeight;
+    }
+
+    public Level(string name, string entry, string[] rows, Theme theme, string[] heightRows = null, float defaultHeight = 1f)
     {
         Name = name;
         EntryMessage = entry;
@@ -72,6 +89,8 @@ public sealed class Level
         Cells = new char[W * H];
         Outdoor = new bool[W * H];
         Marks = new char[W * H];
+        Heights = new float[W * H];
+        UpperLook = new char[W * H];
         Seen = new bool[W * H];
         DoorOpen = new float[W * H];
         DoorMove = new sbyte[W * H];
@@ -96,6 +115,22 @@ public sealed class Level
         if (Array.IndexOf(Marks, '*') >= 0) Arena = new ArenaState(this);
         // a map without a Heresiarch (e.g. a custom map) has its exit open from the start
         BossDead = !Things.Any(t => t is Monster { Def.Boss: true });
+
+        // ceiling heights: doors stay one storey so they read as doors, with wall above them
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                int i = y * W + x;
+                char hg = heightRows != null && y < heightRows.Length && x < heightRows[y].Length ? heightRows[y][x] : '.';
+                Heights[i] = IsDoor(Cells[i]) ? MinHeight : HeightFromGlyph(hg, Math.Clamp(defaultHeight, MinHeight, MaxHeight));
+                var look = new[] { Cell(x + 1, y), Cell(x - 1, y), Cell(x, y + 1), Cell(x, y - 1) }
+                    .Where(c => c != '\0' && !IsDoor(c) && c != 'L' && c != 'X')
+                    .GroupBy(c => c).OrderByDescending(gr => gr.Count()).Select(gr => gr.Key).FirstOrDefault();
+                UpperLook[i] = look == '\0' ? '#' : look;
+            }
+
+        foreach (var d in Things.OfType<Decor>())
+            if (d.ReachCeiling) d.SpriteH = HeightAt(d.X, d.Y);
 
         // disguise each secret wall as its most common neighbouring wall
         for (int i = 0; i < Cells.Length; i++)
@@ -320,9 +355,9 @@ public sealed class Level
 
 /// <summary>The hub's maps. Legend: see README.</summary>
 /// <summary>A map's source: its name, arrival message, theme and ASCII rows. The level editor reads and writes these.</summary>
-public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows)
+public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f)
 {
-    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId));
+    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height);
 }
 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
@@ -387,7 +422,7 @@ public static class Maps
     {
         // Winnowing Hall: the hub's start. The lever in the great hall raises the gate to the courtyard,
         // whose portal leads to the Frozen Keep. The steel door guards the Heresiarch.
-        new("Winnowing Hall", "Winnowing Hall", "hall", new[]
+        Raise(new("Winnowing Hall", "Winnowing Hall", "hall", new[]
         {
             "################################",
             "#....&.#............&.#........#",
@@ -414,9 +449,10 @@ public static class Maps
             "#OOOOOOO#,,,,,,b,,,,,,,h,,,,,,,#",
             "################################",
         }),
+            (1, 1, 6, 5, '3'), (8, 1, 21, 10, '6'), (23, 1, 30, 5, '3'), (1, 7, 6, 10, '3'), (23, 7, 30, 10, '3'), (9, 14, 30, 22, '5'), (1, 14, 7, 22, '7')),
         // Frozen Keep: fog-bound ice fortress. Portal 2 leads to Darkmere Crypt; its Fire Key opens the fire door
         // to the east room, whose lever raises the gate to the steel key vault.
-        new("Frozen Keep", "The Frozen Keep", "ice", new[]
+        Raise(new("Frozen Keep", "The Frozen Keep", "ice", new[]
         {
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
             "I,,,,,,,,,,,,&,I,,,,,,,,,,,,,,,I",
@@ -436,10 +472,11 @@ public static class Maps
             "IIIIIIIIII..u....g....IIIIIIIIII",
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
         }),
+            (1, 1, 14, 5, '4'), (16, 1, 30, 5, '4'), (1, 7, 11, 10, '3'), (13, 7, 18, 10, '3'), (20, 7, 30, 10, '3'), (10, 12, 21, 15, '5')),
         // Darkmere Crypt: a swampy crypt haunted by Dark Bishops. The gate to the Fire Key (which opens the
         // fire door in the Frozen Keep) needs both levers pulled AND both pressure plates in the south-east
         // room weighed down with the pushable stone blocks.
-        new("Darkmere Crypt", "Darkmere Crypt", "crypt", new[]
+        Raise(new("Darkmere Crypt", "Darkmere Crypt", "crypt", new[]
         {
             "MMMMMMMMMMMMMMMMMMMMMMMMMMMM",
             "M2.....M,,,,,,,,,,,&M......M",
@@ -460,9 +497,10 @@ public static class Maps
             "BBBBBBBBB..u....g..BBBBBBBBB",
             "BBBBBBBBBBBBBBBBBBBBBBBBBBBB",
         }),
+            (1, 1, 6, 4, '3'), (8, 1, 19, 7, '4'), (21, 1, 26, 4, '3'), (1, 6, 6, 11, '3'), (21, 6, 26, 11, '2'), (8, 9, 19, 12, '5'), (9, 14, 18, 16, '4')),
         // Chaos Arena: optional wave survival. Step on the golden altar to start; monsters pour out of the
         // purple spawn runes in ever harder waves. Portal 3 in Winnowing Hall's courtyard leads here.
-        new("Chaos Arena", "The Chaos Arena - step on the altar to begin", "arena", new[]
+        Raise(new("Chaos Arena", "The Chaos Arena - step on the altar to begin", "arena", new[]
         {
             "OOOOOOOOOOOOOOOOOOOOOOOOOO",
             "O.....O,*,,,,,,,,,,,,,,*,O",
@@ -480,7 +518,19 @@ public static class Maps
             "OOOOOOO,*,,,,,,,*,,,,,,*,O",
             "OOOOOOOOOOOOOOOOOOOOOOOOOO",
         }),
+            (1, 1, 5, 7, '3'), (7, 1, 24, 13, '7')),
     };
 
     public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
+
+    /// <summary>Adds a height grid to a map: rectangles (inclusive) of ceiling-height glyphs over a default of 1.</summary>
+    static MapDef Raise(MapDef d, params (int x0, int y0, int x1, int y1, char h)[] regions)
+    {
+        var grid = d.Rows.Select(r => Enumerable.Repeat('2', r.Length).ToArray()).ToArray();
+        foreach (var (x0, y0, x1, y1, h) in regions)
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                    grid[y][x] = h;
+        return d with { Heights = grid.Select(r => new string(r)).ToArray() };
+    }
 }

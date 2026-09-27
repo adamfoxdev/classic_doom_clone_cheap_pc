@@ -23,6 +23,8 @@ public abstract class Thing
 public sealed class Decor : Thing
 {
     readonly Tex[] _frames;
+    /// <summary>Pillars reach all the way up to their room's ceiling.</summary>
+    public bool ReachCeiling;
     public Decor(Tex[] frames, float w, float h, bool solid, bool bright)
     {
         _frames = frames; SpriteW = w; SpriteH = h; Solid = solid; FullBright = bright; Radius = 0.3f;
@@ -215,7 +217,7 @@ public static class ThingFactory
             'w' => new Pickup(PickupKind.Weapon2, Art.WeaponPiece2, 0.5f),
             'x' => new Pickup(PickupKind.Weapon3, Art.WeaponPiece3, 0.5f),
             't' => new Decor(Art.Torch, 0.5f, 0.75f, true, true),
-            'p' => new Decor(new[] { Art.Pillar }, 0.6f, 1.0f, true, false),
+            'p' => new Decor(new[] { Art.Pillar }, 0.6f, 1.0f, true, false) { ReachCeiling = true },
             'T' => new Decor(new[] { Art.Tree }, 1.0f, 1.3f, true, false),
             '$' => new Chest(),
             '&' => new LoreStone(),

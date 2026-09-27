@@ -7,10 +7,14 @@ public sealed class MapDoc
     public string ThemeId = "hall";
     public int W, H;
     public char[] Cells;
+    /// <summary>Ceiling height per cell: '2'..'9' (1.0..4.5), or '.' for the map's default height.</summary>
+    public char[] Heights;
+    public float DefaultHeight = 1f;
 
     public MapDoc(int w, int h)
     {
         W = w; H = h;
+        Heights = Enumerable.Repeat('.', w * h).ToArray();
         Cells = new char[w * h];
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
@@ -24,38 +28,54 @@ public sealed class MapDoc
     }
 
     public string[] Rows() => Enumerable.Range(0, H).Select(y => new string(Cells, y * W, W)).ToArray();
-    public MapDef ToDef() => new(Name, Name, ThemeId, Rows());
+    public string[] HeightRows() => Enumerable.Range(0, H).Select(y => new string(Heights, y * W, W)).ToArray();
+    public bool HasHeights => Heights.Any(h => h != '.');
+    public MapDef ToDef() => new(Name, Name, ThemeId, Rows(), HasHeights ? HeightRows() : null, DefaultHeight);
+
+    public static bool IsHeightGlyph(char c) => c is >= '2' and <= '9';
 
     public static MapDoc FromDef(MapDef d)
     {
-        var doc = new MapDoc(d.Rows.Max(r => r.Length), d.Rows.Length) { Name = d.Name, ThemeId = d.ThemeId };
+        var doc = new MapDoc(d.Rows.Max(r => r.Length), d.Rows.Length) { Name = d.Name, ThemeId = d.ThemeId, DefaultHeight = d.Height };
         for (int y = 0; y < doc.H; y++)
             for (int x = 0; x < doc.W; x++)
+            {
                 doc[x, y] = x < d.Rows[y].Length && Editor.IsKnownGlyph(d.Rows[y][x]) ? d.Rows[y][x] : '.';
+                char h = d.Heights != null && y < d.Heights.Length && x < d.Heights[y].Length ? d.Heights[y][x] : '.';
+                // store only what differs from the default, so the default stays editable
+                doc.Heights[y * doc.W + x] = IsHeightGlyph(h) && Level.HeightFromGlyph(h, 1f) != doc.DefaultHeight ? h : '.';
+            }
         return doc;
     }
 
     // ---- file format: "name:" and "theme:" header lines, a "---" line, then the rows
 
     public string Serialize() =>
-        $"# Hexen Sharp map\nname: {Name}\ntheme: {ThemeId}\n---\n" + string.Join("\n", Rows()) + "\n";
+        $"# Hexen Sharp map\nname: {Name}\ntheme: {ThemeId}\nheight: {DefaultHeight.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}\n---\n"
+        + string.Join("\n", Rows()) + "\n"
+        + (HasHeights ? "---\n" + string.Join("\n", HeightRows()) + "\n" : "");
 
     public static MapDoc Parse(string text)
     {
         string name = "Untitled", theme = "hall";
+        float height = 1f;
         var rows = new List<string>();
-        bool inRows = false;
+        var heights = new List<string>();
+        int section = 0; // 0 header, 1 map rows, 2 height rows
         foreach (var raw in text.Replace("\r", "").Split('\n'))
         {
-            if (inRows) { if (raw.Length > 0) rows.Add(raw); continue; }
+            if (raw.Trim() == "---") { section++; continue; }
+            if (section == 1) { if (raw.Length > 0) rows.Add(raw); continue; }
+            if (section == 2) { if (raw.Length > 0) heights.Add(raw); continue; }
             var line = raw.Trim();
-            if (line == "---") { inRows = true; continue; }
             if (line.StartsWith("name:")) name = line[5..].Trim();
             else if (line.StartsWith("theme:")) theme = line[6..].Trim();
+            else if (line.StartsWith("height:") && float.TryParse(line[7..].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float h))
+                height = Math.Clamp(MathF.Round(h * 2) / 2, Level.MinHeight, Level.MaxHeight);
         }
         if (rows.Count == 0) throw new InvalidDataException("map has no rows");
         if (!Maps.ThemeIds.Contains(theme)) theme = "hall";
-        return FromDef(new MapDef(name, name, theme, rows.ToArray()));
+        return FromDef(new MapDef(name, name, theme, rows.ToArray(), heights.Count > 0 ? heights.ToArray() : null, height));
     }
 }
 
@@ -90,13 +110,21 @@ public sealed class Editor
 
     public static bool IsKnownGlyph(char c) => Palette.Any(b => b.Glyph == c);
 
+    /// <summary>Height-mode palette: the map default, then 1.0 to 4.5 in half steps.</summary>
+    public static readonly char[] HeightPalette = { '.', '2', '3', '4', '5', '6', '7', '8', '9' };
+    public static string HeightLabel(char c, float def) =>
+        c == '.' ? $"Default ({def.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)})"
+                 : Level.HeightFromGlyph(c, 1f).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+
     public const int MapViewW = 240, MapViewH = 188;
     public static readonly int[] Zooms = { 4, 6, 8, 12, 16 };
 
     readonly Game _g;
     public MapDoc Doc = new(32, 24);
     public int CursorX = 2, CursorY = 2, CamX, CamY, ZoomIndex = 2, BrushIndex;
-    public bool FillTool, ShowHelp = true, Dirty;
+    public bool FillTool, ShowHelp = true, Dirty, HeightMode;
+    public int HeightIndex = 4;
+    public char CurrentHeight => HeightPalette[HeightIndex];
     public string Status = "", RenameText;
     public float StatusTime;
     public PClass PlayClass = PClass.Fighter;
@@ -104,7 +132,7 @@ public sealed class Editor
     public int OpenCursor;
     float _leaveArmed;
     bool _stroke;
-    readonly List<char[]> _undo = new(), _redo = new();
+    readonly List<(char[] cells, char[] heights)> _undo = new(), _redo = new();
 
     public Editor(Game g) { _g = g; }
 
@@ -117,7 +145,7 @@ public sealed class Editor
 
     void PushUndo()
     {
-        _undo.Add((char[])Doc.Cells.Clone());
+        _undo.Add(((char[])Doc.Cells.Clone(), (char[])Doc.Heights.Clone()));
         if (_undo.Count > 100) _undo.RemoveAt(0);
         _redo.Clear();
     }
@@ -125,8 +153,8 @@ public sealed class Editor
     public void Undo()
     {
         if (_undo.Count == 0) { Say("Nothing to undo."); return; }
-        _redo.Add(Doc.Cells);
-        Doc.Cells = _undo[^1];
+        _redo.Add((Doc.Cells, Doc.Heights));
+        (Doc.Cells, Doc.Heights) = _undo[^1];
         _undo.RemoveAt(_undo.Count - 1);
         Dirty = true;
         Say("Undo.");
@@ -135,8 +163,8 @@ public sealed class Editor
     public void Redo()
     {
         if (_redo.Count == 0) { Say("Nothing to redo."); return; }
-        _undo.Add(Doc.Cells);
-        Doc.Cells = _redo[^1];
+        _undo.Add((Doc.Cells, Doc.Heights));
+        (Doc.Cells, Doc.Heights) = _redo[^1];
         _redo.RemoveAt(_redo.Count - 1);
         Dirty = true;
         Say("Redo.");
@@ -150,6 +178,40 @@ public sealed class Editor
             for (int i = 0; i < Doc.Cells.Length; i++) if (Doc.Cells[i] == '@') Doc.Cells[i] = '.';
         Doc[x, y] = glyph;
         Dirty = true;
+    }
+
+    public void PaintHeight(int x, int y, char h)
+    {
+        if ((uint)x >= (uint)Doc.W || (uint)y >= (uint)Doc.H || Doc.Heights[y * Doc.W + x] == h) return;
+        Doc.Heights[y * Doc.W + x] = h;
+        Dirty = true;
+    }
+
+    /// <summary>Height fill: every open cell of the same height connected to the clicked one (walls bound it).</summary>
+    public int FillHeight(int x, int y, char h)
+    {
+        if ((uint)x >= (uint)Doc.W || (uint)y >= (uint)Doc.H) return 0;
+        char target = Doc.Heights[y * Doc.W + x];
+        if (target == h) return 0;
+        bool Open(int cx, int cy) => !"#BWMIO".Contains(Doc[cx, cy]);
+        var q = new Queue<(int, int)>();
+        q.Enqueue((x, y));
+        Doc.Heights[y * Doc.W + x] = h;
+        int n = 1;
+        while (q.Count > 0)
+        {
+            var (cx, cy) = q.Dequeue();
+            foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                int nx = cx + dx, ny = cy + dy;
+                if ((uint)nx >= (uint)Doc.W || (uint)ny >= (uint)Doc.H || Doc.Heights[ny * Doc.W + nx] != target || !Open(nx, ny)) continue;
+                Doc.Heights[ny * Doc.W + nx] = h;
+                q.Enqueue((nx, ny));
+                n++;
+            }
+        }
+        Dirty = true;
+        return n;
     }
 
     /// <summary>Flood-fills the connected area of the clicked glyph (4-way) with the brush.</summary>
@@ -179,7 +241,7 @@ public sealed class Editor
 
     public void NewMap(int w, int h)
     {
-        Doc = new MapDoc(w, h);
+        Doc = new MapDoc(w, h) { DefaultHeight = 1.5f };
         Doc[2, 2] = '@';
         _undo.Clear(); _redo.Clear();
         CursorX = CursorY = 2; CamX = CamY = 0;
@@ -280,12 +342,12 @@ public sealed class Editor
     }
 
     /// <summary>Which palette entry is at a screen position, or -1.</summary>
-    public static int PaletteAt(float mx, float my)
+    public static int PaletteAt(float mx, float my, int count)
     {
         int col = (int)((mx - PaletteX) / PaletteCell), row = (int)((my - PaletteY) / PaletteCell);
         if (mx < PaletteX || my < PaletteY || col >= PaletteCols) return -1;
         int i = row * PaletteCols + col;
-        return i >= 0 && i < Palette.Length ? i : -1;
+        return i >= 0 && i < count ? i : -1;
     }
 
     public const int PaletteX = 242, PaletteY = 12, PaletteCell = 15, PaletteCols = 5;
@@ -343,6 +405,18 @@ public sealed class Editor
             if (k.Pressed(Keys.F1 + 4) || k.Pressed(Keys.Letter('P'))) { if (PlayTest()) return; }
             if (k.Pressed(Keys.Letter('H')) || k.Pressed(Keys.F1)) ShowHelp = !ShowHelp;
             if (k.Pressed(Keys.Letter('F'))) { FillTool = !FillTool; Say(FillTool ? "Fill tool." : "Brush tool."); }
+            if (k.Pressed(Keys.Letter('G')))
+            {
+                HeightMode = !HeightMode;
+                Say(HeightMode ? "Height mode: paint ceiling heights (2-9 pick a height)." : "Tile mode.");
+            }
+            if (HeightMode)
+                for (int dgt = 0; dgt <= 9; dgt++)
+                    if (k.Pressed(Keys.Digit(dgt)))
+                    {
+                        HeightIndex = dgt <= 1 ? 0 : dgt - 1;
+                        Say($"Height: {HeightLabel(CurrentHeight, Doc.DefaultHeight)}");
+                    }
             if (k.Pressed(Keys.Letter('T')))
             {
                 int ti = Array.IndexOf(Maps.ThemeIds, Doc.ThemeId);
@@ -359,8 +433,9 @@ public sealed class Editor
             }
             if (k.Pressed(Keys.Minus)) ZoomIndex = Math.Max(0, ZoomIndex - 1);
             if (k.Pressed(Keys.Equal)) ZoomIndex = Math.Min(Zooms.Length - 1, ZoomIndex + 1);
-            if (k.Pressed(Keys.LeftBracket) || k.Pressed(Keys.WheelUp)) BrushIndex = (BrushIndex + Palette.Length - 1) % Palette.Length;
-            if (k.Pressed(Keys.RightBracket) || k.Pressed(Keys.WheelDown)) BrushIndex = (BrushIndex + 1) % Palette.Length;
+            int step = (k.Pressed(Keys.LeftBracket) || k.Pressed(Keys.WheelUp) ? -1 : 0) + (k.Pressed(Keys.RightBracket) || k.Pressed(Keys.WheelDown) ? 1 : 0);
+            if (step != 0 && HeightMode) HeightIndex = (HeightIndex + step + HeightPalette.Length) % HeightPalette.Length;
+            else if (step != 0) BrushIndex = (BrushIndex + step + Palette.Length) % Palette.Length;
         }
 
         // ---- cursor: follows the mouse over the map, or the arrow keys / WASD
@@ -384,7 +459,8 @@ public sealed class Editor
         // ---- palette clicks
         if (k.Pressed(Keys.Mouse1))
         {
-            int pi = PaletteAt(inp.MouseX, inp.MouseY);
+            int pi = PaletteAt(inp.MouseX, inp.MouseY, HeightMode ? HeightPalette.Length : Palette.Length);
+            if (pi >= 0 && HeightMode) { HeightIndex = pi; Say($"Height: {HeightLabel(CurrentHeight, Doc.DefaultHeight)}"); return; }
             if (pi >= 0) { BrushIndex = pi; Say(Current.Label); return; }
         }
 
@@ -392,7 +468,12 @@ public sealed class Editor
         bool paint = (mouseInMap && k.Down(Keys.Mouse1)) || k.Pressed(Keys.Space) || k.Pressed(Keys.Enter);
         bool erase = (mouseInMap && k.Down(Keys.Mouse2)) || k.Pressed(Keys.Delete) || k.Pressed(Keys.Backspace);
         bool pick = (mouseInMap && k.Pressed(Keys.Mouse3)) || k.Pressed(Keys.Letter('Q'));
-        if (pick)
+        if (pick && HeightMode)
+        {
+            HeightIndex = Math.Max(0, Array.IndexOf(HeightPalette, Doc.Heights[CursorY * Doc.W + CursorX]));
+            Say($"Picked height {HeightLabel(CurrentHeight, Doc.DefaultHeight)}.");
+        }
+        else if (pick)
         {
             int bi = Array.FindIndex(Palette, b => b.Glyph == Doc[CursorX, CursorY]);
             if (bi >= 0) { BrushIndex = bi; Say($"Picked {Current.Label}."); }
@@ -400,6 +481,16 @@ public sealed class Editor
         if (paint || erase)
         {
             if (!_stroke) { PushUndo(); _stroke = true; }
+            if (HeightMode)
+            {
+                char hg = erase ? '.' : CurrentHeight;
+                if (FillTool && !erase)
+                {
+                    if (k.Pressed(Keys.Mouse1) || k.Pressed(Keys.Space) || k.Pressed(Keys.Enter)) Say($"Set the height of {FillHeight(CursorX, CursorY, hg)} cells.");
+                }
+                else PaintHeight(CursorX, CursorY, hg);
+                return;
+            }
             char glyph = erase ? '.' : Current.Glyph;
             if (FillTool && !erase)
             {
