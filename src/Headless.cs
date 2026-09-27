@@ -96,6 +96,8 @@ public static class Headless
         QuakeMoveChecks(Check);
         Console.WriteLine("Strafe-jumping practice:");
         PracticeChecks(Check);
+        Console.WriteLine("Practice ghost:");
+        GhostChecks(Check);
         Console.WriteLine("HUD styles:");
         HudChecks(Check);
         Console.WriteLine("Rendered art pack:");
@@ -967,6 +969,108 @@ public static class Headless
         check(g.Menu.Cursor >= 0 && g.Menu.Page == MenuPage.Leaderboard, "the title menu opens it too");
         g.Menu.Update(new Input { Pause = true }, 1f / 35f);
         check(g.Menu.Page == MenuPage.Main, "and Esc goes back to the title");
+    }
+
+    static void GhostChecks(Action<bool, string> check)
+    {
+        // the track: samples on the run clock, blended between, packed for the profile
+        var tr = new GhostTrack();
+        for (int k = 0; k <= 20; k++) tr.Record(k * 0.05f, 2 + k * 0.1f, 5.5f, 2.5f);
+        tr.Record(1.2f, 40, 5.5f, 2.5f); // a lift teleport, with a frame gap before it
+        var (mx, _, _) = tr.At(0.525f);
+        check(tr.Points.Count == 25 && MathF.Abs(mx - 3.05f) < 0.001f && tr.At(-1).x == 2 && tr.At(99).x == 40,
+              "a ghost track samples every 0.05s of the run and blends between samples");
+        check(tr.At(1.18f).x == 40 || tr.At(1.18f).x == tr.Points[21].x, "a teleport jumps instead of sliding across the map");
+        var back = GhostTrack.Decode(tr.Encode());
+        check(back.Points.SequenceEqual(tr.Points) && GhostTrack.Decode("not base64!").Points.Count == 0, "it packs to text for the profile and back (and bad data is ignored)");
+        check(MathF.Abs(tr.TimeAt(3f, 2.5f) - 0.5f) < 0.001f && tr.TimeAt(99, 2.5f) < 0, "and finds when the run first reached a spot");
+
+        // the first finished run becomes the ghost
+        var g = new Game { FixedSeed = 1 };
+        void Tick(Input i, int n = 1) { for (int k = 0; k < n; k++) g.Update(i, 1f / 35f); }
+        g.StartPractice(PClass.Fighter);
+        check(g.Ghost == null && !g.Level.Things.OfType<GhostRunner>().Any(), "no ghost before you've finished a run");
+        var p = g.P;
+        Tick(new Input { Move = 1 }, 35);
+        var exit = g.Level.FindMark('E').Value;
+        p.X = exit.x - 1; p.Y = exit.y; p.FloorZ = Maps.CoursePlatforms[^1].floor; p.Angle = 0;
+        for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
+        var saved = g.Profile.Ghosts.GetValueOrDefault("Fighter");
+        var path = saved == null ? new GhostTrack() : GhostTrack.Decode(saved.Path);
+        check(saved != null && saved.Time == g.LastRun && path.Points.Count > 20 && path.Points[0].x < 4 && path.Points[^1].x > exit.x - 1,
+              $"finishing saves the run as your ghost ({path.Points.Count} samples over {g.LastRun:0.00}s)");
+        var ghost = g.Ghost;
+        check(ghost != null && g.Level.Things.Contains(ghost) && !ghost.Solid && ghost.Alpha < 256 && MathF.Abs(ghost.X - path.Points[0].x) < 0.01f,
+              "and it waits at the start line, see-through, for your next go");
+
+        // it races you: in step with your clock, and where you were
+        Tick(new Input { Move = 1 }, 17);
+        var (ex, ey, _) = path.At(g.RunTime);
+        check(g.RunStarted && MathF.Abs(ghost.X - ex) < 0.01f && MathF.Abs(ghost.Y - ey) < 0.01f && ghost.X > path.Points[0].x,
+              "once you set off it retraces the recorded path in time with your clock");
+        float gx = ghost.X;
+        p.X = ghost.X - 0.6f; p.Y = ghost.Y; p.Angle = 0;
+        ghost.Seek(g.RunTime); // stand it still in front of you
+        Tick(new Input { Move = 1 }, 20);
+        check(p.X > gx + 0.3f, "you run straight through it");
+
+        // splits: each platform says how you're doing against it
+        var line = new GhostTrack();
+        float gs = 5f; // a steady ghost, 5 units a second along the middle of the course
+        for (float t = 0; t <= 20; t += 0.05f) line.Record(t, 2.5f + gs * t, 5.5f, 2.5f);
+        g.Profile.Ghosts["Fighter"] = new CourseGhost { Time = 20, Path = line.Encode() };
+        g.StartPractice(PClass.Fighter);
+        p = g.P;
+        g.RunStarted = true; g.RunTime = 2f;
+        g.Messages.Clear();
+        var p2 = Maps.CoursePlatforms[1];
+        p.X = p2.x0 + 1.5f; p.Y = 5.5f; p.FloorZ = 2.5f; p.Z = 0;
+        Tick(default);
+        // the ghost gets there at (19 - 2.5) / 5 = 3.3s (the first sample on it, 3.3 or 3.35); you're there at 2.0
+        check(g.Messages.Any(m => m.text.EndsWith("(-1.30s vs ghost)") || m.text.EndsWith("(-1.35s vs ghost)")),
+              $"reaching platform 2 ahead of the ghost says by how much ({g.Messages.LastOrDefault().text})");
+
+        // a slower run leaves the ghost alone; a new best replaces it
+        float old = g.Profile.CourseBestTime("Fighter");
+        g.RunTime = old + 3;
+        p.X = exit.x - 1; p.Y = exit.y; p.FloorZ = Maps.CoursePlatforms[^1].floor; p.Angle = 0;
+        string keep = g.Profile.Ghosts["Fighter"].Path;
+        for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
+        check(g.Profile.Ghosts["Fighter"].Path == keep, "a slower run keeps the ghost you had");
+        Tick(new Input { Move = 1 }, 5);
+        g.RunTime = old * 0.5f;
+        p.X = exit.x - 1; p.Y = exit.y; p.FloorZ = Maps.CoursePlatforms[^1].floor; p.Angle = 0;
+        for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
+        check(g.LastPlace == 1 && g.Profile.Ghosts["Fighter"].Path != keep && g.Profile.Ghosts["Fighter"].Time == g.LastRun, "a new best becomes the ghost");
+
+        // switching it off and on, and it's drawn
+        g.Con.Execute("ghost 0");
+        Tick(default);
+        check(g.Ghost == null && !g.Level.Things.OfType<GhostRunner>().Any(), "'ghost 0' takes it off the course");
+        g.Con.Execute("ghost 1");
+        Tick(default);
+        check(g.Ghost != null && Settings.Lines(g).Contains("ghost 1"), "'ghost 1' brings it back, and it's saved with the settings");
+        var gr = new Renderer();
+        g.Ghost.Seek(0);
+        p.X = g.Ghost.X - 1.5f; p.Y = g.Ghost.Y; p.Angle = 0; p.Pitch = 0; p.FloorZ = 2.5f; p.Z = 0;
+        gr.Render(g); var shown = (uint[])gr.Fb.Clone();
+        g.Vars.Ghost = false; g.ShowGhost();
+        gr.Render(g);
+        check(shown.Zip(gr.Fb).Count(t => t.First != t.Second) > 30, "the ghost is drawn, see-through, on the course");
+        g.Vars.Ghost = true;
+        g.Menu.Show(MenuPage.Options);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "Practice ghost");
+        check(g.Menu.Value(g.Menu.Cursor) == "ON", "Options shows Practice ghost: ON");
+        g.Menu.Update(new Input { Right = true }, 1f / 35f);
+        check(!g.Vars.Ghost && g.Menu.Value(g.Menu.Cursor) == "OFF", "and turns it off");
+        g.Menu.Close();
+
+        // the menus fit: every Options item and the practice pause menu sit above their footers
+        int opts = g.Menu.Items(MenuPage.Options).Length, pause = g.Menu.Items(MenuPage.Pause).Length;
+        check(g.Practicing && pause == 7 && Renderer.PauseTop + (pause - 1) * Renderer.PauseRow + 9 < Renderer.PauseFooter,
+              "the pause menu's items all fit above its footer");
+        check(Renderer.OptionsTop + (opts - 1) * Renderer.OptionsRow + 9 < Renderer.OptionsFooter && Renderer.OptionsFooter + 8 <= Renderer.H,
+              $"so do all {opts} Options items");
     }
 
     static void HudChecks(Action<bool, string> check)
@@ -3048,6 +3152,21 @@ public static class Headless
         g.Paused = true; g.Menu.Show(MenuPage.Pause); g.Menu.Show(MenuPage.Leaderboard);
         Shot("85_leaderboard");
         g.Menu.Close(); g.Paused = false;
+
+        // the ghost of your best run, a stride ahead across the first platform, then the practice pause menu
+        var ghostLine = new GhostTrack();
+        for (float t = 0; t <= 8; t += 0.05f) ghostLine.Record(t, 2.5f + 5.2f * t, 4.6f + 1.4f * MathF.Sin(t * 2.2f), 2.5f + MathF.Max(0, MathF.Sin(t * 5.8f)) * 0.4f);
+        g.Profile.Ghosts["Fighter"] = new CourseGhost { Time = 21.84f, Path = ghostLine.Encode() };
+        g.StartPractice(PClass.Fighter);
+        g.Vars.Freeze = true;
+        Tick(default, 2);
+        g.RunStarted = true; g.RunTime = 1.35f; g.Ghost.Seek(g.RunTime);
+        PlaceCam(5.2f, 5.5f, 2.5f, 0, 0.02f, -8);
+        g.Messages.Clear();
+        Shot("86_practice_ghost");
+        g.Paused = true; g.Menu.Show(MenuPage.Pause);
+        Shot("87_practice_pause");
+        g.Menu.Close(); g.Paused = false; g.Vars.Freeze = false;
         g.GoToTitle();
         g.Vars.Freeze = false;
 

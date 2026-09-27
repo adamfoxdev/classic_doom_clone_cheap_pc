@@ -254,6 +254,13 @@ of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells:
   in green. `Left`/`Right` switch class. Runs go under your computer's user name; set another with `name <name>` in
   the console, so people sharing a machine can tell their times apart. The board is saved with your profile.
 
+- A **ghost** of your best run for each class races you: a see-through hologram runner that retraces your
+  recorded path in time with your clock, waiting at the start line until you set off. Reaching each platform tells
+  you how far ahead or behind it you are (`-1.35s vs ghost`). A new best replaces it; your first finished run
+  becomes it if there isn't one yet. It has no body, so you run straight through it. Turn it off with
+  **Options → Practice ghost** or `ghost 0`. It's saved with your profile (about 10 KB for a 40-second run).
+
+![Racing the ghost of your best run](docs/practice_ghost.png)
 ![Strafe jumping over the Velocity Hangar's 5-wide gap](docs/velocity_hangar.png)
 ![The practice course leaderboard](docs/leaderboard.png)
 
@@ -455,7 +462,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
 `gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off), `crosshair` (0 off, 1 dot, 2 cross, 3 circle),
-`quakemove` (1 Quake movement, 0 classic) and its tuning: `accel`, `airaccel`, `friction`, `maxhop` (top speed as a multiple of your run speed).
+`quakemove` (1 Quake movement, 0 classic) and its tuning: `accel`, `airaccel`, `friction`, `maxhop` (top speed as a multiple of your run speed), `ghost` (race your best practice run).
 
 Hexen's cheat codes work when typed during play (or in the console):
 `satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys), `icarus` (jetpack),

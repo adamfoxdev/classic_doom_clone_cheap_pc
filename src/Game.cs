@@ -226,6 +226,7 @@ public sealed class Game
         NewGame(cls);
         Practicing = true;
         RunTime = 0; RunStarted = false;
+        ResetRun();
         if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
         float best = Profile.CourseBestTime(P.Class.ToString());
         if (best > 0) Say($"Your best as the {P.Def.Name}: {best:0.00}s.");
@@ -268,10 +269,53 @@ public sealed class Game
             : $"Course cleared in {RunTime:0.00}s (best {best:0.00}s).");
         LastRun = RunTime;
         LastPlace = place;
+        // the ghost is your best run: this one replaces it if it's the new best, or if there's no ghost yet
+        Recording.Record(RunTime, P.X, P.Y, P.FloorZ + P.Z);
+        if (place == 1 || !Profile.Ghosts.ContainsKey(key))
+        {
+            Profile.Ghosts[key] = new CourseGhost { Time = RunTime, Path = Recording.Encode() };
+            SaveProfile();
+        }
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         MoveTo(Level.StartX, Level.StartY, Level.StartAngle);
+        ResetRun();
+    }
+
+    /// <summary>The run you're making now, recorded for the ghost.</summary>
+    public GhostTrack Recording = new();
+    /// <summary>Your best run racing you on the practice course (null when there isn't one, or 'ghost 0').</summary>
+    public GhostRunner Ghost;
+
+    /// <summary>Back to the start line: the clock at zero, a fresh recording, and the ghost waiting beside you.</summary>
+    void ResetRun()
+    {
         RunTime = 0; RunStarted = false;
+        Recording = new GhostTrack();
+        ShowGhost();
+    }
+
+    /// <summary>Puts your class's saved ghost on the course (or takes it off when ghosts are turned off).</summary>
+    public void ShowGhost()
+    {
+        if (Ghost != null) { Ghost.Removed = true; Level.Things.Remove(Ghost); Ghost = null; }
+        if (!Practicing || !Vars.Ghost || !Profile.Ghosts.TryGetValue(P.Class.ToString(), out var saved)) return;
+        var track = GhostTrack.Decode(saved.Path);
+        if (track.Points.Count < 2) return;
+        Ghost = new GhostRunner(track, saved.Time) { Level = Level };
+        Ghost.Seek(RunTime);
+        Level.Things.Add(Ghost);
+    }
+
+    /// <summary>At a platform's checkpoint: how far ahead of (negative) or behind your ghost you are, as " (+0.84s vs ghost)".</summary>
+    string GhostSplit(int zone)
+    {
+        if (Ghost == null || zone <= 0 || !RunStarted) return "";
+        var pl = Maps.CoursePlatforms[zone];
+        float then = Ghost.Track.TimeAt(pl.x0, pl.floor);
+        if (then < 0) return "";
+        float d = RunTime - then;
+        return $" ({(d <= 0 ? "-" : "+")}{MathF.Abs(d):0.00}s vs ghost)";
     }
 
     /// <summary>The time of the last finished practice run, and its place on the leaderboard (0 if off it).</summary>
@@ -384,6 +428,8 @@ public sealed class Game
         Checkpoint = null;
         _onLift = false;
         RunTime = 0; RunStarted = false;
+        Recording = new GhostTrack();
+        Ghost = null;
         var names = Discovery.RelicNames.OrderBy(_ => _loot.Next()).ToList();
         int nameIndex = 0;
         string NextName() => names[nameIndex++ % names.Count];
@@ -426,6 +472,7 @@ public sealed class Game
             Say($"Relaxed mode: the creatures here are peaceful. Find the {RelicsTotal} relics to awaken the exit.");
         }
         else if (!TestingMap) Say($"You are the {P.Def.Name}. Find a way through the hub.");
+        if (Practicing) ShowGhost(); // Restart on the course
     }
 
     static Thing Place(Thing t, Thing at, Level lv)
@@ -718,7 +765,13 @@ public sealed class Game
         {
             // the clock starts when you leave the spot you started on
             if (!RunStarted && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
-            if (RunStarted) RunTime += dt;
+            if (RunStarted)
+            {
+                RunTime += dt;
+                Recording.Record(RunTime, p.X, p.Y, p.FloorZ + p.Z);
+            }
+            if (Vars.Ghost != (Ghost != null) && (Ghost != null || Profile.Ghosts.ContainsKey(p.Class.ToString()))) ShowGhost();
+            Ghost?.Seek(RunTime);
         }
 
         // portals & exit
@@ -925,7 +978,7 @@ public sealed class Game
                         Health = Math.Max(p.Health, 50), Armor = p.Armor,
                     };
                 PlaySound(Sfx.Secret, 0.7f);
-                if (Practicing) Say(CourseHint(zone));
+                if (Practicing) Say(CourseHint(zone) + GhostSplit(zone));
                 else Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count}).");
             }
         }

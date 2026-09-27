@@ -66,6 +66,9 @@ public sealed class Renderer
 
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
+    /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
+    public const int PauseTop = 64, PauseRow = 12, PauseFooter = 156, OptionsTop = 38, OptionsRow = 12, OptionsFooter = 188;
+
     void MenuItem(string text, int y, bool selected)
     {
         text = text.ToUpperInvariant();
@@ -88,25 +91,27 @@ public sealed class Renderer
         switch (page)
         {
             case MenuPage.Pause:
-                CenterText("PAUSED", 34, Col.Rgb(230, 190, 80), 3);
-                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 70 + i * 14, i == m.Cursor);
-                CenterText("ARROWS + ENTER    ESC: RESUME", 150, MenuDim);
+                CenterText("PAUSED", 30, Col.Rgb(230, 190, 80), 3);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], PauseTop + i * PauseRow, i == m.Cursor);
+                CenterText("ARROWS + ENTER    ESC: RESUME", PauseFooter, MenuDim);
                 break;
 
             case MenuPage.Options:
-                CenterText("OPTIONS", 16, Col.Rgb(230, 190, 80), 2);
+                CenterText("OPTIONS", 12, Col.Rgb(230, 190, 80), 2);
                 for (int i = 0; i < items.Length; i++)
                 {
-                    int y = 48 + i * 16;
+                    int y = OptionsTop + i * OptionsRow;
                     bool sel = i == m.Cursor;
                     string label = items[i].ToUpperInvariant(), val = m.Value(i);
                     if (val == "") { MenuItem(label, y, sel); continue; }
-                    if (sel) Rect(40, y - 3, 240, 13, Col.Rgb(70, 40, 20));
+                    if (sel) Rect(40, y - 2, 240, 11, Col.Rgb(70, 40, 20));
                     Text(48, y, label, sel ? MenuSel : MenuText);
                     string shown = sel ? $"< {val} >" : val;
                     Text(272 - Font.Width(shown), y, shown, sel ? MenuSel : Col.Rgb(170, 200, 255));
                 }
-                CenterText("UP/DOWN: SELECT  LEFT/RIGHT: CHANGE  ESC: BACK", 186, MenuDim);
+                // a notice takes the footer's place, clear of the list
+                if (m.NoticeTime <= 0) CenterText("UP/DOWN: SELECT  LEFT/RIGHT: CHANGE  ESC: BACK", OptionsFooter, MenuDim);
+                else CenterText(m.Notice.ToUpperInvariant(), OptionsFooter, Col.Rgb(120, 255, 140));
                 break;
 
             case MenuPage.Style:
@@ -135,7 +140,7 @@ public sealed class Renderer
                 break;
         }
 
-        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard))
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
     }
 
@@ -598,7 +603,7 @@ public sealed class Renderer
             float screenX = W / 2f * (1 + tX / depth);
             float scale = Proj / depth;
             float sw = t.SpriteW * scale, sh = t.SpriteH * scale;
-            float baseZ = t is Projectile or Puff ? t.Z : lv.FloorAt(t.X, t.Y) + t.Z;
+            float baseZ = t is Projectile or Puff or GhostRunner ? t.Z : lv.FloorAt(t.X, t.Y) + t.Z;
             float left = screenX - sw / 2, top = _horizon - (baseZ + t.SpriteH - _eyeZ) * scale;
             int x0 = Math.Max(0, (int)MathF.Ceiling(left)), x1 = Math.Min(W, (int)MathF.Ceiling(left + sw));
             int y0 = Math.Max(0, (int)MathF.Ceiling(top)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(top + sh));
