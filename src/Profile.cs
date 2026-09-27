@@ -37,6 +37,8 @@ public sealed class Profile
     /// <summary>The practice course leaderboard: the fastest runs by class, quickest first.</summary>
     public Dictionary<string, List<CourseRun>> CourseRuns { get; set; } = new();
     public const int BoardSize = 10;
+    /// <summary>The recorded path of your best practice run for each class, raced as a ghost on later runs.</summary>
+    public Dictionary<string, CourseGhost> Ghosts { get; set; } = new();
 
     /// <summary>A class's leaderboard, quickest first (a best time saved before the leaderboard existed joins it).</summary>
     public List<CourseRun> Board(string cls)
@@ -183,4 +185,75 @@ public sealed class CourseRun
     public float Time { get; set; }
     public string Name { get; set; } = "";
     public DateTime When { get; set; }
+}
+
+/// <summary>A saved practice-course ghost: the run's time and its path (a GhostTrack, packed as base64).</summary>
+public sealed class CourseGhost
+{
+    public float Time { get; set; }
+    public string Path { get; set; } = "";
+}
+
+/// <summary>
+/// Where you were through a practice run, sampled every <see cref="Step"/> seconds of the run clock: position and
+/// height (floor plus jump), so a ghost can retrace it. Packed as base64 of little-endian floats for the profile.
+/// </summary>
+public sealed class GhostTrack
+{
+    public const float Step = 0.05f;
+    public readonly List<(float x, float y, float z)> Points = new();
+    public float Duration => Math.Max(0, Points.Count - 1) * Step;
+
+    /// <summary>Adds samples up to run time `t` (repeating the current spot to fill any gap in the frames).</summary>
+    public void Record(float t, float x, float y, float z)
+    {
+        while (Points.Count * Step <= t + 1e-4f) Points.Add((x, y, z));
+    }
+
+    /// <summary>Where the run was at time `t`, blending between samples; its start before, its end after.</summary>
+    public (float x, float y, float z) At(float t)
+    {
+        if (Points.Count == 0) return (0, 0, 0);
+        float f = Math.Clamp(t / Step, 0, Points.Count - 1);
+        int i = (int)f;
+        if (i >= Points.Count - 1) return Points[^1];
+        float k = f - i;
+        var (a, b) = (Points[i], Points[i + 1]);
+        // a teleport (the lift) jumps rather than sliding across the hangar
+        if (MathF.Abs(b.x - a.x) + MathF.Abs(b.y - a.y) > 2f) return k < 0.5f ? a : b;
+        return (a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+    }
+
+    /// <summary>The first time the run stood on or past column `x` at height `floor`, or -1 if it never did.</summary>
+    public float TimeAt(float x, float floor)
+    {
+        for (int i = 0; i < Points.Count; i++)
+            if (Points[i].x >= x && MathF.Abs(Points[i].z - floor) < 0.05f) return i * Step;
+        return -1;
+    }
+
+    public string Encode()
+    {
+        var bytes = new byte[Points.Count * 12];
+        for (int i = 0; i < Points.Count; i++)
+        {
+            BitConverter.TryWriteBytes(bytes.AsSpan(i * 12), Points[i].x);
+            BitConverter.TryWriteBytes(bytes.AsSpan(i * 12 + 4), Points[i].y);
+            BitConverter.TryWriteBytes(bytes.AsSpan(i * 12 + 8), Points[i].z);
+        }
+        return Convert.ToBase64String(bytes);
+    }
+
+    public static GhostTrack Decode(string s)
+    {
+        var t = new GhostTrack();
+        try
+        {
+            var bytes = Convert.FromBase64String(s ?? "");
+            for (int i = 0; i + 12 <= bytes.Length; i += 12)
+                t.Points.Add((BitConverter.ToSingle(bytes, i), BitConverter.ToSingle(bytes, i + 4), BitConverter.ToSingle(bytes, i + 8)));
+        }
+        catch (FormatException) { t.Points.Clear(); }
+        return t;
+    }
 }

@@ -35,6 +35,8 @@ public static class Art
     public static readonly Dictionary<string, Tex[]> Monsters = new();
     public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt, Seeker;
     public static Tex[] Torch, Relics;
+    /// <summary>The practice ghost: a hologram runner (sci-fi) or a pale spectre (fantasy), two strides.</summary>
+    public static Tex[] Ghost;
     public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, ChestClosed, ChestOpen, LoreStone, LoreStoneRead, WeaponPiece2, WeaponPiece3, Tree, Crystal, Jetpack;
     // HUD
     public static Tex HudBack;
@@ -690,6 +692,7 @@ public static class Art
         Lightning = new[] { LightningTex(1), LightningTex(2) };
         Hammer = new[] { HammerTex(0), HammerTex(1) };
         Torch = new[] { TorchTex(0), TorchTex(1), TorchTex(2) };
+        Ghost = new[] { GhostTex(0), GhostTex(1) };
 
         Pillar = Item(c =>
         {
@@ -935,6 +938,33 @@ public static class Art
         c.Glow(16, 16, 15, Col.Rgb(255, 160, 60));
         if (frame == 0) { c.Rect(14, 6, 4, 22, Col.Rgb(120, 80, 40)); c.Rect(8, 4, 16, 9, Col.Rgb(170, 170, 180)); }
         else { c.Rect(6, 14, 22, 4, Col.Rgb(120, 80, 40)); c.Rect(19, 8, 9, 16, Col.Rgb(170, 170, 180)); }
+        return c.T;
+    }
+
+    static Tex GhostTex(int stride)
+    {
+        bool scifi = Style == ArtStyle.SciFi;
+        uint body = scifi ? Col.Rgb(110, 220, 255) : Col.Rgb(210, 255, 220), edge = scifi ? Col.Rgb(220, 250, 255) : Col.Rgb(250, 255, 250);
+        var c = new Canvas(24, 44);
+        c.Circle(12, 6, 4.5f, body);                               // head
+        c.Rect(8, 11, 8, 14, body);                                // torso
+        int s = stride == 0 ? 1 : -1;
+        c.Line(9, 12, 9 - 4 * s, 22, 2.5f, body);                  // arms swing against the legs
+        c.Line(15, 12, 15 + 4 * s, 22, 2.5f, body);
+        c.Line(10, 25, 10 + 4 * s, 43, 3f, body);                  // legs mid-stride
+        c.Line(14, 25, 14 - 4 * s, 43, 3f, body);
+        // hologram scanlines, and a bright rim so it reads against any wall
+        for (int y = 0; y < c.T.H; y += 3)
+            for (int x = 0; x < c.T.W; x++)
+                if (Col.A(c.T.Get(x, y)) != 0) c.T.Set(x, y, 0);
+        var src = (uint[])c.T.Px.Clone();
+        for (int y = 0; y < c.T.H; y++)
+            for (int x = 0; x < c.T.W; x++)
+            {
+                if (Col.A(src[y * c.T.W + x]) == 0) continue;
+                bool rim = x == 0 || x == c.T.W - 1 || Col.A(src[y * c.T.W + x - 1]) == 0 || Col.A(src[y * c.T.W + x + 1]) == 0;
+                if (rim) c.T.Set(x, y, edge);
+            }
         return c.T;
     }
 

@@ -18,6 +18,29 @@ public abstract class Thing
     public abstract Tex Sprite(float time);
 }
 
+// ---------------------------------------------------------------- practice ghost
+
+/// <summary>
+/// Your best practice run, replayed: a see-through figure that retraces the recorded path in time with your clock.
+/// It has no body: nothing collides with it, shoots at it or picks it up. Its Z is an absolute height.
+/// </summary>
+public sealed class GhostRunner : Thing
+{
+    public readonly GhostTrack Track;
+    public readonly float Time;
+    /// <summary>How far through the run it is, in seconds of the run clock.</summary>
+    public float At;
+    public GhostRunner(GhostTrack track, float time)
+    {
+        Track = track; Time = time; SpriteW = 0.34f; SpriteH = 0.62f; FullBright = true; Radius = 0.2f;
+        (X, Y, Z) = track.At(0);
+    }
+    public void Seek(float t) { At = t; (X, Y, Z) = Track.At(t); }
+    public bool Finished => At >= Track.Duration;
+    public override int Alpha => Finished ? 70 : 140;
+    public override Tex Sprite(float time) => Art.Ghost[At > 0 && !Finished ? (int)(At * 7) % 2 : 0];
+}
+
 // ---------------------------------------------------------------- decorations
 
 public sealed class Decor : Thing

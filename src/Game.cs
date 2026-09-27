@@ -226,6 +226,7 @@ public sealed class Game
         NewGame(cls);
         Practicing = true;
         RunTime = 0; RunStarted = false;
+        ResetRun();
         if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
         float best = Profile.CourseBestTime(P.Class.ToString());
         if (best > 0) Say($"Your best as the {P.Def.Name}: {best:0.00}s.");
@@ -268,10 +269,53 @@ public sealed class Game
             : $"Course cleared in {RunTime:0.00}s (best {best:0.00}s).");
         LastRun = RunTime;
         LastPlace = place;
+        // the ghost is your best run: this one replaces it if it's the new best, or if there's no ghost yet
+        Recording.Record(RunTime, P.X, P.Y, P.FloorZ + P.Z);
+        if (place == 1 || !Profile.Ghosts.ContainsKey(key))
+        {
+            Profile.Ghosts[key] = new CourseGhost { Time = RunTime, Path = Recording.Encode() };
+            SaveProfile();
+        }
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         MoveTo(Level.StartX, Level.StartY, Level.StartAngle);
+        ResetRun();
+    }
+
+    /// <summary>The run you're making now, recorded for the ghost.</summary>
+    public GhostTrack Recording = new();
+    /// <summary>Your best run racing you on the practice course (null when there isn't one, or 'ghost 0').</summary>
+    public GhostRunner Ghost;
+
+    /// <summary>Back to the start line: the clock at zero, a fresh recording, and the ghost waiting beside you.</summary>
+    void ResetRun()
+    {
         RunTime = 0; RunStarted = false;
+        Recording = new GhostTrack();
+        ShowGhost();
+    }
+
+    /// <summary>Puts your class's saved ghost on the course (or takes it off when ghosts are turned off).</summary>
+    public void ShowGhost()
+    {
+        if (Ghost != null) { Ghost.Removed = true; Level.Things.Remove(Ghost); Ghost = null; }
+        if (!Practicing || !Vars.Ghost || !Profile.Ghosts.TryGetValue(P.Class.ToString(), out var saved)) return;
+        var track = GhostTrack.Decode(saved.Path);
+        if (track.Points.Count < 2) return;
+        Ghost = new GhostRunner(track, saved.Time) { Level = Level };
+        Ghost.Seek(RunTime);
+        Level.Things.Add(Ghost);
+    }
+
+    /// <summary>At a platform's checkpoint: how far ahead of (negative) or behind your ghost you are, as " (+0.84s vs ghost)".</summary>
+    string GhostSplit(int zone)
+    {
+        if (Ghost == null || zone <= 0 || !RunStarted) return "";
+        var pl = Maps.CoursePlatforms[zone];
+        float then = Ghost.Track.TimeAt(pl.x0, pl.floor);
+        if (then < 0) return "";
+        float d = RunTime - then;
+        return $" ({(d <= 0 ? "-" : "+")}{MathF.Abs(d):0.00}s vs ghost)";
     }
 
     /// <summary>The time of the last finished practice run, and its place on the leaderboard (0 if off it).</summary>
@@ -384,6 +428,8 @@ public sealed class Game
         Checkpoint = null;
         _onLift = false;
         RunTime = 0; RunStarted = false;
+        Recording = new GhostTrack();
+        Ghost = null;
         var names = Discovery.RelicNames.OrderBy(_ => _loot.Next()).ToList();
         int nameIndex = 0;
         string NextName() => names[nameIndex++ % names.Count];
@@ -426,6 +472,7 @@ public sealed class Game
             Say($"Relaxed mode: the creatures here are peaceful. Find the {RelicsTotal} relics to awaken the exit.");
         }
         else if (!TestingMap) Say($"You are the {P.Def.Name}. Find a way through the hub.");
+        if (Practicing) ShowGhost(); // Restart on the course
     }
 
     static Thing Place(Thing t, Thing at, Level lv)
@@ -520,6 +567,55 @@ public sealed class Game
         }
     }
 
+    /// <summary>The movement keys held last frame, -1/0/1 (forward/back, left/right), for the strafe helper.</summary>
+    public int InMove, InStrafe;
+
+    /// <summary>
+    /// For a key combination whose wish direction points `phi` radians from your view (strafe right +pi/2, forward +
+    /// right +pi/4, strafe left -pi/2), the view angles relative to your velocity's heading where air strafing adds
+    /// speed (lo..hi) and where it adds the most (best). From Quake's air acceleration: speed is added only while your
+    /// speed along the wish direction is under the air cap, and most when the wish direction sits just past square-on
+    /// to your velocity, which narrows as you go faster.
+    /// </summary>
+    public (float best, float lo, float hi) StrafeZone(float phi)
+    {
+        float run = RunSpeed, v = MathF.Max(P.HSpeed, 0.01f), cap = AirCap * run, amax = Vars.AirAccel * run * MoveStep;
+        float thLo = MathF.Acos(Math.Clamp(cap / v, -1f, 1f)), thBest = MathF.Acos(Math.Clamp((cap - amax) / v, -1f, 1f));
+        float thHi = MathF.Acos(Math.Clamp(-amax / (2 * v), -1f, 1f));
+        float side = phi < 0 ? -1 : 1;
+        float a = side * thLo - phi, b = side * thHi - phi;
+        return (side * thBest - phi, MathF.Min(a, b), MathF.Max(a, b));
+    }
+
+    /// <summary>What the strafe helper shows this frame (see StrafeAdvice).</summary>
+    public readonly record struct StrafeTip(bool Air, int Side, bool WantForward, bool HeldOk, float Target, float Lo, float Hi, bool InZone, bool Jump);
+
+    /// <summary>
+    /// The strafe helper's advice, or null when it's hidden (turned off, not practising and not set to show
+    /// everywhere, classic movement, flying, or standing still). In the air: the strafe key to hold (the side your view
+    /// is on, or the combination you're already holding), and where to turn: Target, Lo and Hi are radians from your
+    /// view to the best angle and the edges of the speed-gaining zone (positive to the right, the way the mouse turns
+    /// you). On the ground: run forward, and jump once you're up to speed (or the moment you land, when you're fast).
+    /// </summary>
+    public StrafeTip? StrafeAdvice()
+    {
+        var p = P;
+        if (p == null || Vars.StrafeHelp == 0 || (Vars.StrafeHelp == 1 && !Practicing) || !Vars.QuakeMove) return null;
+        if (Mode != GameMode.Playing || Level.Flight || p.Flying) return null;
+        float run = RunSpeed, v = p.HSpeed;
+        bool air = !p.OnGround;
+        if (!air) return new StrafeTip(false, 0, true, InMove > 0 && InStrafe == 0, 0, 0, 0, false, v > run * 0.9f); // jump once you're up to speed
+        if (v < run * 0.3f) return null;
+        static float Wrap(float a) => MathF.IEEERemainder(a, MathF.Tau);
+        float heading = MathF.Atan2(p.VY, p.VX);
+        bool heldStrafe = InStrafe != 0 && InMove >= 0;
+        float phi = heldStrafe ? MathF.Atan2(InStrafe, InMove) : (Wrap(p.Angle - heading) >= 0 ? MathF.PI / 2 : -MathF.PI / 2);
+        var (best, lo, hi) = StrafeZone(phi);
+        float target = Wrap(heading + best - p.Angle), zLo = Wrap(heading + lo - p.Angle), zHi = Wrap(heading + hi - p.Angle);
+        bool falling = p.VZ < 0 && p.Z < 0.15f;
+        return new StrafeTip(true, phi > 0 ? 1 : -1, heldStrafe && InMove > 0, heldStrafe, target, zLo, zHi, zLo <= 0 && zHi >= 0, falling);
+    }
+
     /// <summary>Your full running speed, in map units a second.</summary>
     public float RunSpeed => 3.6f * P.Def.Speed * Vars.Speed * Profile.SpeedMult;
 
@@ -608,6 +704,7 @@ public sealed class Game
         p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), -70f, 70f);
 
         // move
+        InMove = Math.Sign(inp.Move); InStrafe = Math.Sign(inp.Strafe);
         float speed = RunSpeed * (inp.Walk ? 0.5f : 1f);
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
         float mx = (ca * inp.Move - sa * inp.Strafe), my = (sa * inp.Move + ca * inp.Strafe);
@@ -718,7 +815,13 @@ public sealed class Game
         {
             // the clock starts when you leave the spot you started on
             if (!RunStarted && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
-            if (RunStarted) RunTime += dt;
+            if (RunStarted)
+            {
+                RunTime += dt;
+                Recording.Record(RunTime, p.X, p.Y, p.FloorZ + p.Z);
+            }
+            if (Vars.Ghost != (Ghost != null) && (Ghost != null || Profile.Ghosts.ContainsKey(p.Class.ToString()))) ShowGhost();
+            Ghost?.Seek(RunTime);
         }
 
         // portals & exit
@@ -925,7 +1028,7 @@ public sealed class Game
                         Health = Math.Max(p.Health, 50), Armor = p.Armor,
                     };
                 PlaySound(Sfx.Secret, 0.7f);
-                if (Practicing) Say(CourseHint(zone));
+                if (Practicing) Say(CourseHint(zone) + GhostSplit(zone));
                 else Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count}).");
             }
         }
