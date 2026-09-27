@@ -66,10 +66,17 @@ public sealed class Level
     public ArenaState Arena;   // non-null on wave-survival maps
 
     public const string DoorGlyphs = "DSFP";
-    public const string WallGlyphs = "#BWMIODSFPLXZK";
+    public const string WallGlyphs = "#BWMIODSFPLXZKNQU";
 
     /// <summary>Rubble ('K'): solid until you smash it apart, a few hits at a time.</summary>
     public const char Rubble = 'K';
+    /// <summary>Ore veins break like rubble and give you a resource: iron ('N'), crystal ('Q') and fuel ('U').</summary>
+    public const string OreGlyphs = "NQU";
+    public static int OreIndex(char c) => c == '\0' ? -1 : OreGlyphs.IndexOf(c);
+    /// <summary>Anything you can smash through: rubble and ore.</summary>
+    public static bool IsRubble(char c) => c == Rubble || OreIndex(c) >= 0;
+    /// <summary>The wrecked ship on a stranded map; its teleporter stays dead until the ship is repaired.</summary>
+    public Ship Ship;
     public const int RubbleHp = 60, RubbleStages = 4;
     /// <summary>Hit points left in each rubble block.</summary>
     public readonly int[] BlockHp;
@@ -93,7 +100,7 @@ public sealed class Level
         int i = y * W + x;
         return f switch
         {
-            Face.Wall => Cells[i] == Rubble,
+            Face.Wall => IsRubble(Cells[i]),
             Face.Floor => Dig && Cells[i] == '\0' && Marks[i] == '\0' && Floors[i] >= DigStep - 0.001f,
             _ => Dig && Cells[i] == '\0' && Heights[i] <= MaxHeight - DigStep + 0.001f,
         };
@@ -201,7 +208,7 @@ public sealed class Level
                 {
                     Cells[i] = ch;
                     if (ch == 'L') LeverCount++;
-                    if (ch == Rubble) BlockHp[i] = RubbleHp;
+                    if (IsRubble(ch)) BlockHp[i] = RubbleHp;
                     continue;
                 }
                 Outdoor[i] = ch == ',';
@@ -221,6 +228,7 @@ public sealed class Level
             }
 
         if (Array.IndexOf(Marks, '*') >= 0) Arena = new ArenaState(this);
+        Ship = Things.OfType<Ship>().FirstOrDefault();
         // a map without a Heresiarch (e.g. a custom map) has its exit open from the start
         BossDead = !Things.Any(t => t is Monster { Def.Boss: true });
 
@@ -304,9 +312,9 @@ public sealed class Level
     public char Cell(int x, int y) => InBounds(x, y) ? Cells[y * W + x] : '#';
     public static bool IsDoor(char c) => c == 'D' || c == 'S' || c == 'F' || c == 'P' || c == 'Z';
     /// <summary>A wall that is just a wall: not a door, lever, block or rubble (what secret walls and lintels copy).</summary>
-    static bool IsPlainWall(char c) => c != '\0' && !IsDoor(c) && c != 'L' && c != 'X' && c != Rubble;
+    static bool IsPlainWall(char c) => c != '\0' && !IsDoor(c) && c != 'L' && c != 'X' && !IsRubble(c);
     /// <summary>Cells a route can go through, given time: open floor, doors and gates, and rubble you can smash.</summary>
-    static bool Passable(char c) => c == '\0' || IsDoor(c) || c == Rubble;
+    static bool Passable(char c) => c == '\0' || IsDoor(c) || IsRubble(c);
 
     /// <summary>
     /// Chips at a block; true when it breaks. Rubble opens its cell (on a dig map, as a tunnel one storey tall with
@@ -428,7 +436,7 @@ public sealed class Level
             if (_walkable != null) return _walkable;
             var (sx, sy) = ArrivalCell();
             var r = Reachable(sx, sy, move: Move.Fly);
-            return _walkable = Enumerable.Range(0, r.Length).Where(i => r[i] && (Cells[i] == '\0' || Cells[i] == 'X' || Cells[i] == Rubble)).ToArray();
+            return _walkable = Enumerable.Range(0, r.Length).Where(i => r[i] && (Cells[i] == '\0' || Cells[i] == 'X' || IsRubble(Cells[i]))).ToArray();
         }
     }
 
@@ -549,7 +557,7 @@ public sealed record MapDef(string Name, string Entry, string ThemeId, string[] 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
 public static class Maps
 {
-    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire" };
+    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire", "barren" };
 
     public static Theme ThemeById(string id)
     {
@@ -563,6 +571,7 @@ public static class Maps
                 "crypt" => (Col.Rgb(6, 26, 18), 12f, 236),
                 "arena" => (Col.Rgb(30, 6, 12), 18f, 256),
                 "spire" => (Col.Rgb(8, 10, 26), 24f, 256),
+                "barren" => (Col.Rgb(96, 52, 34), 18f, 256),
                 _ => (Col.Rgb(4, 8, 16), 15f, 256),
             };
         }
@@ -629,6 +638,18 @@ public static class Maps
                 t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
                 return t;
             }
+            case "barren":
+            {
+                // a dead world under open sky: dust, cliffs and rock outcrops veined with ore
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.Dust, Sky = Art.SkyBarren,
+                    FogColor = Col.Rgb(110, 84, 60), FogDist = 18f, Light = 256,
+                };
+                t.Walls['#'] = Art.Cliff; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick; t.Walls['M'] = Art.Moss;
+                t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
             default:
                 return FantasyTheme("hall");
         }
@@ -656,7 +677,7 @@ public static class Maps
             "#################.#######Z######",
             "#OOOOOOO#,,,,,,,,,,,,,,,,,,,,,,#",
             "#O.....O#,,c,,,,,,,,,,,,,,c,,&,#",
-            "#O.....O#,,,,T,,,,,,,,T,,,,,,,,#",
+            "#O.....O#,,,,T,,,7,,,,T,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,3,,,#",
             "#OE.H...S,,,,,,,,,,1,,,,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
@@ -799,6 +820,34 @@ public static class Maps
         // Bedrock Depths: through portal 6 in the quarry's strongroom. Solid rock in every direction but the cell you
         // arrive in: tunnel ahead, dig down toward the bedrock or up toward the roof, and make your own way.
         SolidRock("Bedrock Depths", "The Bedrock Depths. Solid rock all around - dig ahead, below or above.", 25, 25, '6'),
+        // Barren World: through portal 7 in Winnowing Hall's courtyard, which burns out behind you. Mine the ore veins in
+        // the outcrops (iron 'N', crystal 'Q', fuel 'U') and carry them to your wrecked ship ('V'). Once it's repaired,
+        // use it to fly home (the teleporter pad beside it wakes up too).
+        new("Barren World", "Barren World. The portal burnt out behind you - mine ore to repair your wrecked skyship and fly home.", "barren", new[]
+        {
+            "################################",
+            "#,,,,,,,,,,,,######,,,,,,,,,,,,#",
+            "#,,KKNK,,,,,,,####,,,,,,,KKQK,,#",
+            "#,,KNNKK,,a,,,,##,,,,,,,KQQKK,,#",
+            "#,,,KKK,,,,,,,,,,,,,,,,,,KKK,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "###,,,,,,KK,,,,,,,,,,,,,,KK,,###",
+            "##,,,,,,KUKK,,,,,,,,,,,,KNUK,,##",
+            "#,,,,,,,,KK,,,,,,,,,,,,,,KK,,,,#",
+            "#,,,,,,,,,,,,,,&,,,,,,,,,,,,,,,#",
+            "#,,KKK,,,,,,,,V,,7,,,,,,,,KKK,,#",
+            "#,KNQNK,,,,,,,,,,,,,,,,,,KUQUK,#",
+            "#,,KNK,,,,,,,,,,,,,,,,,,,,KKK,,#",
+            "#,,,,,,,,,,,,h,,,,,,,,,,,,,,,,,#",
+            "###,,,,,,,,,,,,,,,,,,,,,,,,,,###",
+            "##,,,,KKK,,,,,,,c,,,,,,,KKKK,,##",
+            "#,,,,KNQKK,,,,,,,,,,,,,KQNUK,,,#",
+            "#,,,,,KKK,,,,,,,,,,,,,,,KKK,,,,#",
+            "#,,e,,,,,,,,,,b,,,,g,,,,,,,,,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,,,,a,,#",
+            "#,,,,,,,####,,,,,,,,,,,####,,,,#",
+            "################################",
+        }, Height: 2.5f),
     };
 
     public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();

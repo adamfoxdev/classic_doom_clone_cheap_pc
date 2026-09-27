@@ -185,6 +185,7 @@ public sealed class Renderer
             case 'L': return lv.PulledLevers.Contains(cell) ? Art.LeverOn : Art.LeverOff;
             case 'X': return Art.Block;
             case Level.Rubble: return Art.RubbleCracked[lv.CrackStage(cell)];
+            case 'N': case 'Q': case 'U': return Art.OreCracked[Level.OreIndex(c)][lv.CrackStage(cell)];
             case 'Z': return lv.Theme.Walls.TryGetValue(lv.SecretLook[cell], out var look) ? look : Art.Stone;
         }
         return lv.Theme.Walls.TryGetValue(c, out var t) ? t : Art.Stone;
@@ -607,6 +608,7 @@ public sealed class Renderer
             case 'L': r = (Art.LeverOff, false); break;
             case 'X': r = (Art.Block, false); break;
             case Level.Rubble: r = (Art.Rubble, false); break;
+            case 'N': case 'Q': case 'U': r = (Art.Ores[Level.OreIndex(c)], false); break;
             case 'Z': r = (Labelled(th.Walls.TryGetValue('#', out var st) ? st : Art.Stone, "?", Col.Rgb(255, 220, 60)), false); break;
             case '.': r = (th.FloorIn, false); break;
             case ',': r = (th.OutdoorFloor, false); break;
@@ -724,13 +726,14 @@ public sealed class Renderer
                 int px = Editor.PaletteX + (i % Editor.PaletteCols) * Editor.PaletteCell;
                 int py = Editor.PaletteY + (i / Editor.PaletteCols) * Editor.PaletteCell;
                 char hg = pal[i];
-                Rect(px, py, 13, 13, floors ? FloorColor(Level.FloorFromGlyph(hg)) : HeightColor(Level.HeightFromGlyph(hg, doc.DefaultHeight)));
-                Font.Draw(Fb, W, H, px + 4, py + 3, hg == '.' ? (floors ? "0" : "D") : hg.ToString(), Col.Rgb(255, 255, 255), 1, true);
+                const int s = Editor.PaletteCell - 1;
+                Rect(px, py, s, s, floors ? FloorColor(Level.FloorFromGlyph(hg)) : HeightColor(Level.HeightFromGlyph(hg, doc.DefaultHeight)));
+                Font.Draw(Fb, W, H, px + 3, py + 3, hg == '.' ? (floors ? "0" : "D") : hg.ToString(), Col.Rgb(255, 255, 255), 1, true);
                 if (i == sel)
-                    for (int k = -1; k <= 13; k++)
+                    for (int k = -1; k <= s; k++)
                     {
-                        Put(px + k, py - 1, Col.Rgb(255, 230, 80)); Put(px + k, py + 13, Col.Rgb(255, 230, 80));
-                        Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + 13, py + k, Col.Rgb(255, 230, 80));
+                        Put(px + k, py - 1, Col.Rgb(255, 230, 80)); Put(px + k, py + s, Col.Rgb(255, 230, 80));
+                        Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + s, py + k, Col.Rgb(255, 230, 80));
                     }
             }
             int hy = Math.Max(50, Editor.PaletteY + (pal.Length + Editor.PaletteCols - 1) / Editor.PaletteCols * Editor.PaletteCell + 4);
@@ -745,13 +748,14 @@ public sealed class Renderer
             int py = Editor.PaletteY + (i / Editor.PaletteCols) * Editor.PaletteCell;
             var b = Editor.Palette[i];
             var (tex, overlay) = GlyphIcon(b.Glyph, doc.ThemeId);
-            if (overlay) DrawTex(floor, px, py, 13, 13, false, W, H);
-            DrawTex(tex, px, py, 13, 13, overlay, W, H);
+            const int s = Editor.PaletteCell - 1;
+            if (overlay) DrawTex(floor, px, py, s, s, false, W, H);
+            DrawTex(tex, px, py, s, s, overlay, W, H);
             if (i == ed.BrushIndex)
-                for (int k = -1; k <= 13; k++)
+                for (int k = -1; k <= s; k++)
                 {
-                    Put(px + k, py - 1, Col.Rgb(255, 230, 80)); Put(px + k, py + 13, Col.Rgb(255, 230, 80));
-                    Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + 13, py + k, Col.Rgb(255, 230, 80));
+                    Put(px + k, py - 1, Col.Rgb(255, 230, 80)); Put(px + k, py + s, Col.Rgb(255, 230, 80));
+                    Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + s, py + k, Col.Rgb(255, 230, 80));
                 }
         }
         int iy = Editor.PaletteY + ((Editor.Palette.Length + Editor.PaletteCols - 1) / Editor.PaletteCols) * Editor.PaletteCell + 2;
@@ -921,6 +925,9 @@ public sealed class Renderer
                     'F' => Col.Rgb(240, 110, 40),
                     'X' => Col.Rgb(80, 220, 200),
                     Level.Rubble => Col.Rgb(120, 104, 90),
+                    'N' => Col.Rgb(200, 128, 78),
+                    'Q' => Col.Rgb(176, 112, 255),
+                    'U' => Col.Rgb(120, 255, 96),
                     'P' => Col.Rgb(140, 140, 140),
                     'L' => Col.Rgb(80, 220, 90),
                     _ => Col.Rgb(150, 110, 70),
@@ -980,6 +987,7 @@ public sealed class Renderer
         int by = ViewH + 3;
         uint label = Col.Rgb(200, 180, 140);
         if (p.HasJetpack) DrawFuel(p, label);
+        if (g.Level.Ship != null) DrawShipPanel(g);
         if (g.Relaxed) { DrawDiscoveryHud(g, by, label); return; }
         Text(6, by, "HEALTH", label);
         uint hcol = p.Health > 50 ? Col.Rgb(240, 230, 210) : p.Health > 25 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
@@ -1012,6 +1020,22 @@ public sealed class Renderer
 
         string cls = p.Def.Name.ToUpperInvariant();
         Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
+    }
+
+    /// <summary>On a stranded map: ore carried, and how much of each the ship still needs, in the view's top-right corner.</summary>
+    void DrawShipPanel(Game g)
+    {
+        var s = g.Level.Ship;
+        uint[] cols = { Col.Rgb(220, 150, 96), Col.Rgb(190, 140, 255), Col.Rgb(140, 255, 120) };
+        string title = s.Built ? Words.T("SKYSHIP READY - USE IT TO TAKE OFF") : Words.T("SKYSHIP REPAIRS");
+        int x = W - 4, y = 3;
+        Text(x - Font.Width(title), y, title, s.Built ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
+        for (int k = 0; k < Ship.Need.Length && !s.Built; k++)
+        {
+            y += 9;
+            string line = $"{Words.T(Game.OreNames[k].ToUpperInvariant())} {s.Delivered[k]}/{Ship.Need[k]}  +{g.P.Ore[k]}";
+            Text(x - Font.Width(line), y, line, s.Delivered[k] >= Ship.Need[k] ? Col.Rgb(120, 255, 140) : cols[k]);
+        }
     }
 
     /// <summary>Jetpack fuel gauge, tucked into the bottom-right corner of the view.</summary>

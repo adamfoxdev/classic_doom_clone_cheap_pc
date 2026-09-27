@@ -309,7 +309,7 @@ public static class SciFiArt
     }
 
     /// <summary>Space sky: stars, a nebula glow, a big planet, and a jagged horizon.</summary>
-    static Tex Space(uint seed, (int r, int g, int b) top, (int r, int g, int b) horizon, (int r, int g, int b) land, uint planet, bool rings)
+    internal static Tex Space(uint seed, (int r, int g, int b) top, (int r, int g, int b) horizon, (int r, int g, int b) land, uint planet, bool rings)
     {
         var r = new Rng(seed);
         var t = new Tex(256, 128);

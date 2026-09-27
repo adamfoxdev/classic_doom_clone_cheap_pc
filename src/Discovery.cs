@@ -23,7 +23,7 @@ public static class Discovery
     {
         "Xeno Idol", "Quantum Core", "Ancient Probe", "Star Chart Crystal", "Void Compass", "Captain's Log",
         "Alien Skull", "Gravity Pearl", "Plasma Lily", "Signal Beacon", "Cryo Seed", "Founders' Badge",
-        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal", "Ore Heart", "Miner's Lamp", "Core Sample", "Drill Bit Zero",
+        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal", "Ore Heart", "Miner's Lamp", "Core Sample", "Drill Bit Zero", "Flight Recorder", "Dust Rose",
     };
 
     public static string LoreText(string map, int index)
@@ -76,13 +76,17 @@ public static class Discovery
             "Asteroid Mine, shaft 2. The crew collapsed every tunnel to slow the Overmind's drones. Loose rock breaks if you hit it hard enough.",
             "Foreman's lockup. Last log entry: quotas met, and a sealed panel in the east wall that 'officially does not exist'.",
         },
+        ["Barren World"] = new[]
+        {
+            "Shuttle repair checklist: 6 titanium for the hull, 4 power crystals for the drive, 3 fuel ore for the tanks. The rocks here are full of it.",
+        },
     };
 
     static readonly string[] FantasyRelicNames =
     {
         "Chalice of Ages", "Crown of Winnowing", "Orb of Dusk", "Codex of Silence", "Serpent Idol", "Bell of the Keep",
         "Marsh Lantern", "Bishop's Mitre", "Star Map", "Ember Heart", "Frost Circlet", "Champion's Laurel",
-        "Mirror of Tides", "Obsidian Quill", "Hourglass of Ash", "Seal of the Hub", "Quarryman's Pick", "Geode of Echoes", "Bedrock Crown", "Delver's Candle",
+        "Mirror of Tides", "Obsidian Quill", "Hourglass of Ash", "Seal of the Hub", "Quarryman's Pick", "Geode of Echoes", "Bedrock Crown", "Delver's Candle", "Skyship Compass", "Ashen Bloom",
     };
 
     /// <summary>Lore for each map, in the order its stones ('&') appear reading the map row by row.</summary>
@@ -128,6 +132,10 @@ public static class Discovery
             "Deepdelve gave the hub its stone. When the Heresiarch came, the quarrymen brought the roof down behind them. Strike the rubble; it gives way.",
             "The quarrymen's strongroom. The foreman's last tally: forty carts of marble, one of gold, and a hollow in the east wall nobody was to speak of.",
         },
+        ["Barren World"] = new[]
+        {
+            "A shipwright's note, scratched on the hull: six of iron for the keel, four moonstones for the lift, three of brimstone for the burners. The rocks here hold all of it.",
+        },
     };
 
     /// <summary>
@@ -155,7 +163,7 @@ public static class Discovery
             foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
             {
                 char c = lv.Cell(x + dx, y + dy);
-                if (Level.IsDoor(c) || c == 'L' || c == Level.Rubble) nearDoor = true;
+                if (Level.IsDoor(c) || c == 'L' || Level.IsRubble(c)) nearDoor = true;
                 else if (c != '\0') walls++;
             }
             if (nearDoor) continue;

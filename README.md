@@ -66,7 +66,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt*, the *Windspire* and
-  the optional *Chaos Arena*, *Deepdelve Quarry* and *Bedrock Depths*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
+  the optional *Chaos Arena*, *Deepdelve Quarry*, *Bedrock Depths* and *Barren World*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
@@ -103,6 +103,17 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   walk, and a jump clears just under one unit. To get out of a deeper pit, dig the lip of the step in front of you
   down, tunnel out sideways at the new depth, or use the jetpack. Reach is longer here, like a miner's pick. Splash weapons blast floors and ceilings
   too. Chests, and relics in Relaxed mode, are buried in pockets deep in the rock.
+- **Barren World** (the **Barren Planet** in sci-fi): you're stranded. Portal **7** in Winnowing Hall's courtyard
+  drops you on a dusty world of cliffs and rock outcrops, and burns out behind you. Your wrecked skyship (a shuttle
+  in sci-fi) lies beside the dead portal. The rocks hold **ore veins** that break like rubble:
+  - **iron ore** (titanium in sci-fi): rust-coloured nuggets
+  - **moonstone** (power crystals): violet
+  - **brimstone** (fuel ore): glowing green
+
+  Each vein you break goes into your pack. Press `E` at the ship to hand over what it needs: 6 iron, 4 moonstone and
+  3 brimstone. A panel in the top-right corner tracks what's delivered and what you're carrying. The ship looks
+  patched up once it's half done, then gets its engine lit and its fin back. Press `E` again to take off and fly
+  home; after that the portal works both ways.
 - **The Windspire** (the **Comms Spire** in sci-fi): a vertical level on the main route, through portal **4** in
   the Frozen Keep's vault. It's an open-topped tower ten units tall with eight ledges and pillars
   spiralling up its walls, each at least a unit higher than the last, so none can be walked or jumped onto. You
@@ -215,9 +226,11 @@ Portal **5**, near the courtyard's south wall, leads to Deepdelve Quarry. Smash 
 gallery, dig down through the rock field (the pockets hold loot, the middle cave a drone), and keep digging south-west
 to the strongroom's door, or south-east straight into the strongroom. Its secret wall is at the east end.
 Portal **6** in the strongroom leads down to the Bedrock Depths, where there's nothing but rock to dig.
+Portal **7**, in the courtyard between its two northern trees, strands you on the Barren World until you've mined
+enough ore to repair your ship.
 
-**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 20 relics, which
-are spread over all seven maps (including the arena and the Windspire, where some sit on high ledges, and the
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 22 relics, which
+are spread over all eight maps (including the arena and the Windspire, where some sit on high ledges, and the
 Bedrock Depths, where they're buried in the rock) before the
 exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
@@ -240,7 +253,7 @@ of everything you can place is on the right, drawn with the game's own textures 
 | `G` | Cycle layers: tiles → ceilings (1.0–10.0, or the map default) → floors (ground up to 8.5) |
 | `K` | Stair brush (floors layer): each cell you drag over is one step (0.25) higher than the last |
 | `-` / `=` | Zoom out / in |
-| `T` | Cycle theme (hall, ice, crypt, arena, spire) |
+| `T` | Cycle theme (hall, ice, crypt, arena, spire, barren) |
 | `R` | Rename the map |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+S` | Save |
@@ -333,7 +346,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
-| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire, `map 6` = Deepdelve Quarry, `map 7` = Bedrock Depths) |
+| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire, `map 6` = Deepdelve Quarry, `map 7` = Bedrock Depths, `map 8` = Barren World) |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
@@ -409,7 +422,7 @@ lineups of every monster in both looks (`56_…`, `57_…`).
 |---|---|
 | `src/Program.cs` | Raylib window, input mapping, framebuffer upload |
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
-| `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's seven maps and the themes |
+| `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's eight maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
 | `src/Editor.cs` | Level editor: map document and file format, palette, tools, undo, validation, play-testing |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
@@ -446,7 +459,8 @@ Maps are ASCII grids in `src/Level.cs`:
 | `k` / `f` | Steel Key / Fire Key | `r` | Mesh Armor |
 | `$` | treasure chest (hand-placed; most are scattered randomly) | `J` | jetpack / Wings of Wrath |
 | `X` | pushable stone block | `^` | pressure plate |
-| `K` | rubble (break it with attacks or Use) | | |
+| `K` | rubble (break it with attacks or Use) | `V` | wrecked ship (Use to repair with ore, then to fly home) |
+| `N` `Q` `U` | ore veins: iron, moonstone, brimstone (break like rubble; the ore goes in your pack) | | |
 | `Z` | secret wall (looks like its neighbours) | `&` | lore stone |
 | `%` | secret treasure (a relic in Relaxed, a Mystic Urn in Classic) | | |
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |

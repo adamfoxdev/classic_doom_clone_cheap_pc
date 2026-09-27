@@ -203,10 +203,10 @@
 "use strict";
 // ============================================================ the game's map format (mirrors src/Editor.cs and src/Level.cs)
 
-const THEMES = ["hall", "ice", "crypt", "arena", "spire"];
-const WALLS = "#BWMIODSFPLXZK";         // Level.WallGlyphs: these cells are solid...
+const THEMES = ["hall", "ice", "crypt", "arena", "spire", "barren"];
+const WALLS = "#BWMIODSFPLXZKNQU";      // Level.WallGlyphs: these cells are solid...
 const DOORS = "DSFPZ";                  // ...except doors, gates and secret walls, which open
-const RUBBLE = "K";                     // ...and rubble, which you can smash through
+const RUBBLE = "KNQU";                  // ...and rubble and ore, which you can smash through
 const MAX_STEP = 0.5, JUMP_RISE = 0.9;  // Level.Rise(Walk) and Rise(Jump)
 const MIN_H = 1, MAX_H = 10;
 const HEIGHT_PAL = ".23456789abcdefghijk".split("");     // Editor.HeightPalette
@@ -224,10 +224,13 @@ const PIECES = [
   ["L", "Lever", "Switch", "Doors"], ["Z", "Secret wall", "Secret panel", "Doors"],
   ["X", "Push block", "Push crate", "Puzzles"], ["^", "Pressure plate", "Pressure pad", "Puzzles"],
   ["K", "Rubble (breakable)", "Rubble (breakable)", "Puzzles"],
+  ["N", "Iron ore", "Titanium ore", "Puzzles"], ["Q", "Moonstone ore", "Power crystal ore", "Puzzles"],
+  ["U", "Brimstone ore", "Fuel ore", "Puzzles"],
   ["@", "Player start", "Player start", "Markers"], ["E", "Exit", "Exit teleporter", "Markers"],
   ["1", "Portal 1", "Teleporter 1", "Markers"], ["2", "Portal 2", "Teleporter 2", "Markers"],
   ["3", "Portal 3", "Teleporter 3", "Markers"], ["4", "Portal 4", "Teleporter 4", "Markers"],
   ["5", "Portal 5", "Teleporter 5", "Markers"], ["6", "Portal 6", "Teleporter 6", "Markers"],
+  ["7", "Portal 7", "Teleporter 7", "Markers"],
   ["*", "Arena spawn rune", "Arena spawn pad", "Markers"], ["!", "Arena altar", "Arena start pad", "Markers"],
   ["+", "Checkpoint pad", "Checkpoint pad", "Markers"], ["=", "Lift pad (to checkpoint)", "Lift pad (to checkpoint)", "Markers"],
   ["e", "Ettin", "Brute mech", "Monsters"], ["a", "Afrit", "Drone", "Monsters"], ["c", "Centaur", "Strider", "Monsters"],
@@ -239,6 +242,7 @@ const PIECES = [
   ["w", "Weapon piece 2", "Weapon crate 2", "Items"], ["x", "Weapon piece 3", "Weapon crate 3", "Items"],
   ["$", "Chest", "Supply crate", "Items"], ["%", "Secret treasure", "Secret cache", "Items"],
   ["&", "Lore stone", "Data terminal", "Items"], ["J", "Wings of Wrath", "Jetpack", "Items"],
+  ["V", "Wrecked ship", "Wrecked shuttle", "Items"],
   ["t", "Torch", "Light pylon", "Decor"], ["p", "Pillar", "Pillar", "Decor"], ["T", "Tree", "Tree", "Decor"],
 ];
 const KNOWN = new Set(PIECES.map(p => p[0]));
@@ -480,7 +484,7 @@ function resize(w, h) {
 
 const COLORS = {
   "#": "#6b707b", B: "#8b5140", W: "#7c5b37", M: "#4e6d3f", I: "#93c6da", O: "#cfccc4",
-  ".": "#2a2d35", ",": "#26392b", X: "#9b8e74", L: "#6b707b", Z: "#6b707b", K: "#786a5c",
+  ".": "#2a2d35", ",": "#26392b", X: "#9b8e74", L: "#6b707b", Z: "#6b707b", K: "#786a5c", N: "#b77a4c", Q: "#9a6ee6", U: "#6ec85a",
   D: "#a3722f", S: "#4f79b4", F: "#c0472c", P: "#6d7280",
 };
 const THING_COLOR = { M: "#ff6b5a", I: "#f0c050", D: "#9fd08a" };
@@ -510,7 +514,7 @@ function drawGlyph(g, c, x, y, s, under) {
     if (g === "P") { c.fillStyle = "#2a2d35"; for (let k = 1; k < 4; k++) c.fillRect(x + k * s / 4 - 1, y, Math.max(1, s / 12), s); }
     if (g === "L") { c.strokeStyle = "#f0c050"; c.lineWidth = Math.max(1, s / 8); c.beginPath(); c.moveTo(x + s * .3, y + s * .8); c.lineTo(x + s * .7, y + s * .25); c.stroke(); }
     if (g === "X") { c.strokeStyle = "rgba(0,0,0,.45)"; c.lineWidth = Math.max(1, s / 10); c.strokeRect(x + s * .15, y + s * .15, s * .7, s * .7); c.beginPath(); c.moveTo(x + s * .15, y + s * .15); c.lineTo(x + s * .85, y + s * .85); c.moveTo(x + s * .85, y + s * .15); c.lineTo(x + s * .15, y + s * .85); c.stroke(); }
-    if (g === "K") { c.strokeStyle = "rgba(0,0,0,.5)"; c.lineWidth = Math.max(1, s / 12); c.beginPath(); c.moveTo(x + s * .2, y + s * .3); c.lineTo(x + s * .5, y + s * .5); c.lineTo(x + s * .4, y + s * .85); c.moveTo(x + s * .5, y + s * .5); c.lineTo(x + s * .85, y + s * .35); c.stroke(); }
+    if (g === "K" || g === "N" || g === "Q" || g === "U") { c.strokeStyle = "rgba(0,0,0,.5)"; c.lineWidth = Math.max(1, s / 12); c.beginPath(); c.moveTo(x + s * .2, y + s * .3); c.lineTo(x + s * .5, y + s * .5); c.lineTo(x + s * .4, y + s * .85); c.moveTo(x + s * .5, y + s * .5); c.lineTo(x + s * .85, y + s * .35); c.stroke(); }
     if (g === "Z") letter("?", "#ffe070");
     if (g === "S") letter("S", "#e8f0ff");
     if (g === "F") letter("F", "#fff0e0");
@@ -533,7 +537,7 @@ function drawGlyph(g, c, x, y, s, under) {
     c.fillRect(cx - s * .15, cy - s * .3, s * .3, s * .6); letter(g, "#111");
   } else {
     // items: diamonds
-    const color = { k: "#6fa8ff", f: "#ff7050", J: "#8fe3ff", "&": "#62e0c0", $: "#c89b52", "%": "#ffe070", u: "#e8c050" }[g] || THING_COLOR.I;
+    const color = { k: "#6fa8ff", f: "#ff7050", J: "#8fe3ff", "&": "#62e0c0", $: "#c89b52", "%": "#ffe070", u: "#e8c050", V: "#e0e4ec" }[g] || THING_COLOR.I;
     c.fillStyle = color; c.beginPath();
     c.moveTo(cx, cy - r); c.lineTo(cx + r, cy); c.lineTo(cx, cy + r); c.lineTo(cx - r, cy); c.closePath(); c.fill();
     letter(g, "#1a1a1a");

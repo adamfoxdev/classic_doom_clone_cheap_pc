@@ -181,6 +181,21 @@ public sealed class Projectile : Thing
     public override Tex Sprite(float time) => Frames[(int)(time * 12) % 2];
 }
 
+/// <summary>
+/// A wrecked ship on a stranded map. Feed it the ore it needs (by Use) and it's repaired; Use it again to fly home.
+/// </summary>
+public sealed class Ship : Thing
+{
+    /// <summary>Ore needed, by Level.OreGlyphs index: iron, crystal, fuel.</summary>
+    public static readonly int[] Need = { 6, 4, 3 };
+    public readonly int[] Delivered = new int[Need.Length];
+    public bool Built => Enumerable.Range(0, Need.Length).All(k => Delivered[k] >= Need[k]);
+    /// <summary>0 wrecked, 1 half repaired, 2 ready to fly.</summary>
+    public int Stage => Built ? 2 : Delivered.Sum() * 2 >= Need.Sum() ? 1 : 0;
+    public Ship() { Solid = true; Radius = 0.55f; SpriteW = 1.7f; SpriteH = 1.2f; }
+    public override Tex Sprite(float time) => Art.Ship[Stage];
+}
+
 /// <summary>Short-lived visual effect (hit sparks, explosions, teleport flashes).</summary>
 public sealed class Puff : Thing
 {
@@ -239,6 +254,7 @@ public static class ThingFactory
             '&' => new LoreStone(),
             '%' => new Pickup(PickupKind.Relic, 0.42f),
             'J' => new Pickup(PickupKind.Jetpack, 0.5f),
+            'V' => new Ship(),
             _ => null,
         };
         if (t == null) return null;

@@ -87,6 +87,8 @@ public sealed class Player
     public float X, Y, Angle, Pitch;
     public float Radius = 0.25f;
     public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills, ChestsOpened, Relics, LoreRead, Secrets;
+    /// <summary>Ore you're carrying, by Level.OreGlyphs index (iron, crystal, fuel).</summary>
+    public readonly int[] Ore = new int[Level.OreGlyphs.Length];
     public bool[] HasWeapon = { true, false, false };
     public int Weapon, PendingWeapon = -1;
     public float Cooldown, FireAnim, Raise, Bob, BobAmount;
@@ -527,6 +529,12 @@ public sealed class Game
         char mark = Level.MarkAt(p.X, p.Y);
         if (char.IsDigit(mark))
         {
+            if (!p.PortalLock && Level.Ship is { Built: false })
+            {
+                p.PortalLock = true;
+                Say(Words.T("The portal is burnt out. Repair your skyship to get home."));
+                PlaySound(Sfx.Locked, 0.8f);
+            }
             if (!p.PortalLock) Teleport(mark);
         }
         else p.PortalLock = false;
@@ -767,7 +775,7 @@ public sealed class Game
     void UseLine(bool pull)
     {
         var p = P;
-        if (TryReadLore() || TryOpenChest()) return;
+        if (TryReadLore() || TryOpenChest() || TryUseShip()) return;
         if (Level.Dig && MineTarget(1.3f) is (var mx, var my, var mf, var ms))
         {
             if (p.Cooldown <= 0) { HitBlock(mx, my, Level.RubbleHp / 3 + 1, mf, slot: ms); p.Cooldown = 0.45f; }
@@ -825,6 +833,9 @@ public sealed class Game
                     MoveBlock(cx, cy, pull);
                     break;
                 case Level.Rubble:
+                case 'N':
+                case 'Q':
+                case 'U':
                     // prying at it by hand works too, slowly (and it's the only way in relaxed mode)
                     if (p.Cooldown <= 0) { HitBlock(cx, cy, Level.RubbleHp / 3 + 1); p.Cooldown = 0.45f; }
                     break;
@@ -850,6 +861,42 @@ public sealed class Game
         ReadingLore = best.Text;
         PlaySound(Sfx.Lore, 1);
         return true;
+    }
+
+    /// <summary>Ore names by Level.OreGlyphs index, as written (Words.T gives the sci-fi ones).</summary>
+    public static readonly string[] OreNames = { "iron ore", "moonstone", "brimstone" };
+
+    /// <summary>What the ship still needs, e.g. "2 iron ore, 3 brimstone".</summary>
+    static string ShipNeeds(Ship s) => string.Join(", ", Enumerable.Range(0, Ship.Need.Length)
+        .Where(k => s.Delivered[k] < Ship.Need[k]).Select(k => $"{Ship.Need[k] - s.Delivered[k]} {Words.T(OreNames[k])}"));
+
+    /// <summary>Use on the wrecked ship: hand over the ore it needs; once repaired, Use it again to fly home.</summary>
+    bool TryUseShip()
+    {
+        var s = Level.Ship;
+        if (s == null || Dist(s.X, s.Y, P.X, P.Y) > s.Radius + 1.2f) return false;
+        if (MathF.Abs(AngleDiff(MathF.Atan2(s.Y - P.Y, s.X - P.X), P.Angle)) > 0.7f) return false;
+        if (s.Built) { Launch(); return true; }
+        int given = 0;
+        for (int k = 0; k < Ship.Need.Length; k++)
+        {
+            int n = Math.Min(P.Ore[k], Ship.Need[k] - s.Delivered[k]);
+            P.Ore[k] -= n; s.Delivered[k] += n; given += n;
+        }
+        if (s.Built) { Say(Words.T("The skyship is repaired! Use it again to take off.")); PlaySound(Sfx.Item, 1); }
+        else if (given > 0) { Say($"{Words.T("Repairs under way.")} {Words.T("Still needed:")} {ShipNeeds(s)}"); PlaySound(Sfx.Lever, 1); }
+        else { Say($"{Words.T("The skyship needs")} {ShipNeeds(s)}. {Words.T("Mine the ore veins in the rocks.")}"); PlaySound(Sfx.Locked, 0.6f); }
+        return true;
+    }
+
+    /// <summary>Take off in the repaired ship: back through the map's portal link, patched up for the trip.</summary>
+    void Launch()
+    {
+        char home = Level.Marks.FirstOrDefault(char.IsDigit);
+        P.Health = Math.Max(P.Health, 100);
+        Teleport(home);
+        Messages.Clear();
+        Say(Words.T("Lift-off! You leave the barren world behind and make it home."));
     }
 
     /// <summary>Opens the closed chest the player is facing, if any.</summary>
@@ -1484,12 +1531,20 @@ public sealed class Game
         int i = cy * Level.W + cx;
         float x = cx + 0.5f, y = cy + 0.5f;
         int before = Level.CrackStage(i, face);
+        char was = Level.Cells[i];
         if (!Level.DamageBlock(cx, cy, (int)MathF.Round(dmg * Vars.Damage), face, slot ?? P.FloorZ))
         {
             if (!quiet || Level.CrackStage(i, face) != before) Sound(Sfx.Hit, x, y);
             return;
         }
         Sound(Sfx.Break, x, y);
+        if (face == Level.Face.Wall && Level.OreIndex(was) is var ore and >= 0)
+        {
+            P.Ore[ore]++;
+            P.PickupFlash = 1;
+            PlaySound(Sfx.Pickup, 1);
+            Say($"+1 {Words.T(OreNames[ore])} ({P.Ore[ore]} carried)");
+        }
         float z = face == Level.Face.Ceiling ? Level.Heights[i] - Level.DigStep - 0.2f : Level.Floors[i];
         for (int k = 0; k < 5; k++)
             Level.Things.Add(new Puff(Art.RubbleChunk, RandF() * 0.08f + 0.1f, 0.35f + RandF() * 0.25f, 0f)

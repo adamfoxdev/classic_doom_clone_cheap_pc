@@ -170,6 +170,73 @@ public static class Headless
         }
         g.SetArtStyle(ArtStyle.SciFi);
         DigChecks(check);
+        PlanetChecks(check);
+    }
+
+    static void PlanetChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int bi = Array.FindIndex(hub, l => l.RawName == "Barren World");
+        var lv = hub[bi];
+        check(bi == hub.Length - 1 && lv.Ship != null && lv.Ship.Stage == 0 && lv.ThemeId == "barren", "the Barren World has a wrecked ship");
+        check(hub[0].FindMark('7') != null && lv.FindMark('7') != null && hub.Count(l => l.FindMark('7') != null) == 2, "portal 7 in Winnowing Hall's courtyard leads to the Barren World");
+        for (int k = 0; k < Ship.Need.Length; k++)
+        {
+            int veins = lv.Cells.Count(c => Level.OreIndex(c) == k);
+            check(veins >= Ship.Need[k] + 2, $"enough {Game.OreNames[k]} in the rocks ({veins} veins for {Ship.Need[k]})");
+        }
+
+        var g = new Game { FixedSeed = 6 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Warp(bi);
+        var w = g.Level;
+        var p = g.P;
+        w.Things.RemoveAll(t => t is Monster);
+        var (ax, ay) = w.ArrivalCell();
+        check(g.Level == w && w.Ship is { Built: false }, "stranded on arrival");
+        // stepping back onto the dead portal goes nowhere
+        p.X = ax + 1.5f; Tick(default, 2);
+        p.X = ax + 0.5f; Tick(default, 2);
+        check(g.Level == w, "the burnt-out portal won't take you home");
+
+        // mine an iron vein: the ore goes into your pack
+        int vein = Array.FindIndex(w.Cells, c => c == 'N');
+        int vx = vein % w.W, vy = vein / w.W;
+        g.HitBlock(vx, vy, 999);
+        check(w.Cells[vein] == '\0' && p.Ore[0] == 1, "breaking an iron vein gives you iron ore");
+        g.HitBlock(vx, vy, 999);
+        check(p.Ore[0] == 1, "and only once");
+
+        // hand it over at the ship, then everything else it needs
+        var s = w.Ship;
+        void FaceShip() { p.X = s.X - 1.2f; p.Y = s.Y; p.Angle = 0; p.PortalLock = true; Tick(default); }
+        FaceShip();
+        Tick(new Input { Use = true });
+        check(s.Delivered[0] == 1 && p.Ore[0] == 0 && !s.Built, "Use hands your ore over to the ship");
+        for (int k = 0; k < Ship.Need.Length; k++) p.Ore[k] = Ship.Need[k] + 1;
+        Tick(default); Tick(new Input { Use = true });
+        check(s.Built && s.Stage == 2 && p.Ore[0] == 2 && p.Ore[1] == 1 && p.Ore[2] == 1, "the ship takes only what it needs, and is repaired");
+        Tick(default); Tick(new Input { Use = true });
+        check(g.Level == g.Hub[0], "the repaired ship flies you home");
+
+        // with the ship fixed, the portal works both ways
+        var home = g.Hub[0].FindMark('7').Value;
+        p.X = home.x + 1f; Tick(default, 2);
+        p.X = home.x; p.Y = home.y; Tick(default, 2);
+        check(g.Level == w, "portal 7 takes you back");
+        p.X = ax + 1.5f; p.Y = ay + 0.5f; Tick(default, 2);
+        p.X = ax + 0.5f; Tick(default, 2);
+        check(g.Level == g.Hub[0], "and, with the ship repaired, home again");
+
+        // art for both styles
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            g.SetArtStyle(style);
+            check(Art.Ship.Length == 3 && Art.Ship.Distinct().Count() == 3 && Art.Ores.Length == 3 && Art.OreCracked.All(o => o.Length == Level.RubbleStages)
+                  && Art.Dust != null && Art.Cliff != null && Art.SkyBarren != null, $"{style} has ship, ore and barren-world art");
+        }
+        g.SetArtStyle(ArtStyle.SciFi);
     }
 
     static void DigChecks(Action<bool, string> check)
@@ -177,7 +244,7 @@ public static class Headless
         var hub = Maps.BuildHub();
         int di = Array.FindIndex(hub, l => l.RawName == "Bedrock Depths");
         var lv = hub[di];
-        check(di == hub.Length - 1 && lv.Dig && !hub.Take(di).Any(l => l.Dig), "the Bedrock Depths is the hub's only dig map");
+        check(di == 6 && lv.Dig && hub.Count(l => l.Dig) == 1, "the Bedrock Depths is the hub's only dig map");
         check(lv.FindMark('6') != null && hub[5].FindMark('6') != null && hub.Count(l => l.FindMark('6') != null) == 2,
               "portal 6 in the quarry's strongroom leads to the Bedrock Depths");
         int open = Enumerable.Range(0, lv.Cells.Length).Count(i => lv.Cells[i] == '\0');
@@ -1231,7 +1298,7 @@ public static class Headless
         // secrets and lore exist in both modes
         var classic = new Game { FixedSeed = 4 };
         classic.NewGame(PClass.Fighter);
-        check(classic.SecretsTotal == 6 && classic.LoreTotal == 22, $"6 secrets and 22 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.SecretsTotal == 6 && classic.LoreTotal == 23, $"6 secrets and 23 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
         check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
@@ -2417,6 +2484,32 @@ public static class Headless
         Shot("66_depths_step_up");
         g.SetArtStyle(ArtStyle.Fantasy);
         Shot("64_depths_fantasy");
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+
+        // Barren World: the crash site, mining an ore vein, and the repaired ship
+        int barren = Array.FindIndex(g.Hub, l => l.RawName == "Barren World");
+        g.Warp(barren);
+        var bw = g.Level;
+        bw.Things.RemoveAll(t => t is Monster);
+        g.Vars.Freeze = true;
+        void BarrenShot(string name, float x, float y, float angle, float pitch)
+        {
+            PlaceCam(x, y, 0, 0, angle, pitch);
+            Tick(default, 1); PlaceCam(x, y, 0, 0, angle, pitch);
+            g.Messages.Clear();
+            Shot(name);
+        }
+        BarrenShot("67_barren_crash", 10.5f, 13.5f, -0.64f, 0);
+        g.HitBlock(6, 11, 999);
+        g.HitBlock(5, 11, 35);
+        g.P.Ore[0] = 2; g.P.Ore[1] = 1; bw.Ship.Delivered[0] = 3;
+        BarrenShot("68_barren_mining", 7.2f, 11.5f, MathF.PI, 0);
+        for (int k = 0; k < Ship.Need.Length; k++) bw.Ship.Delivered[k] = Ship.Need[k];
+        BarrenShot("69_barren_repaired", 10.5f, 13.5f, -0.64f, 0);
+        for (int k = 0; k < Ship.Need.Length; k++) bw.Ship.Delivered[k] = 0;
+        g.SetArtStyle(ArtStyle.Fantasy);
+        BarrenShot("70_barren_fantasy", 10.5f, 13.5f, -0.64f, 0);
         g.SetArtStyle(ArtStyle.SciFi);
         g.Vars.Freeze = false;
 
