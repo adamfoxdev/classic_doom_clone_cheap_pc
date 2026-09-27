@@ -8,13 +8,13 @@ public static class Art
     public const int TS = 64; // wall/floor texture size
 
     // Walls
-    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble;
+    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble, Block;
     // Flats
-    public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff;
+    public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor;
     public static Tex SkyDusk, SkyIce, SkyNight;
     // Sprites
     public static readonly Dictionary<string, Tex[]> Monsters = new();
-    public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt;
+    public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt, Seeker;
     public static Tex[] Torch;
     public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, ChestClosed, ChestOpen, WeaponPiece2, WeaponPiece3, Tree, Crystal;
     // HUD
@@ -173,6 +173,21 @@ public static class Art
             Portcullis = c.T;
         }
 
+        // pushable block: a carved cube with a glowing rune, clearly different from the walls
+        {
+            var r = new Rng(53); var c = new Canvas(TS, TS);
+            c.Clear(Col.Rgb(120, 116, 104));
+            c.Rect(0, 0, 64, 3, Col.Rgb(170, 166, 150)); c.Rect(0, 0, 3, 64, Col.Rgb(160, 156, 140));
+            c.Rect(0, 61, 64, 3, Col.Rgb(60, 58, 50)); c.Rect(61, 0, 3, 64, Col.Rgb(70, 68, 60));
+            c.Rect(10, 10, 44, 44, Col.Rgb(96, 92, 82));
+            c.Rect(12, 12, 40, 40, Col.Rgb(128, 124, 110));
+            c.Line(20, 44, 32, 18, 3, Col.Rgb(80, 220, 200)); c.Line(32, 18, 44, 44, 3, Col.Rgb(80, 220, 200));
+            c.Line(24, 36, 40, 36, 3, Col.Rgb(80, 220, 200));
+            c.Glow(32, 32, 18, Col.Rgb(60, 200, 180));
+            c.Noise(r, 16);
+            Block = c.T;
+        }
+
         LeverOff = BuildLever(false);
         LeverOn = BuildLever(true);
     }
@@ -230,6 +245,15 @@ public static class Art
         PortalFloor = RuneFloor(Col.Rgb(60, 140, 255));
         ExitFloor = RuneFloor(Col.Rgb(255, 80, 60));
         ExitFloorOff = RuneFloor(Col.Rgb(90, 60, 60));
+        {
+            var t = FloorStone.Clone(); var c = new Canvas(t);
+            c.Rect(8, 8, 48, 48, Col.Rgb(30, 30, 30));
+            c.Rect(10, 10, 44, 44, Col.Rgb(90, 110, 106));
+            c.Rect(10, 10, 44, 2, Col.Rgb(140, 170, 160));
+            c.Line(22, 42, 32, 20, 2, Col.Rgb(80, 220, 200)); c.Line(32, 20, 42, 42, 2, Col.Rgb(80, 220, 200));
+            c.Line(25, 35, 39, 35, 2, Col.Rgb(80, 220, 200));
+            PlateFloor = t;
+        }
         SpawnFloor = RuneFloor(Col.Rgb(160, 60, 220));
         AltarFloor = RuneFloor(Col.Rgb(255, 200, 60));
         AltarFloorOff = RuneFloor(Col.Rgb(110, 90, 50));
@@ -300,6 +324,7 @@ public static class Art
         Monsters["centaur"] = PoseSet((c, p) => DrawCentaur(c, p, false));
         Monsters["slaughtaur"] = PoseSet((c, p) => DrawCentaur(c, p, true));
         Monsters["heresiarch"] = PoseSet(DrawHeresiarch);
+        Monsters["bishop"] = PoseSet(DrawBishop);
 
         Fireball = new[] { Orb(Col.Rgb(255, 140, 30), Col.Rgb(255, 240, 120), 0), Orb(Col.Rgb(255, 90, 20), Col.Rgb(255, 220, 90), 1) };
         Bolt = new[] { Orb(Col.Rgb(60, 110, 255), Col.Rgb(200, 230, 255), 0), Orb(Col.Rgb(90, 140, 255), Col.Rgb(230, 240, 255), 1) };
@@ -307,6 +332,7 @@ public static class Art
         Flame = new[] { Orb(Col.Rgb(255, 80, 10), Col.Rgb(255, 255, 160), 0), Orb(Col.Rgb(240, 40, 10), Col.Rgb(255, 200, 80), 1) };
         BossBall = new[] { Orb(Col.Rgb(170, 40, 220), Col.Rgb(255, 180, 255), 0), Orb(Col.Rgb(130, 30, 200), Col.Rgb(240, 160, 255), 1) };
         CentaurBolt = new[] { Orb(Col.Rgb(220, 30, 30), Col.Rgb(255, 170, 120), 0), Orb(Col.Rgb(180, 20, 40), Col.Rgb(255, 140, 120), 1) };
+        Seeker = new[] { Orb(Col.Rgb(60, 220, 120), Col.Rgb(220, 255, 200), 0), Orb(Col.Rgb(30, 180, 90), Col.Rgb(200, 255, 180), 1) };
         Shard = new[] { ShardTex(0), ShardTex(1) };
         Lightning = new[] { LightningTex(1), LightningTex(2) };
         Hammer = new[] { HammerTex(0), HammerTex(1) };
@@ -629,6 +655,30 @@ public static class Art
         }
         else if (p == Pose.Attack) c.Line(28, 22, 44, 2, 3, Col.Rgb(210, 210, 220));
         else c.Line(28, 26, 40, 40, 3, Col.Rgb(210, 210, 220));
+    }
+
+    /// <summary>Dark Bishop: a hovering, legless sorcerer in a tall mitre.</summary>
+    static void DrawBishop(Canvas c, Pose p)
+    {
+        uint robe = p == Pose.Pain ? Col.Rgb(110, 200, 130) : Col.Rgb(40, 90, 60), trim = Col.Rgb(200, 170, 70);
+        float bob = p == Pose.Walk1 ? -2 : p == Pose.Walk0 ? 1 : 0;
+        c.Glow(32, 38, 26, Col.Rgb(40, 200, 110));
+        // robe tapering to a wisp instead of legs
+        c.Tri(32, 18 + bob, 12, 52 + bob, 52, 52 + bob, robe);
+        c.Tri(20, 52 + bob, 44, 52 + bob, 32, 63, Col.Shade(robe, 170));
+        c.Rect(30, 22 + (int)bob, 4, 30, trim);
+        c.Rect(18, 40 + (int)bob, 28, 3, trim);
+        // hooded face and tall mitre
+        c.Circle(32, 16 + bob, 7, Col.Rgb(20, 16, 20));
+        c.Tri(24, 12 + bob, 32, -4 + bob, 40, 12 + bob, Col.Rgb(210, 200, 170));
+        c.Rect(31, 0 + (int)bob, 2, 12, trim);
+        c.Rect(28, 15 + (int)bob, 3, 2, Col.Rgb(255, 50, 40)); c.Rect(34, 15 + (int)bob, 3, 2, Col.Rgb(255, 50, 40));
+        if (p == Pose.Attack)
+        {
+            c.Line(20, 28, 6, 18, 4, robe); c.Line(44, 28, 58, 18, 4, robe);
+            c.Glow(6, 18, 9, Col.Rgb(100, 255, 150)); c.Glow(58, 18, 9, Col.Rgb(100, 255, 150));
+        }
+        else { c.Line(20, 28, 14, 42, 4, robe); c.Line(44, 28, 50, 42, 4, robe); }
     }
 
     static void DrawHeresiarch(Canvas c, Pose p)

@@ -248,7 +248,7 @@ public sealed class DevConsole
 
     static readonly (string name, char glyph)[] Summonable =
     {
-        ("ettin", 'e'), ("afrit", 'a'), ("centaur", 'c'), ("slaughtaur", 'C'), ("heresiarch", 'H'),
+        ("ettin", 'e'), ("afrit", 'a'), ("centaur", 'c'), ("slaughtaur", 'C'), ("bishop", 'd'), ("heresiarch", 'H'),
         ("vial", 'h'), ("flask", 'q'), ("urn", 'u'), ("bluemana", 'b'), ("greenmana", 'g'), ("armor", 'r'),
         ("chest", '$'), ("steelkey", 'k'), ("firekey", 'f'), ("weapon2", 'w'), ("weapon3", 'x'), ("torch", 't'), ("pillar", 'p'), ("tree", 'T'),
     };

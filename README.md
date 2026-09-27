@@ -11,6 +11,8 @@ There are no asset files.
 ![Chaos Arena](docs/chaos_arena.png)
 ![Console](docs/console.png)
 ![Chest](docs/chest.png)
+![Block puzzle](docs/block_puzzle.png)
+![Dark Bishops](docs/dark_bishop.png)
 
 ## Features
 
@@ -23,8 +25,11 @@ There are no asset files.
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt* and the optional
   *Chaos Arena*. Each map keeps its state (dead monsters, opened doors, pulled levers) when you leave and come back.
-- **Puzzles.** Levers raise portcullises (the crypt's gate needs *both* of its levers), the Fire Key and Steel Key
-  open locked doors in other maps, and the exit stays sealed until the Heresiarch is dead.
+- **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
+  exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
+  pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
+  gates open once all its levers are pulled *and* all its plates are covered. Lift a block off a plate and the
+  gate drops again.
 - **Chaos Arena waves.** Step on the golden altar to start endless waves. Each wave has more monsters and
   tougher types (Afrits from wave 2, Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed
   scale up every wave, and every fifth wave adds Heresiarchs. Supplies appear at the altar after each wave.
@@ -35,7 +40,10 @@ There are no asset files.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
 - **Developer console (`~`)** for changing game mechanics, plus Hexen's classic cheat codes.
-- **Monsters:** Ettins, Afrits (flying fire gargoyles), Centaurs, Slaughtaurs and the Heresiarch boss.
+- **Monsters:** Ettins, Afrits (flying fire gargoyles), Centaurs, Slaughtaurs, **Dark Bishops** and the Heresiarch boss.
+  Dark Bishops float, fire pairs of **homing missiles**, and **blur**: they turn see-through and dart sideways,
+  and attacks pass straight through them while they do. Homing missiles skim low and stop steering at the last
+  moment, so a well-timed jump lets them fly underneath.
   Monsters wake on sight or on noise, open doors, and use melee and/or missiles.
 - **Inventory:** Quartz Flasks and Mystic Urns, used with `F`.
 - **Renderer:** grid raycaster with textured floors and ceilings, outdoor sky areas, distance fog (black in
@@ -60,7 +68,8 @@ dotnet run -c Release
 | `W` `A` `S` `D` / arrow keys | Move / strafe / turn |
 | Mouse | Look (including up/down) |
 | Left click / `Ctrl` | Attack |
-| `E` | Use (doors, levers, chests) |
+| `E` | Use (doors, levers, chests); push a stone block |
+| `Shift+E` | Pull a stone block toward you |
 | `Space` | Jump |
 | `C` | Slide (while moving) |
 | `1` `2` `3` / mouse wheel | Select weapon |
@@ -78,12 +87,13 @@ dotnet run -c Release
 3. Step on blue portal **1** to reach the Frozen Keep and grab its weapon piece (middle room).
    The east room is behind a fire door.
 4. Take portal **2** (the Keep's west room) to Darkmere Crypt. Pull *both* levers (north-east and south-west rooms)
-   to raise the gate to the **Fire Key**.
+   and push the two stone blocks in the south-east room onto its two pressure plates to raise the gate to the
+   **Fire Key**. (Push each block north twice, then out to the plate on its side.)
 5. Back in the Keep, open the fire door, pull the lever on the east wall, and take the **Steel Key** from the vault.
 6. Return to Winnowing Hall and open the steel door off the courtyard. Kill the Heresiarch, then step on the red
    exit rune.
 
-Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival.
+Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival (Dark Bishops join from wave 4).
 
 ## Console and cheats
 
@@ -97,7 +107,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor` | give yourself things |
-| `summon <ettin\|afrit\|centaur\|slaughtaur\|heresiarch\|flask\|...>` | spawn something in front of you |
+| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
 | `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena) |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
@@ -144,9 +154,10 @@ Maps are ASCII grids in `src/Level.cs`:
 | `D` | door | `@` | player start |
 | `S` / `F` | steel-key / fire-key door | `1`–`9` | portal (links to the same digit in another map) |
 | `P` | portcullis (opened by a lever) | `E` | exit (sealed until the boss dies) |
-| `L` | lever (gates open once every lever in the map is pulled) | `e` `a` `c` `C` `H` | Ettin, Afrit, Centaur, Slaughtaur, Heresiarch |
+| `L` | lever (gates open once every lever is pulled and every plate covered) | `e` `a` `c` `C` `d` `H` | Ettin, Afrit, Centaur, Slaughtaur, Dark Bishop, Heresiarch |
 | `h` `q` `u` | Crystal Vial, Quartz Flask, Mystic Urn | `b` `g` | blue / green mana |
 | `k` / `f` | Steel Key / Fire Key | `r` | Mesh Armor |
 | `$` | treasure chest (hand-placed; most are scattered randomly) | | |
+| `X` | pushable stone block | `^` | pressure plate |
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |
 | `w` `x` | weapon piece for slot 2 / slot 3 | `t` `p` `T` | torch, pillar, tree |

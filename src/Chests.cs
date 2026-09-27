@@ -68,7 +68,9 @@ public static class Chests
         if (walls == 2 && !(horiz && vert)) return false;
         if (strict && walls != 1) return false;
 
-        // keep clear of portals, the exit, arena runes and other things
+        // keep clear of puzzle blocks, portals, the exit, arena runes and other things
+        for (int j = 0; j < lv.Cells.Length; j++)
+            if (lv.Cells[j] == 'X' && Math.Abs(j % lv.W - x) + Math.Abs(j / lv.W - y) < 4) return false;
         for (int j = 0; j < lv.Marks.Length; j++)
             if (lv.Marks[j] != '\0' && Math.Abs(j % lv.W - x) + Math.Abs(j / lv.W - y) < 3) return false;
         foreach (var t in lv.Things)

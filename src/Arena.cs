@@ -42,6 +42,7 @@ public sealed class ArenaState
         var pool = new List<(MonsterDef def, int weight)> { (Monster.Ettin, 4) };
         if (wave >= 2) pool.Add((Monster.Afrit, 3));
         if (wave >= 3) pool.Add((Monster.Centaur, 2 + wave / 3));
+        if (wave >= 4) pool.Add((Monster.Bishop, 2 + wave / 5));
         if (wave >= 5) pool.Add((Monster.Slaughtaur, 1 + wave / 4));
         int total = pool.Sum(p => p.weight);
 

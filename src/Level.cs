@@ -32,13 +32,27 @@ public sealed class Level
     public bool BossDead;
     public readonly HashSet<int> PulledLevers = new();
     public int LeverCount;
-    /// <summary>Gates open once every lever in the map has been pulled.</summary>
     public bool LeverPulled => LeverCount > 0 && PulledLevers.Count >= LeverCount;
+    public int PlateCount;
+
+    /// <summary>Pressure plates ('^') with a stone block pushed onto them.</summary>
+    public int PlatesCovered
+    {
+        get
+        {
+            int n = 0;
+            for (int i = 0; i < Marks.Length; i++) if (Marks[i] == '^' && Cells[i] == 'X') n++;
+            return n;
+        }
+    }
+
+    /// <summary>Gates open once every lever is pulled and every pressure plate is weighed down.</summary>
+    public bool PuzzleSolved => (LeverCount > 0 || PlateCount > 0) && PulledLevers.Count >= LeverCount && PlatesCovered >= PlateCount;
     public readonly string EntryMessage;
     public ArenaState Arena;   // non-null on wave-survival maps
 
     public const string DoorGlyphs = "DSFP";
-    public const string WallGlyphs = "#BWMIODSFPL";
+    public const string WallGlyphs = "#BWMIODSFPLX";
 
     public Level(string name, string entry, string[] rows, Theme theme)
     {
@@ -66,7 +80,7 @@ public sealed class Level
                 if (WallGlyphs.IndexOf(ch) >= 0) { Cells[i] = ch; if (ch == 'L') LeverCount++; continue; }
                 Outdoor[i] = ch == ',';
                 if (ch == '.' || ch == ',') continue;
-                if (char.IsDigit(ch) || ch == 'E' || ch == '*' || ch == '!') { Marks[i] = ch; continue; }
+                if (char.IsDigit(ch) || ch == 'E' || ch == '*' || ch == '!' || ch == '^') { Marks[i] = ch; if (ch == '^') PlateCount++; continue; }
                 if (ch == '@') { StartX = x + 0.5f; StartY = y + 0.5f; continue; }
                 var t = ThingFactory.Create(ch, x + 0.5f, y + 0.5f);
                 if (t == null) throw new InvalidDataException($"{name}: unknown map glyph '{ch}' at {x},{y}");
@@ -164,6 +178,21 @@ public sealed class Level
         for (int i = 0; i < Marks.Length; i++)
             if (Marks[i] == m) return (i % W + 0.5f, i / W + 0.5f);
         return null;
+    }
+
+    /// <summary>Can a pushed block move into this cell? Empty floor (or a plate) with nothing standing on it.</summary>
+    public bool BlockCanEnter(int x, int y)
+    {
+        if (!InBounds(x, y)) return false;
+        int i = y * W + x;
+        if (Cells[i] != '\0' || (Marks[i] != '\0' && Marks[i] != '^')) return false;
+        foreach (var t in Things)
+        {
+            if (t.Removed || t is Projectile or Puff) continue;
+            if (t is Monster m && !m.Alive) continue;
+            if ((int)t.X == x && (int)t.Y == y) return false;
+        }
+        return true;
     }
 
     public void OpenDoor(int x, int y)
@@ -283,7 +312,7 @@ public static class Maps
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
             "I,,,,,,,,,,,,,,I,,,,,,,,,,,,,,,I",
             "I,,1,,,,,,,,,,,D,,,,,a,,,,g,,,,I",
-            "I,,,,,,,,,,,,,,I,,,,,,,,,,,,,,,I",
+            "I,,,,,,,,,,,,,,I,,,,,,,,d,,,,,,I",
             "I,,,,T,,,,T,,,,I,,,,C,,,,,,b,,,I",
             "I,,,,,,,,,,,,,,I,,,,,,,,,,,,,,,I",
             "IIIIIIIDIIIIIIIIIIIIIIIIIFIIIIII",
@@ -307,20 +336,21 @@ public static class Maps
         crypt.Walls['#'] = Art.Stone; crypt.Walls['M'] = Art.Moss; crypt.Walls['B'] = Art.Brick; crypt.Walls['W'] = Art.Wood;
         crypt.Walls['O'] = Art.Marble; crypt.Walls['I'] = Art.Ice;
 
-        // Darkmere Crypt: a swampy crypt. Two levers must both be pulled to raise the gate to the Fire Key,
-        // which opens the fire door in the Frozen Keep.
+        // Darkmere Crypt: a swampy crypt haunted by Dark Bishops. The gate to the Fire Key (which opens the
+        // fire door in the Frozen Keep) needs both levers pulled AND both pressure plates in the south-east
+        // room weighed down with the pushable stone blocks.
         var darkmere = new Level("Darkmere Crypt", "Darkmere Crypt", new[]
         {
             "MMMMMMMMMMMMMMMMMMMMMMMMMMMM",
             "M2.....M,,,,,,,,,,,,M......M",
             "M......D,,,e,,,,T,,,D..b...M",
-            "M..h...M,,,,,,,,,,,,M...a..M",
+            "M..h...M,,,,,,,,,,,,M...d..M",
             "M......M,,T,,,,,,,,,M......L",
-            "MMMDMMMM,,,,,,a,,,,,MMMMMMMM",
+            "MMMDMMMM,,,,,,d,,,,,MMMMMMMM",
             "M......M,,,,,,,,,,,,M......M",
-            "M..e...M,,,,,,,,T,,,M..c...M",
+            "M..e...M,,,,,,,,T,,,M^....^M",
             "M......MMMMMMDMMMMMMM......M",
-            "M..g...M....p..p....M..q...M",
+            "M..g...M....p..p....M..XX..M",
             "M......D............D......M",
             "ML.....M..e......e..M.....rM",
             "MMMMMMMM....t..t....MMMMMMMM",

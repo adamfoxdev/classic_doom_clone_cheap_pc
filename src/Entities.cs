@@ -3,7 +3,7 @@ namespace HexenSharp;
 public enum Sfx
 {
     Swing, Hit, Shoot, Magic, Explode, Sight, Death, Pickup, Item, Door, Lever,
-    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Count
+    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Count
 }
 
 public abstract class Thing
@@ -13,6 +13,8 @@ public abstract class Thing
     public float SpriteW = 0.6f, SpriteH = 0.6f;
     public bool Solid, FullBright, Removed;
     public Level Level;
+    /// <summary>Opacity 0..256; below 256 the sprite is drawn see-through.</summary>
+    public virtual int Alpha => 256;
     public abstract Tex Sprite(float time);
 }
 
@@ -60,6 +62,7 @@ public sealed class MonsterDef
     public float MissileSpread;
     public float AttackTime = 0.5f, Cooldown = 1.5f, PainChance = 0.5f, SightRange = 14f;
     public bool Boss;
+    public bool Blurs;                 // dodges by turning see-through and darting sideways
 }
 
 public sealed class Monster : Thing
@@ -71,6 +74,9 @@ public sealed class Monster : Thing
     public float StuckDX, StuckDY, StrafeSign = 1;
     public bool AttackFired;
     public float DamageMult = 1f, SpeedMult = 1f;   // raised by arena waves
+    public float BlurTime, BlurDX, BlurDY;          // Dark Bishop dodge
+    public bool Blurring => BlurTime > 0;
+    public override int Alpha => Blurring ? 90 : 256;
 
     public Monster(MonsterDef def)
     {
@@ -115,6 +121,12 @@ public sealed class Monster : Thing
         MeleeRange = 1.0f, MeleeMin = 14, MeleeMax = 24, Missile = ProjKind.CentaurBolt, MissileCount = 3, MissileSpread = 0.12f,
         AttackTime = 0.55f, Cooldown = 1.6f, PainChance = 0.25f,
     };
+    public static readonly MonsterDef Bishop = new()
+    {
+        Name = "Dark Bishop", Art = "bishop", Health = 90, Speed = 2.1f, Radius = 0.28f, Width = 0.65f, Height = 0.75f, FlyZ = 0.2f,
+        Missile = ProjKind.Seeker, MissileCount = 2, MissileSpread = 0.5f, AttackTime = 0.6f, Cooldown = 1.9f,
+        PainChance = 0.3f, Blurs = true,
+    };
     public static readonly MonsterDef Heresiarch = new()
     {
         Name = "Heresiarch", Art = "heresiarch", Health = 700, Speed = 1.2f, Radius = 0.4f, Width = 1.1f, Height = 1.0f,
@@ -125,7 +137,7 @@ public sealed class Monster : Thing
 
 // ---------------------------------------------------------------- projectiles
 
-public enum ProjKind { Fireball, CentaurBolt, BossBall, Bolt, Shard, Serpent, Flame, Lightning, Hammer }
+public enum ProjKind { Fireball, CentaurBolt, BossBall, Seeker, Bolt, Shard, Serpent, Flame, Lightning, Hammer }
 
 public sealed class Projectile : Thing
 {
@@ -134,6 +146,7 @@ public sealed class Projectile : Thing
     public int DmgMin, DmgMax;
     public float Splash;               // radius of splash damage, 0 = none
     public bool FromPlayer, Exploding;
+    public float Homing;               // turn rate toward the player in radians/second (0 = flies straight)
     public float Life = 6f, ExplodeTime;
     public Thing Owner;
 
@@ -144,6 +157,7 @@ public sealed class Projectile : Thing
         ProjKind.Fireball => Art.Fireball,
         ProjKind.CentaurBolt => Art.CentaurBolt,
         ProjKind.BossBall => Art.BossBall,
+        ProjKind.Seeker => Art.Seeker,
         ProjKind.Bolt => Art.Bolt,
         ProjKind.Shard => Art.Shard,
         ProjKind.Serpent => Art.Serpent,
@@ -188,6 +202,7 @@ public static class ThingFactory
             'c' => new Monster(Monster.Centaur),
             'C' => new Monster(Monster.Slaughtaur),
             'H' => new Monster(Monster.Heresiarch),
+            'd' => new Monster(Monster.Bishop),
             'h' => new Pickup(PickupKind.Vial, Art.Vial, 0.35f),
             'q' => new Pickup(PickupKind.Flask, Art.Flask, 0.4f),
             'u' => new Pickup(PickupKind.Urn, Art.Urn, 0.45f),

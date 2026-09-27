@@ -314,7 +314,7 @@ public sealed class Game
                 TryPickup(pk);
 
         // actions
-        if (inp.Use) UseLine();
+        if (inp.Use) UseLine(pull: inp.Walk);
         if (inp.UseItem) UseItem();
 
         // weapons
@@ -373,7 +373,7 @@ public sealed class Game
             float bestD = float.MaxValue;
             foreach (var t in Level.Things)
             {
-                if (t is not Monster m || !m.Alive) continue;
+                if (t is not Monster m || !m.Alive || m.Blurring) continue;
                 float d = Dist(m.X, m.Y, p.X, p.Y);
                 if (d > w.Range + m.Radius) continue;
                 float diff = AngleDiff(MathF.Atan2(m.Y - p.Y, m.X - p.X), p.Angle);
@@ -406,7 +406,7 @@ public sealed class Game
         }
     }
 
-    void UseLine()
+    void UseLine(bool pull)
     {
         var p = P;
         if (TryOpenChest()) return;
@@ -432,19 +432,21 @@ public sealed class Game
                     else if (Level.DoorOpen[i] < 1f) { Level.OpenDoor(cx, cy); PlaySound(Sfx.Door, 1); }
                     break;
                 case 'P':
-                    if (Level.DoorOpen[i] < 1f) { Say("The portcullis will not budge. Perhaps a lever..."); PlaySound(Sfx.Locked, 1); }
+                    if (Level.DoorOpen[i] < 1f)
+                    {
+                        Say(Level.PlateCount > 0 ? "The portcullis will not budge. Levers... and pressure plates?" : "The portcullis will not budge. Perhaps a lever...");
+                        PlaySound(Sfx.Locked, 1);
+                    }
                     break;
                 case 'L':
                     if (Level.PulledLevers.Add(i))
                     {
                         PlaySound(Sfx.Lever, 1);
-                        if (Level.LeverPulled)
-                        {
-                            OpenGates(Level);
-                            Say("You hear a gate grind open...");
-                        }
-                        else Say($"Lever {Level.PulledLevers.Count} of {Level.LeverCount} pulled. Find the others...");
+                        CheckPuzzle($"Lever {Level.PulledLevers.Count} of {Level.LeverCount} pulled.");
                     }
+                    break;
+                case 'X':
+                    MoveBlock(cx, cy, pull);
                     break;
             }
             return;
@@ -506,6 +508,82 @@ public sealed class Game
             }
         }
         else Say("Chest: " + string.Join(", ", loot.Select(g => Chests.LootNames[g]).Distinct()));
+    }
+
+    // ================================================================ puzzles
+
+    /// <summary>
+    /// E pushes a stone block one cell away from you; Shift+E pulls it one cell toward you (you step back).
+    /// Pulling means a block can never get permanently stuck against a wall.
+    /// </summary>
+    void MoveBlock(int bx, int by, bool pull)
+    {
+        var p = P;
+        float fx = bx + 0.5f - p.X, fy = by + 0.5f - p.Y;
+        int sx = 0, sy = 0;
+        if (MathF.Abs(fx) >= MathF.Abs(fy)) sx = Math.Sign(fx); else sy = Math.Sign(fy);
+
+        int tx, ty;
+        float nx = p.X, ny = p.Y;
+        if (!pull)
+        {
+            tx = bx + sx; ty = by + sy;
+            if (!Level.BlockCanEnter(tx, ty) || PlayerTouchesCell(tx, ty)) { Say("The block won't budge that way."); PlaySound(Sfx.Locked, 0.6f); return; }
+        }
+        else
+        {
+            tx = bx - sx; ty = by - sy;
+            // step back one cell (snapping to its centre on the pull axis)
+            if (sx != 0) nx = tx - sx + 0.5f; else ny = ty - sy + 0.5f;
+            if (!Level.BlockCanEnter(tx, ty) || Level.BlocksCircle(nx, ny, p.Radius) || Blocked(nx, ny, p.Radius, null))
+            {
+                Say("No room to pull the block.");
+                PlaySound(Sfx.Locked, 0.6f);
+                return;
+            }
+            p.X = nx; p.Y = ny;
+        }
+
+        int from = by * Level.W + bx, to = ty * Level.W + tx;
+        bool wasOnPlate = Level.Marks[from] == '^', nowOnPlate = Level.Marks[to] == '^';
+        Level.Cells[from] = '\0';
+        Level.Cells[to] = 'X';
+        PlaySound(Sfx.Push, 1);
+        SpawnPuff(Art.Shard[1], tx + 0.5f - sx * 0.5f, ty + 0.5f - sy * 0.5f, 0.1f, 0.4f);
+
+        if (nowOnPlate) { PlaySound(Sfx.Lever, 0.8f); CheckPuzzle($"A pressure plate sinks under the block ({Level.PlatesCovered}/{Level.PlateCount})."); }
+        else if (wasOnPlate) { PlaySound(Sfx.Lever, 0.5f); CheckPuzzle("A pressure plate clicks back up."); }
+    }
+
+    bool PlayerTouchesCell(int cx, int cy)
+    {
+        float qx = Math.Clamp(P.X, cx, cx + 1), qy = Math.Clamp(P.Y, cy, cy + 1);
+        return Dist(qx, qy, P.X, P.Y) < P.Radius;
+    }
+
+    /// <summary>Opens the map's gates when its levers and plates are all set; plate gates drop again if not.</summary>
+    void CheckPuzzle(string progress)
+    {
+        var lv = Level;
+        if (lv.PuzzleSolved)
+        {
+            bool opened = false;
+            for (int k = 0; k < lv.Cells.Length; k++)
+                if (lv.Cells[k] == 'P' && lv.DoorOpen[k] < 1f && lv.DoorMove[k] <= 0) { lv.DoorMove[k] = 1; opened = true; }
+            if (opened) Say("You hear a gate grind open...");
+            return;
+        }
+        if (progress != null)
+        {
+            string rest = "";
+            if (lv.LeverCount > 0 && lv.PlateCount > 0) rest = $" (levers {lv.PulledLevers.Count}/{lv.LeverCount}, plates {lv.PlatesCovered}/{lv.PlateCount})";
+            Say(progress + rest);
+        }
+        if (lv.PlateCount == 0) return;
+        bool closed = false;
+        for (int k = 0; k < lv.Cells.Length; k++)
+            if (lv.Cells[k] == 'P' && (lv.DoorOpen[k] > 0f || lv.DoorMove[k] > 0)) { lv.DoorMove[k] = -1; closed = true; }
+        if (closed) { Say("The gate rumbles shut!"); PlaySound(Sfx.Door, 1); }
     }
 
     public static void OpenGates(Level lv)
@@ -676,6 +754,17 @@ public sealed class Game
         float dist = Dist(m.X, m.Y, P.X, P.Y);
         bool playerAlive = Mode != GameMode.Dead;
 
+        // Dark Bishop blur: dart sideways, see-through and untouchable
+        if (m.Blurring)
+        {
+            m.BlurTime -= dt;
+            float s = 6f * m.SpeedMult * Vars.MonsterSpeed * dt;
+            float nx = m.X + m.BlurDX * s, ny = m.Y + m.BlurDY * s;
+            if (!Blocked(nx, ny, m.Radius, m)) { m.X = nx; m.Y = ny; }
+            else { m.BlurDX = -m.BlurDX; m.BlurDY = -m.BlurDY; }
+            if (m.State == AiState.Chase) return;
+        }
+
         switch (m.State)
         {
             case AiState.Idle:
@@ -687,6 +776,7 @@ public sealed class Game
                     m.Anim += dt;
                     m.AttackCd -= dt;
                     if (!playerAlive || Vars.NoTarget) { ChaseMove(m, dt, wander: true); break; }
+                    if (m.Def.Blurs && m.AttackCd > 0.3f && dist < 12f && RandF() < dt * 0.35f) { StartBlur(m); break; }
                     bool canMelee = m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius;
                     if (canMelee && m.AttackCd <= 0) { SetState(m, AiState.Attack); break; }
                     if (m.Def.Missile != null && m.AttackCd <= 0 && dist < 18f && RandF() < dt * 2.5f && Level.Sight(m.X, m.Y, P.X, P.Y))
@@ -769,6 +859,14 @@ public sealed class Game
         m.StuckTime = 0.3f + RandF() * 0.4f;
     }
 
+    void StartBlur(Monster m)
+    {
+        float a = MathF.Atan2(P.Y - m.Y, P.X - m.X) + (RandF() < 0.5f ? MathF.PI / 2 : -MathF.PI / 2);
+        m.BlurDX = MathF.Cos(a); m.BlurDY = MathF.Sin(a);
+        m.BlurTime = 0.45f;
+        Sound(Sfx.Blur, m.X, m.Y);
+    }
+
     void FireMissile(Monster m)
     {
         var kind = m.Def.Missile.Value;
@@ -777,6 +875,7 @@ public sealed class Game
         {
             ProjKind.Fireball => (6, 12, 6.5f),
             ProjKind.CentaurBolt => (8, 14, 7.5f),
+            ProjKind.Seeker => (6, 11, 4.8f),
             _ => (10, 18, 6.0f),
         };
         for (int i = 0; i < m.Def.MissileCount; i++)
@@ -787,6 +886,7 @@ public sealed class Game
                 Kind = kind, FromPlayer = false, DmgMin = (int)(lo * m.DamageMult), DmgMax = (int)(hi * m.DamageMult), Owner = m, Level = Level,
                 X = m.X + MathF.Cos(a) * (m.Radius + 0.1f), Y = m.Y + MathF.Sin(a) * (m.Radius + 0.1f),
                 Z = m.Z + m.SpriteH * 0.45f, VX = MathF.Cos(a) * speed, VY = MathF.Sin(a) * speed,
+                Homing = kind == ProjKind.Seeker ? 1.9f : 0f, Life = kind == ProjKind.Seeker ? 4.5f : 6f,
             });
         }
         Sound(Sfx.Shoot, m.X, m.Y);
@@ -798,6 +898,21 @@ public sealed class Game
         if (pr.Life <= 0) { pr.Removed = true; return; }
         // aim player shots gently toward eye-level as they fly
         if (pr.FromPlayer) pr.Z += (0.4f - pr.Z) * MathF.Min(1, dt * 2);
+        // homing missiles steer toward you at a limited turn rate (tighter up close so they don't just
+        // orbit you), and burn out after a few seconds; strafing hard shakes them off
+        if (pr.Homing > 0 && Mode != GameMode.Dead && pr.Life > 1.5f)
+        {
+            float speed = MathF.Sqrt(pr.VX * pr.VX + pr.VY * pr.VY);
+            float cur = MathF.Atan2(pr.VY, pr.VX);
+            float near = Dist(pr.X, pr.Y, P.X, P.Y);
+            if (near < 0.8f) pr.Homing = 0; // committed on the final approach: dodge now and it flies on past
+            float rate = pr.Homing * Math.Clamp(4.5f / MathF.Max(0.1f, near), 1f, 4f);
+            float turn = Math.Clamp(AngleDiff(MathF.Atan2(P.Y - pr.Y, P.X - pr.X), cur), -rate * dt, rate * dt);
+            cur += turn;
+            pr.VX = MathF.Cos(cur) * speed; pr.VY = MathF.Sin(cur) * speed;
+            float tz = 0.22f * (1f - 0.4f * P.SlideLow); // skims low and tracks your stance, not jumps: hop over them
+            pr.Z += Math.Clamp(tz - pr.Z, -0.6f * dt, 0.6f * dt);
+        }
         float sp = MathF.Sqrt(pr.VX * pr.VX + pr.VY * pr.VY);
         int steps = Math.Max(1, (int)(sp * dt / 0.1f) + 1);
         float sx = pr.VX * dt / steps, sy = pr.VY * dt / steps;
@@ -808,7 +923,7 @@ public sealed class Game
             if (pr.FromPlayer)
             {
                 foreach (var t in Level.Things)
-                    if (t is Monster m && m.Alive && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
+                    if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
                     {
                         DamageMonster(m, Rand(pr.DmgMin, pr.DmgMax));
                         Explode(pr, m);
@@ -852,7 +967,7 @@ public sealed class Game
 
     void DamageMonster(Monster m, int dmg)
     {
-        if (!m.Alive || dmg <= 0) return;
+        if (!m.Alive || dmg <= 0 || m.Blurring) return;
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
         if (m.State == AiState.Idle) Wake(m);
         if (m.Health <= 0)
@@ -868,6 +983,7 @@ public sealed class Game
             }
             return;
         }
+        if (m.Def.Blurs && m.State != AiState.Attack && RandF() < 0.4f) { StartBlur(m); return; }
         if (RandF() < m.Def.PainChance && m.State != AiState.Attack)
         {
             SetState(m, AiState.Pain);
