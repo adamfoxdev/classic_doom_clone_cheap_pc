@@ -203,10 +203,12 @@ def render():
 # ---------------------------------------------------------------- shrinking to game pixels
 
 def shrink(rows, sprite):
+    """Shrinks a 4x render to game pixels (the output is len(rows)/4 by len(rows[0])/4)."""
+    H, W = len(rows) // SCALE, len(rows[0]) // SCALE
     out = []
-    for y in range(SIZE):
+    for y in range(H):
         line = []
-        for x in range(SIZE):
+        for x in range(W):
             r = g = b = a = 0.0
             for dy in range(SCALE):
                 for dx in range(SCALE):
@@ -223,17 +225,17 @@ def shrink(rows, sprite):
             line.append((q(r), q(g), q(b), 255))
         out.append(line)
     if sprite:
-        edge = [[False] * SIZE for _ in range(SIZE)]
-        for y in range(SIZE):
-            for x in range(SIZE):
+        edge = [[False] * W for _ in range(H)]
+        for y in range(H):
+            for x in range(W):
                 if out[y][x][3]:
                     continue
                 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                     nx, ny = x + dx, y + dy
-                    if 0 <= nx < SIZE and 0 <= ny < SIZE and out[ny][nx][3]:
+                    if 0 <= nx < W and 0 <= ny < H and out[ny][nx][3]:
                         edge[y][x] = True
-        for y in range(SIZE):
-            for x in range(SIZE):
+        for y in range(H):
+            for x in range(W):
                 if edge[y][x]:
                     out[y][x] = (*DARK, 255)
     return out
@@ -246,7 +248,7 @@ def write_png(path, rows):
     def chunk(tag, data):
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
 
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", SIZE, SIZE, 8, 6, 0, 0, 0)) \
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", len(rows[0]), len(rows), 8, 6, 0, 0, 0)) \
         + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
     with open(path, "wb") as f:
         f.write(png)
@@ -851,6 +853,184 @@ def rubble():
             radius1=0.018, radius2=0.0, depth=0.07, vertices=5)
 
 
+# ---------------------------------------------------------------- first-person weapons
+# Seen from behind and above, the way you hold them: the barrel runs up the screen and your sleeve comes in from the
+# bottom edge. One fixed camera for all of them, so they share a scale. Each has a resting and a firing frame.
+
+WPN_W, WPN_H = 128, 80           # the game's first-person weapon frame
+SLEEVES = [(70, 100, 70), (200, 120, 40), (90, 70, 150)]   # Marine, Engineer, Psion armour
+
+
+def weapon_camera():
+    """The player's eye: a perspective camera with the game's 74-degree field of view, cropped (with lens shift) to
+    the part of the 320x168 view the weapon frame covers - 128x80, centred 20 pixels right of middle, sitting on
+    the bottom edge. Barrels pointing straight ahead then run toward the crosshair, as they do in the game."""
+    bpy.ops.object.camera_add(location=(0, 0, 0), rotation=(math.radians(90), 0, 0))
+    cam = bpy.context.object
+    cam.data.type = "PERSP"
+    cam.data.sensor_fit = "HORIZONTAL"
+    view_w, view_h, half_fov = 320, 168, math.radians(37)
+    half = math.tan(half_fov) * WPN_W / view_w
+    cam.data.angle = 2 * math.atan(half)
+    cam.data.shift_x = 20 / WPN_W
+    cam.data.shift_y = -(view_h / 2 - (WPN_H - 4) / 2) / WPN_W
+    cam.data.clip_start = 0.01
+    bpy.context.scene.camera = cam
+
+
+# where a weapon model (built around its grip, pointing along +Y, about a unit long) sits in front of the eye
+WPN_HOLD = dict(loc=(0.0, 0.75, -0.22), scale=0.5, rot=(-2, 0, 8))
+
+
+# melee weapons are held lower and further out, so a raised blade or a punch stays in frame
+MELEE_HOLD = dict(loc=(0.05, 1.0, -0.3), scale=0.5, rot=(0, 0, 0))
+
+
+def weapon(name, build, hold=WPN_HOLD):
+    """Renders a weapon's resting and firing frames as <name>_idle and <name>_fire."""
+    if not wanted(name):
+        return
+    for frame in ("idle", "fire"):
+        sc = reset(True)
+        sc.render.resolution_x, sc.render.resolution_y = WPN_W * SCALE, WPN_H * SCALE
+        build(frame == "fire")
+        bpy.ops.object.empty_add(location=(0, 0, 0))
+        rig = bpy.context.object
+        for o in list(bpy.context.scene.objects):
+            if o.type in ("MESH", "EMPTY") and o is not rig and o.parent is None:
+                o.parent = rig
+        rig.location = hold["loc"]
+        rig.scale = (hold["scale"],) * 3
+        rig.rotation_euler = [math.radians(v) for v in hold["rot"]]
+        bpy.context.view_layer.update()
+        lights(key=2.6, fill=1.0, key_rot=(-40, 25, 15), rim=1.2)
+        weapon_camera()
+        write_png(os.path.join(OUT, "weapons", "%s_%s.png" % (name, frame)), shrink(render(), True))
+
+
+def arm(cls, hand, back=(0.62, -2.2, -1.0), r=0.13):
+    """Your sleeve and glove, from the hand back out of the bottom of the view."""
+    limb(hand, back, r, mat(SLEEVES[cls], metal=0.2, rough=0.6))
+    add("sphere", hand, (r * 1.05, r * 1.05, r * 1.05), m=mat((48, 52, 60), metal=0.3, rough=0.55))
+
+
+def gun_body(pos, length, width, body, accent, barrel_r=0.04, barrels=(0.0,)):
+    """A gun pointing straight ahead: receiver, barrel(s) and a glowing accent strip."""
+    x, y, z = pos
+    add("cube", (x, y, z), (width, length * 0.55, width * 0.9), m=body, bevel=0.02)
+    for bx in barrels:
+        add("cyl", (x + bx, y + length * 0.55, z + 0.02), (barrel_r, barrel_r, length * 0.35), rot=(90, 0, 0), m=mat((70, 74, 84), metal=0.8, rough=0.35))
+    add("cube", (x, y + length * 0.05, z + width * 0.46), (width * 0.3, length * 0.4, 0.012), m=mat(accent, emit=accent, strength=3))
+    return y + length * 0.9      # where the muzzle is
+
+
+def flash(pos, color, size=0.18, strength=10):
+    add("sphere", pos, (size, size, size), m=mat(color, emit=color, strength=strength))
+
+
+def power_fist(fire):
+    """Marine: armoured gauntlets; the right one punches forward crackling with energy."""
+    metal = mat((150, 156, 168), metal=0.8, rough=0.3)
+    for side in (-1, 1):
+        punching = fire and side == 1
+        hand = (0.15, 0.6, 0.12) if punching else ((-0.28, 0.0, 0.0) if side < 0 else (0.5, 0.0, 0.0))
+        arm(0, hand, back=(hand[0] + side * 0.3, -1.0, -2.0), r=0.13)
+        add("cube", hand, (0.3, 0.26, 0.22), m=metal, bevel=0.04)
+        for k in range(4):
+            add("cube", (hand[0] - 0.1 + k * 0.067, hand[1] + 0.13, hand[2] + 0.06), (0.05, 0.05, 0.06), m=mat((90, 96, 108), metal=0.8, rough=0.3))
+        add("cube", (hand[0], hand[1] - 0.02, hand[2] + 0.12), (0.2, 0.12, 0.03), m=mat((120, 200, 255), emit=(120, 200, 255), strength=3 if punching else 1.5))
+    if fire:
+        flash((0.15, 0.8, 0.14), (140, 210, 255), 0.16, 8)
+
+
+def vibro_blade(fire):
+    """Marine: a humming energy blade, held up and then swung across."""
+    hand = (0.15, 0.2, 0.0) if fire else (0.4, 0.0, -0.05)
+    arm(0, hand, back=(0.8, -1.0, -2.0))
+    parts = [add("cyl", hand, (0.05, 0.05, 0.14), m=mat((50, 54, 60), metal=0.6, rough=0.4)),
+             add("cube", (hand[0], hand[1], hand[2] + 0.16), (0.16, 0.05, 0.04), m=mat((150, 156, 168), metal=0.8, rough=0.3)),
+             add("cube", (hand[0], hand[1], hand[2] + 0.46), (0.06, 0.015, 0.56), m=mat((200, 240, 255), emit=(120, 220, 255), strength=4))]
+    pivot(parts, hand, (0, -75, 0) if fire else (-10, -18, 0))
+
+
+def grav_launcher(fire):
+    """Marine: a heavy launcher with a purple graviton coil."""
+    kick = -0.08 if fire else 0.0
+    muzzle = gun_body((0.16, 0.05 + kick, -0.02), 0.95, 0.24, mat((110, 116, 128), metal=0.7, rough=0.35), (200, 120, 255), barrel_r=0.08)
+    for k in range(3):
+        add("torus", (0.16, 0.1 + kick + k * 0.14, 0.02), (1, 1, 1), rot=(90, 0, 0), m=mat((200, 120, 255), emit=(200, 120, 255), strength=3), major_radius=0.12, minor_radius=0.02)
+    arm(0, (0.22, -0.32 + kick, -0.08))
+    if fire:
+        flash((0.16, muzzle + 0.05, 0.02), (210, 140, 255), 0.24)
+
+
+def shock_baton(fire):
+    """Engineer: a baton with a crackling tip, jabbed forward."""
+    hand = (0.25, 0.35, -0.02) if fire else (0.4, 0.0, -0.05)
+    arm(1, hand, back=(0.8, -1.0, -2.0))
+    parts = [add("cyl", (hand[0], hand[1], hand[2] + 0.25), (0.035, 0.035, 0.3), m=mat((60, 62, 70), metal=0.6, rough=0.4)),
+             add("cyl", (hand[0], hand[1], hand[2] + 0.56), (0.06, 0.06, 0.05), m=mat((120, 200, 255), emit=(120, 200, 255), strength=3 if fire else 1.5))]
+    if fire:
+        parts.append(add("sphere", (hand[0], hand[1], hand[2] + 0.62), (0.12, 0.12, 0.12), m=mat((170, 230, 255), emit=(150, 220, 255), strength=8)))
+    pivot(parts, hand, (-55, -10, 0) if fire else (-10, -15, 0))
+
+
+def bio_rifle(fire):
+    """Engineer: a rifle fed from a glowing green canister."""
+    kick = -0.06 if fire else 0.0
+    muzzle = gun_body((0.14, 0.05 + kick, -0.02), 1.0, 0.16, mat((84, 96, 84), metal=0.5, rough=0.45), (120, 255, 120))
+    add("cyl", (0.3, -0.05 + kick, 0.02), (0.07, 0.07, 0.2), rot=(90, 0, 0), m=mat((70, 230, 100), rough=0.2, emit=(60, 220, 90), strength=2))
+    arm(1, (0.2, -0.3 + kick, -0.08))
+    if fire:
+        flash((0.14, muzzle + 0.05, 0.02), (130, 255, 130), 0.18)
+
+
+def flamer(fire):
+    """Engineer: a fuel tank and nozzle; firing throws a burst of flame."""
+    kick = -0.04 if fire else 0.0
+    muzzle = gun_body((0.14, 0.05 + kick, -0.02), 0.85, 0.2, mat((110, 100, 90), metal=0.5, rough=0.45), (255, 150, 40), barrel_r=0.06)
+    add("cyl", (0.34, -0.1 + kick, 0.0), (0.1, 0.1, 0.32), rot=(90, 0, 0), m=mat((200, 80, 40), metal=0.3, rough=0.4))
+    add("sphere", (0.14, muzzle, 0.02), (0.05, 0.05, 0.05), m=mat((255, 140, 40), emit=(255, 140, 40), strength=2))
+    arm(1, (0.2, -0.3 + kick, -0.08))
+    if fire:
+        for k in range(3):
+            flash((0.14 + (k - 1) * 0.06, muzzle + 0.15 + k * 0.12, 0.05 + k * 0.03), (255, 160 - k * 30, 50), 0.14 + k * 0.05, 8)
+
+
+def blaster(fire):
+    """Psion: a compact sidearm."""
+    kick = -0.06 if fire else 0.0
+    muzzle = gun_body((0.16, 0.0 + kick, -0.04), 0.55, 0.13, mat((130, 136, 148), metal=0.7, rough=0.3), (80, 160, 255))
+    arm(2, (0.19, -0.26 + kick, -0.1), r=0.11)
+    if fire:
+        flash((0.16, muzzle + 0.03, 0.0), (110, 180, 255), 0.14)
+
+
+def shard_gun(fire):
+    """Psion: three barrels firing a spread of ice-blue shards."""
+    kick = -0.06 if fire else 0.0
+    muzzle = gun_body((0.15, 0.03 + kick, -0.03), 0.8, 0.26, mat((120, 128, 142), metal=0.7, rough=0.3), (160, 230, 255),
+                      barrel_r=0.035, barrels=(-0.08, 0.0, 0.08))
+    arm(2, (0.2, -0.3 + kick, -0.1), r=0.11)
+    if fire:
+        for bx in (-0.08, 0.0, 0.08):
+            flash((0.15 + bx, muzzle + 0.05, 0.0), (170, 235, 255), 0.09)
+
+
+def arc_rifle(fire):
+    """Psion: a coil rifle that throws lightning."""
+    kick = -0.05 if fire else 0.0
+    muzzle = gun_body((0.15, 0.05 + kick, -0.02), 1.0, 0.18, mat((80, 76, 100), metal=0.6, rough=0.35), (220, 220, 255), barrel_r=0.05)
+    for k in range(4):
+        add("torus", (0.15, 0.15 + kick + k * 0.12, 0.02), (1, 1, 1), rot=(90, 0, 0), m=mat((150, 160, 255), emit=(120, 140, 255), strength=1.5), major_radius=0.08, minor_radius=0.015)
+    arm(2, (0.21, -0.3 + kick, -0.08), r=0.11)
+    if fire:
+        pts = [(0.15, muzzle, 0.02), (0.05, muzzle + 0.2, 0.12), (0.2, muzzle + 0.4, 0.1), (0.08, muzzle + 0.62, 0.2)]
+        for a, b in zip(pts, pts[1:]):
+            limb(a, b, 0.018, mat((150, 180, 255), emit=(130, 170, 255), strength=4))
+        flash(pts[0], (150, 180, 255), 0.1, 5)
+
+
 # ---------------------------------------------------------------- build everything
 
 def main():
@@ -876,6 +1056,15 @@ def main():
     texture("brick", wall_pipes)
     texture("floor", deck_floor)
     texture("rubble", rubble)
+    weapon("fighter_0", power_fist, MELEE_HOLD)
+    weapon("fighter_1", vibro_blade, MELEE_HOLD)
+    weapon("fighter_2", grav_launcher)
+    weapon("cleric_0", shock_baton, MELEE_HOLD)
+    weapon("cleric_1", bio_rifle)
+    weapon("cleric_2", flamer)
+    weapon("mage_0", blaster)
+    weapon("mage_1", shard_gun)
+    weapon("mage_2", arc_rifle)
 
 
 main()

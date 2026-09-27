@@ -34,6 +34,11 @@ public static class RenderedArt
     static readonly string[] Monsters = { "afrit", "ettin", "centaur", "slaughtaur", "bishop", "heresiarch" };
     static readonly string[] LivePoses = { "walk0", "walk1", "attack", "pain" };
 
+    /// <summary>First-person weapons, "<class>_<slot>", each with a resting and a firing frame.</summary>
+    static readonly string[] WeaponClasses = { "fighter", "cleric", "mage" };
+    static IEnumerable<(int index, string file)> WeaponFiles() =>
+        from c in Enumerable.Range(0, 3) from s in Enumerable.Range(0, 3) select (c * 3 + s, $"weapons/{WeaponClasses[c]}_{s}");
+
     static Dictionary<string, byte[]> _files;
 
     /// <summary>The embedded PNGs by path under assets/scifi (e.g. "sprites/jetpack"), without the extension.</summary>
@@ -61,7 +66,8 @@ public static class RenderedArt
     /// <summary>Every art slot the pack fills, for the self-test and the options screen.</summary>
     public static IEnumerable<string> Covered =>
         Slots.Select(s => s.file).Where(Files.ContainsKey)
-            .Concat(Monsters.Where(m => LivePoses.All(p => Files.ContainsKey($"monsters/{m}_{p}"))).Select(m => "monsters/" + m));
+            .Concat(Monsters.Where(m => LivePoses.All(p => Files.ContainsKey($"monsters/{m}_{p}"))).Select(m => "monsters/" + m))
+            .Concat(WeaponFiles().Where(w => Files.ContainsKey(w.file + "_idle") && Files.ContainsKey(w.file + "_fire")).Select(w => w.file));
 
     public static Tex Load(string file) => Files.TryGetValue(file, out var png) ? Png.Load(png) : null;
 
@@ -78,6 +84,11 @@ public static class RenderedArt
             var live = LivePoses.Select(p => Load($"monsters/{m}_{p}")).ToArray();
             if (live.Any(t => t == null)) continue;
             Art.Monsters[m] = Art.PoseSet(live);
+        }
+        foreach (var (index, file) in WeaponFiles())
+        {
+            Tex idle = Load(file + "_idle"), fire = Load(file + "_fire");
+            if (idle != null && fire != null) Art.Weapons[index] = new[] { idle, fire };
         }
     }
 }

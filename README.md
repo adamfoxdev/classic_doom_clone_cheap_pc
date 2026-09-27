@@ -437,26 +437,34 @@ cover keeps its procedural look. It covers:
   seen at a three-quarter angle to show their legs.
 - five textures: the main station wall panels, white hull plating, the pipe wall, the deck floor and the mine's
   rubble (faceted rocks with ore glints; its crack stages are drawn over it in game)
+- all nine first-person weapons, each with a resting and a firing frame: the Marine's power fists, vibro blade and
+  grav launcher, the Engineer's shock baton, bio rifle and flamer, and the Psion's blaster, shard gun and arc rifle.
+  They're rendered through a camera that matches the player's eye (the game's 74° field of view, cropped with a lens
+  shift to the 128×80 weapon frame), so the barrels point toward the crosshair; your sleeve is in your class colour
 
 ![Rendered art sheet: procedural above, rendered below](docs/rendered_art_sheet.png)
 ![Rendered monsters: procedural above, rendered below](docs/rendered_art_monsters.png)
 ![Hab Ring with rendered art](docs/rendered_art_hab_ring.png)
 ![Rendered monsters in the great hall](docs/rendered_art_monsters_ingame.png)
+![Rendered first-person weapons: procedural on the left, rendered on the right](docs/rendered_art_weapons.png)
+![The Psion firing the rendered arc rifle](docs/rendered_art_weapon_ingame.png)
 
 Every asset is modelled in code in `tools/blender/build_scifi_assets.py`. It's built from primitives, rendered with
-Cycles at 4× size, then shrunk to 64×64 with a hard alpha edge, a slightly reduced colour depth and a dark outline,
+Cycles at 4× size, then shrunk to 64×64 (128×80 for weapons) with a hard alpha edge, a slightly reduced colour depth and a dark outline,
 so it sits in the chunky 320×200 look. The PNGs are committed under `assets/scifi/` and embedded in the game, so
 players don't need Blender. Every pose of a monster is measured first and all of them are framed together, so it
-keeps its size from frame to frame. To rebuild the pack (Blender 4.x, about two minutes on 4 CPU cores):
+keeps its size from frame to frame. To rebuild the pack (Blender 4.x, a few minutes on 4 CPU cores):
 
 ```sh
 blender -b --factory-startup -noaudio -P tools/blender/build_scifi_assets.py            # everything
 blender -b --factory-startup -noaudio -P tools/blender/build_scifi_assets.py -- afrit   # just matching names
+blender -b --factory-startup -noaudio -P tools/blender/build_scifi_assets.py -- mage_   # the Psion's weapons
 ```
 
 `--shots` writes review sheets that put the procedural art and the rendered pack side by side
-(`52_rendered_sheet.png` for items and textures, `55_rendered_monsters.png` for monsters). It also writes great-hall
-lineups of every monster in both looks (`56_…`, `57_…`).
+(`52_rendered_sheet.png` for items and textures, `55_rendered_monsters.png` for monsters, `75_rendered_weapons.png`
+for weapons). It also writes great-hall lineups of every monster in both looks (`56_…`, `57_…`) and the Psion firing
+in both looks (`76_…`, `77_…`).
 
 ## Code layout
 

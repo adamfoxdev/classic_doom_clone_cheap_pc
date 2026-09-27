@@ -862,22 +862,25 @@ public static class Headless
         check(back.W == 37 && back.H == 23 && back.Px.SequenceEqual(src), "PNG reader round-trips a saved image");
 
         var covered = RenderedArt.Covered.ToList();
-        check(RenderedArt.Available && covered.Count == 22, $"the pack covers 11 pickups, 5 textures and all 6 monsters ({covered.Count})");
+        check(RenderedArt.Available && covered.Count == 31, $"the pack covers 11 pickups, 5 textures, all 6 monsters and all 9 weapons ({covered.Count})");
         check(new[] { "afrit", "ettin", "centaur", "slaughtaur", "bishop", "heresiarch" }.All(m => covered.Contains("monsters/" + m)), "every monster has rendered frames");
         bool shapes = true;
         foreach (var (file, png) in RenderedArt.Files)
         {
             var t = Png.Load(png);
             int clear = t.Px.Count(c => Col.A(c) == 0);
-            shapes &= t.W == 64 && t.H == 64 && (file.StartsWith("textures/") ? clear == 0 : clear > 400 && clear < 64 * 64 - 300);
+            shapes &= file.StartsWith("weapons/")
+                ? t.W == 128 && t.H == 80 && clear > 128 * 80 / 3 && clear < 128 * 80 - 400
+                : t.W == 64 && t.H == 64 && (file.StartsWith("textures/") ? clear == 0 : clear > 400 && clear < 64 * 64 - 300);
         }
-        check(shapes, "every rendered asset is 64x64: sprites cut out, textures solid");
+        check(shapes, "every rendered asset is the right size: 64x64 sprites cut out, textures solid, 128x80 weapon frames");
 
         var g = new Game { FixedSeed = 1 };
         g.NewGame(PClass.Fighter);
         var hall = g.Level;
         check(!Art.Rendered && Art.Style == ArtStyle.SciFi, "rendered art is off by default");
         var procJet = Art.Jetpack;
+        var procFist = Art.Weapons[0][0];
         g.SetRenderedArt(true);
         check(Art.Jetpack.Px.SequenceEqual(RenderedArt.Load("sprites/jetpack").Px) && !Art.Jetpack.Px.SequenceEqual(procJet.Px),
               "turning it on swaps in the rendered jetpack");
@@ -887,8 +890,14 @@ public static class Headless
         check(drone.Length == 7 && drone[0].Px.SequenceEqual(RenderedArt.Load("monsters/afrit_walk0").Px) && drone[(int)Pose.Dead] != null,
               "the drone uses its rendered frames, with death frames derived from them");
         check(Art.Pillar != null && Art.Monsters["ettin"].Length == 7, "art the pack doesn't cover stays procedural");
+        string[] classes = { "fighter", "cleric", "mage" };
+        check(Enumerable.Range(0, 9).All(i => Art.Weapons[i].Length == 2
+                  && Art.Weapons[i][0].Px.SequenceEqual(RenderedArt.Load($"weapons/{classes[i / 3]}_{i % 3}_idle").Px)
+                  && Art.Weapons[i][1].Px.SequenceEqual(RenderedArt.Load($"weapons/{classes[i / 3]}_{i % 3}_fire").Px)),
+              "every class's weapons use their rendered idle and firing frames");
         g.SetArtStyle(ArtStyle.Fantasy);
-        check(!Art.Jetpack.Px.SequenceEqual(RenderedArt.Load("sprites/jetpack").Px), "the fantasy style ignores the sci-fi pack");
+        check(!Art.Jetpack.Px.SequenceEqual(RenderedArt.Load("sprites/jetpack").Px)
+              && !Art.Weapons[0][0].Px.SequenceEqual(RenderedArt.Load("weapons/fighter_0_idle").Px), "the fantasy style ignores the sci-fi pack");
         g.SetArtStyle(ArtStyle.SciFi);
         check(Art.Jetpack.Px.SequenceEqual(RenderedArt.Load("sprites/jetpack").Px), "and it comes back with the sci-fi style");
         check(Settings.Lines(g).Contains("renderedart 1"), "the choice is saved with the settings");
@@ -898,7 +907,8 @@ public static class Headless
         g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "Rendered art");
         check(g.Menu.Value(g.Menu.Cursor) == "ON", "Options shows Rendered art: ON");
         g.Menu.Update(new Input { Right = true }, 1f / 35f);
-        check(!Art.Rendered && g.Menu.Value(g.Menu.Cursor) == "OFF" && Art.Jetpack.Px.SequenceEqual(procJet.Px), "Left/Right in Options turns it off");
+        check(!Art.Rendered && g.Menu.Value(g.Menu.Cursor) == "OFF" && Art.Jetpack.Px.SequenceEqual(procJet.Px)
+              && Art.Weapons[0][0].Px.SequenceEqual(procFist.Px), "Left/Right in Options turns it off, weapons included");
         g.Menu.Close();
         g.Con.Execute("renderedart 1");
         check(Art.Rendered, "'renderedart 1' turns it on from the console");
@@ -2155,6 +2165,42 @@ public static class Headless
             .SelectMany(m => new[] { Pose.Walk0, Pose.Walk1, Pose.Attack, Pose.Pain, Pose.Die1, Pose.Dead }.Select(p => Art.Monsters[m][(int)p]))
             .ToArray();
 
+    /// <summary>Every class's first-person weapons, resting and firing: procedural on the left, rendered on the right.</summary>
+    static void WeaponSheet(string path)
+    {
+        bool was = Art.Rendered;
+        var style = Art.Style;
+        Tex[][] Grab() => Enumerable.Range(0, 9).Select(i => Art.Weapons[i].ToArray()).ToArray();
+        Art.Rendered = false; Art.Init(ArtStyle.SciFi);
+        var before = Grab();
+        Art.Rendered = true; Art.Init(ArtStyle.SciFi);
+        var after = Grab();
+        Art.Rendered = was; Art.Init(style);
+
+        const int s = 2, cw = 128 * s + 8, ch = 80 * s + 8, pad = 8;
+        int w = pad * 2 + cw * 4 + pad, h = pad * 2 + ch * 9;
+        var px = new uint[w * h];
+        for (int i = 0; i < px.Length; i++) px[i] = Col.Rgb(46, 50, 58);
+        void Blit(Tex t, int ox, int oy)
+        {
+            for (int y = 0; y < t.H * s; y++)
+                for (int x = 0; x < t.W * s; x++)
+                {
+                    uint c = t.Px[(y / s) * t.W + x / s];
+                    bool checker = ((x / 8) + (y / 8)) % 2 == 0;
+                    px[(oy + y) * w + ox + x] = Col.A(c) == 0 ? (checker ? Col.Rgb(60, 64, 72) : Col.Rgb(70, 74, 82)) : c;
+                }
+        }
+        for (int i = 0; i < 9; i++)
+        {
+            int oy = pad + i * ch;
+            Blit(before[i][0], pad, oy); Blit(before[i][1], pad + cw, oy);
+            Blit(after[i][0], pad * 2 + cw * 2, oy); Blit(after[i][1], pad * 2 + cw * 3, oy);
+        }
+        Png.Save(path, px, w, h);
+        Console.WriteLine($"wrote {path}");
+    }
+
     /// <summary>Procedural art (top row of each pair) against the Blender-rendered pack (bottom row), for reviewing the pack.</summary>
     static void RenderedArtSheet(string path, Func<Tex[]> Pick, int cols)
     {
@@ -2521,6 +2567,7 @@ public static class Headless
         // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on
         RenderedArtSheet(Path.Combine(dir, "52_rendered_sheet.png"), SheetItems, 8);
         RenderedArtSheet(Path.Combine(dir, "55_rendered_monsters.png"), SheetMonsters, 6);
+        WeaponSheet(Path.Combine(dir, "75_rendered_weapons.png"));
         g.SetRenderedArt(true);
         g.NewGame(PClass.Fighter);
         g.Level.Things.RemoveAll(t => t is Monster);
@@ -2549,6 +2596,18 @@ public static class Headless
         Shot("56_rendered_monsters_ingame");
         g.SetRenderedArt(false);
         Shot("57_procedural_monsters_ingame");
+
+        // the Psion firing the arc rifle, rendered then procedural
+        g.NewGame(PClass.Mage);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.P.HasWeapon[2] = true; g.P.Weapon = 2; g.P.Raise = 0;
+        PlaceCam(1.6f, 3.2f, 0, 0, 0.05f, -8);
+        g.SetRenderedArt(true);
+        Tick(default, 1); PlaceCam(1.6f, 3.2f, 0, 0, 0.05f, -8);
+        g.P.FireAnim = 0.2f; g.Messages.Clear();
+        Shot("76_rendered_weapon_ingame");
+        g.SetRenderedArt(false);
+        Shot("77_procedural_weapon_ingame");
         g.Vars.Freeze = false;
 
         // character progression: the HUD's level bar with an XP pop-up, and the character screen
