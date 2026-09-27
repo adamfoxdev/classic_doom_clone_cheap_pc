@@ -117,38 +117,58 @@ def add(kind, loc, size=(1, 1, 1), rot=(0, 0, 0), m=None, bevel=0.0, **kw):
     return o
 
 
-def lights(key=4.0, fill=1.2, key_rot=(50, 15, 35)):
-    bpy.ops.object.light_add(type="SUN", location=(0, 0, 5))
-    s = bpy.context.object
-    s.data.energy = key
-    s.rotation_euler = [math.radians(a) for a in key_rot]
-    bpy.ops.object.light_add(type="SUN", location=(0, 0, 5))
-    f = bpy.context.object
-    f.data.energy = fill
-    f.rotation_euler = [math.radians(a) for a in (60, -20, -150)]
+def lights(key=4.0, fill=1.2, key_rot=(50, 15, 35), rim=0.0):
+    """A key sun from the front left, a cool fill from the right and, for monsters, a rim light from behind so
+    silhouettes stay crisp at 64 pixels."""
+    def sun(energy, rot, color=(1, 1, 1)):
+        bpy.ops.object.light_add(type="SUN", location=(0, 0, 5))
+        o = bpy.context.object
+        o.data.energy = energy
+        o.data.color = color
+        o.rotation_euler = [math.radians(a) for a in rot]
+    sun(key, key_rot, (1.0, 0.97, 0.92))
+    sun(fill, (60, -20, -150), (0.85, 0.9, 1.0))
+    if rim:
+        sun(rim, (-55, 0, 10), (0.8, 0.9, 1.0))
 
 
 def meshes():
     return [o for o in bpy.context.scene.objects if o.type == "MESH"]
 
 
-def fit_camera(tilt=12.0, fill=0.8, bottom=1.5):
-    """Orthographic camera looking at the model from the front (-Y), tilted down by `tilt` degrees, framed so
-    the model fills `fill` of the frame and its lowest point sits `bottom` final pixels above the bottom edge."""
-    bpy.ops.object.camera_add(location=(0, -20, 0))
+def make_camera(tilt, yaw):
+    """Orthographic camera looking at the model from the front (-Y), turned `yaw` degrees around it and tilted
+    down by `tilt` degrees."""
+    bpy.ops.object.camera_add()
     cam = bpy.context.object
     cam.data.type = "ORTHO"
-    cam.rotation_euler = (math.radians(90 - tilt), 0, 0)
+    cam.rotation_euler = (math.radians(90 - tilt), 0, math.radians(yaw))
+    cam.location = cam.rotation_euler.to_matrix() @ Vector((0, 0, 20))
     bpy.context.scene.camera = cam
     bpy.context.view_layer.update()
+    return cam
+
+
+def extents(cam):
+    """The model's bounds in the camera's view: (min x, max x, min y, max y)."""
     inv = cam.matrix_world.inverted()
     xs, ys = [], []
+    dg = bpy.context.evaluated_depsgraph_get()
     for o in meshes():
-        dg = o.evaluated_get(bpy.context.evaluated_depsgraph_get())
-        for v in dg.data.vertices:
+        ev = o.evaluated_get(dg)
+        for v in ev.data.vertices:
             p = inv @ (o.matrix_world @ v.co)
             xs.append(p.x)
             ys.append(p.y)
+    return min(xs), max(xs), min(ys), max(ys)
+
+
+def fit_camera(tilt=12.0, fill=0.8, bottom=1.5, yaw=0.0, box=None):
+    """Frames the model (or the given view-space box) so it fills `fill` of the frame and its lowest point sits
+    `bottom` final pixels above the bottom edge."""
+    cam = make_camera(tilt, yaw)
+    x0, x1, y0, y1 = box or extents(cam)
+    xs, ys = (x0, x1), (y0, y1)
     w, h = max(xs) - min(xs), max(ys) - min(ys)
     scale = max(w, h) / fill
     cam.data.ortho_scale = scale
@@ -236,28 +256,37 @@ def wanted(name):
     return not FILTER or any(f in name for f in FILTER)
 
 
-_locked = {}
-
-
-def sprite(folder, name, build, tilt=12.0, fill=0.8, bottom=1.5, group=None):
-    """Renders one sprite. Sprites in the same `group` (a monster's poses) share the first one's framing, so the
-    model doesn't grow or shrink between frames."""
+def sprite(folder, name, build, tilt=12.0, fill=0.8, bottom=1.5):
+    """Renders one pickup sprite."""
     if not wanted(name):
         return
     reset(True)
     build()
     lights()
-    if group in _locked:
-        bpy.ops.object.camera_add()
-        cam = bpy.context.object
-        cam.data.type = "ORTHO"
-        cam.data.ortho_scale, cam.location, cam.rotation_euler = _locked[group]
-        bpy.context.scene.camera = cam
-    else:
-        cam = fit_camera(tilt, fill, bottom)
-        if group:
-            _locked[group] = (cam.data.ortho_scale, cam.location.copy(), cam.rotation_euler.copy())
+    fit_camera(tilt, fill, bottom)
     write_png(os.path.join(OUT, folder, name + ".png"), shrink(render(), True))
+
+
+POSES = ("walk0", "walk1", "attack", "pain")
+
+
+def monster(name, build, tilt=8.0, yaw=0.0, fill=0.92, bottom=0.0):
+    """Renders a monster's four live poses. Every pose is measured first and all of them are framed together,
+    so the monster keeps its size between frames and a raised arm or a muzzle flash never gets cropped."""
+    if not wanted(name):
+        return
+    box = None
+    for pose in POSES:
+        reset(True)
+        build(pose)
+        x0, x1, y0, y1 = extents(make_camera(tilt, yaw))
+        box = (x0, x1, y0, y1) if box is None else (min(box[0], x0), max(box[1], x1), min(box[2], y0), max(box[3], y1))
+    for pose in POSES:
+        reset(True)
+        build(pose)
+        lights(key=4.5, fill=1.6, rim=3.5)
+        fit_camera(tilt, fill, bottom, yaw, box)
+        write_png(os.path.join(OUT, "monsters", "%s_%s.png" % (name, pose)), shrink(render(), True))
 
 
 def texture(name, build):
@@ -356,12 +385,48 @@ def weapon_crate(glow):
     add("cube", (-0.12, -0.36, 0.55), (0.1, 0.02, 0.1), m=mat((230, 230, 235)))
 
 
-# ---------------------------------------------------------------- the drone (Afrit)
+# ---------------------------------------------------------------- monsters
+# Built bolder than the pickups: brighter hulls, strong emissive eyes and weapons, and a rim light, so they
+# still read at a distance once shrunk to 64 pixels. Poses: walk0/walk1 (alternate steps), attack, pain.
+
+def pivot(parts, loc, rot):
+    """Rotates a group of parts (an arm, a whole body) about a joint at `loc` by `rot` degrees."""
+    bpy.ops.object.empty_add(location=loc)
+    e = bpy.context.object
+    for o in parts:
+        o.parent = e
+        o.matrix_parent_inverse = e.matrix_world.inverted()
+    e.rotation_euler = [math.radians(a) for a in rot]
+    bpy.context.view_layer.update()
+    return e
+
+
+def limb(a, b, r, m):
+    """A cylinder from point a to point b."""
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    o = add("cyl", (a + b) / 2, (r, r, d.length / 2), m=m, vertices=12)
+    o.rotation_euler = d.to_track_quat("Z", "Y").to_euler()
+    return o
+
+
+def hot(rgb):
+    """The pain frame: the hull flashes white-hot."""
+    return mat((250, 230, 215), emit=(255, 170, 110), strength=1.6)
+
+
+def glow(rgb, strength=6.0):
+    return mat(rgb, emit=rgb, strength=strength)
+
+
+def step_of(pose):
+    return {"walk0": 1, "walk1": -1}.get(pose, 0)
+
 
 def drone(pose):
     tilt = {"walk0": -12, "walk1": 12}.get(pose, 0)
-    hull = mat((250, 230, 210), emit=(255, 170, 110), strength=1.5) if pose == "pain" else mat((168, 174, 186), metal=0.75, rough=0.35)
-    dark = mat((64, 68, 78), metal=0.7, rough=0.45)
+    hull = hot(None) if pose == "pain" else mat((178, 186, 200), metal=0.5, rough=0.3)
+    dark = mat((58, 62, 72), metal=0.6, rough=0.45)
     parts = []
     # saucer body with a glass dome, seen from the front
     parts.append(add("sphere", (0, 0, 1.0), (1.0, 0.8, 0.5), m=hull))
@@ -370,24 +435,139 @@ def drone(pose):
     # side thruster pods with blue jets
     for x in (-1.15, 1.15):
         parts.append(add("cyl", (x, 0, 0.85), (0.2, 0.2, 0.32), m=dark))
-        parts.append(add("cone", (x, 0, 0.42), (1, 1, 1), rot=(180, 0, 0), m=mat((120, 220, 255), emit=(120, 220, 255), strength=6),
-                         radius1=0.17, radius2=0.0, depth=0.46))
+        parts.append(add("cone", (x, 0, 0.42), (1, 1, 1), rot=(180, 0, 0), m=glow((120, 220, 255)), radius1=0.17, radius2=0.0, depth=0.46))
     # the big red sensor eye on the front, in a dark housing
     eye_r = 0.3 if pose == "attack" else 0.22
     parts.append(add("cyl", (0, -0.78, 0.95), (0.36, 0.36, 0.12), rot=(90, 0, 0), m=mat((28, 28, 34), metal=0.5, rough=0.5)))
     parts.append(add("sphere", (0, -0.86, 0.95), (eye_r, 0.14, eye_r), m=mat((255, 60, 30), emit=(255, 50, 20), strength=4 if pose == "attack" else 2)))
     if pose == "attack":
-        parts.append(add("sphere", (0, -1.2, 0.95), (0.2, 0.2, 0.2), m=mat((255, 230, 160), emit=(255, 210, 120), strength=12)))
+        parts.append(add("sphere", (0, -1.2, 0.95), (0.2, 0.2, 0.2), m=glow((255, 230, 160), 12)))
     parts.append(add("cyl", (0.35, 0, 1.75), (0.025, 0.025, 0.35), m=mat((200, 200, 210), **STEEL)))
-    parts.append(add("sphere", (0.35, 0, 2.1), (0.08, 0.08, 0.08), m=mat((255, 60, 60), emit=(255, 50, 50), strength=6)))
-    # bank the whole drone as it weaves
-    bpy.ops.object.empty_add(location=(0, 0, 1.0))
-    pivot = bpy.context.object
-    for p in parts:
-        p.parent = pivot
-        p.matrix_parent_inverse = pivot.matrix_world.inverted()
-    pivot.rotation_euler = (0, math.radians(tilt), 0)
-    bpy.context.view_layer.update()
+    parts.append(add("sphere", (0.35, 0, 2.1), (0.08, 0.08, 0.08), m=glow((255, 60, 60))))
+    pivot(parts, (0, 0, 1.0), (0, tilt, 0))   # bank as it weaves
+
+
+def brute(pose):
+    """Brute mech (Ettin): a bipedal walker with twin sensor heads, a glowing core and an arm cannon."""
+    step = step_of(pose)
+    hull = hot(None) if pose == "pain" else mat((140, 148, 160), metal=0.45, rough=0.35)
+    plate = mat((226, 176, 40), metal=0.3, rough=0.4)
+    dark = mat((46, 50, 58), metal=0.5, rough=0.5)
+    for side in (-1, 1):
+        lift = 0.2 if step == side else 0.0
+        x = side * 0.4
+        add("cube", (x, -0.06, 0.1 + lift), (0.46, 0.66, 0.2), m=hull, bevel=0.04)       # foot
+        add("cube", (x, 0, 0.55 + lift), (0.3, 0.34, 0.72), m=dark, bevel=0.03)          # shin
+        add("cube", (x, 0, 1.05 + lift * 0.5), (0.38, 0.42, 0.44), m=hull, bevel=0.04)   # thigh
+        add("sphere", (x, -0.2, 0.78 + lift), (0.12, 0.12, 0.12), m=plate)               # knee
+    add("cube", (0, 0, 1.32), (0.95, 0.52, 0.26), m=dark, bevel=0.03)                     # pelvis
+    add("cube", (0, 0, 1.88), (1.55, 0.92, 0.98), m=hull, bevel=0.09)                     # torso
+    add("cube", (0, -0.47, 2.12), (1.1, 0.04, 0.2), m=plate)                             # hazard plate
+    add("cube", (0, -0.47, 1.66), (0.56, 0.04, 0.34), m=dark)                            # vent
+    add("sphere", (0, -0.5, 1.66), (0.16, 0.09, 0.16), m=glow((255, 150, 60), 7))        # reactor core
+    for x in (-0.4, 0.4):                                                                 # twin sensor heads
+        add("cube", (x, 0, 2.58), (0.44, 0.52, 0.38), m=hull, bevel=0.05)
+        add("cube", (x, -0.27, 2.6), (0.32, 0.04, 0.1), m=glow((255, 50, 30), 6))
+    # left arm swings with the stride; the right arm is a cannon, raised to fire
+    left = [add("sphere", (-1.0, 0, 2.08), (0.28, 0.28, 0.28), m=plate),
+            add("cube", (-1.05, 0, 1.58), (0.28, 0.32, 0.8), m=dark, bevel=0.03),
+            add("cube", (-1.05, -0.03, 1.06), (0.4, 0.44, 0.36), m=hull, bevel=0.05)]
+    pivot(left, (-1.0, 0, 2.08), (18 * step, 0, 0))
+    right = [add("sphere", (1.0, 0, 2.08), (0.28, 0.28, 0.28), m=plate),
+             add("cube", (1.05, 0, 1.58), (0.32, 0.36, 0.8), m=dark, bevel=0.03),
+             add("cyl", (1.05, 0, 1.02), (0.22, 0.22, 0.3), m=hull),
+             add("cyl", (1.05, 0, 0.72), (0.12, 0.12, 0.1), m=dark)]
+    if pose == "attack":
+        right.append(add("sphere", (1.05, 0, 0.56), (0.26, 0.26, 0.26), m=glow((255, 215, 110), 14)))
+    pivot(right, (1.0, 0, 2.08), (0, -150, 0) if pose == "attack" else (-18 * step, 0, 0))
+
+
+def strider(pose, siege):
+    """Strider (Centaur) and siege strider (Slaughtaur): a four-legged walker with a gun turret."""
+    step = step_of(pose)
+    base = (160, 82, 72) if siege else (150, 164, 128)
+    hull = hot(None) if pose == "pain" else mat(base, metal=0.35, rough=0.4)
+    dark = mat((48, 52, 58), metal=0.5, rough=0.5)
+    trim = mat((70, 74, 80), metal=0.6, rough=0.4)
+    add("sphere", (0, 0, 1.3), (0.8, 1.15, 0.42), m=hull)                                 # body
+    add("cube", (0, 0, 1.22), (1.4, 1.7, 0.14), m=trim, bevel=0.03)                       # armour skirt
+    for sx, sy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+        lift = 0.22 if sx * sy == step else 0.0                                           # diagonal pairs step together
+        hip, knee, foot = (sx * 0.62, sy * 0.72, 1.2), (sx * 1.25, sy * 0.95, 0.95 + lift), (sx * 1.12, sy * 1.05, 0.08 + lift)
+        limb(hip, knee, 0.1, dark)
+        limb(knee, foot, 0.085, dark)
+        add("sphere", knee, (0.13, 0.13, 0.13), m=hull)
+        add("cube", foot, (0.26, 0.26, 0.12), m=trim, bevel=0.02)
+    add("cube", (0, -0.15, 1.78), (0.85, 0.95, 0.5), m=hull, bevel=0.07)                  # turret
+    add("cube", (0, -0.63, 1.84), (0.6, 0.04, 0.18), m=glow((90, 220, 255), 3.5))         # canopy slit
+    add("sphere", (0, 0.1, 0.88), (0.28, 0.28, 0.12), m=glow((255, 150, 70), 4))          # belly engine
+    if siege:
+        for x in (-0.28, 0.28):                                                            # twin heavy cannons
+            add("cyl", (x, -0.95, 1.72), (0.13, 0.13, 0.55), rot=(90, 0, 0), m=dark)
+            add("cyl", (x, -1.5, 1.72), (0.16, 0.16, 0.08), rot=(90, 0, 0), m=trim)
+            if pose == "attack":
+                add("sphere", (x, -1.72, 1.72), (0.3, 0.3, 0.3), m=glow((255, 70, 40), 14))
+    else:
+        add("cyl", (0.34, -1.0, 1.9), (0.07, 0.07, 0.6), rot=(90, 0, 0), m=trim)            # long rail gun
+        if pose == "attack":
+            add("sphere", (0.34, -1.65, 1.9), (0.24, 0.24, 0.24), m=glow((170, 230, 255), 14))
+            limb((0.34, -1.65, 1.9), (0.1, -2.1, 2.3), 0.04, glow((200, 240, 255), 10))
+
+
+def wraith(pose):
+    """Psi wraith (Dark Bishop): a floating robed alien with a glowing spine, casting with raised hands."""
+    bob = {"walk0": 0.1, "walk1": -0.1}.get(pose, 0.0)
+    robe = hot(None) if pose == "pain" else mat((96, 62, 170), rough=0.75)
+    skin = mat((170, 200, 176), rough=0.5)
+    z = 0.25 + bob
+    add("cone", (0, 0, z + 1.0), (1, 0.8, 1), m=robe, radius1=0.72, radius2=0.14, depth=1.6)       # robe
+    add("cone", (0, 0, z + 0.05), (1, 0.8, 1), rot=(180, 0, 0), m=mat((70, 44, 128), rough=0.8), radius1=0.62, radius2=0.0, depth=0.5)
+    add("cube", (0, -0.36, z + 1.1), (0.1, 0.04, 1.1), m=glow((110, 235, 255), 5))                 # glowing spine
+    add("sphere", (0, 0, z + 1.8), (0.36, 0.32, 0.18), m=robe)                                        # collar
+    add("sphere", (0, 0, z + 2.18), (0.36, 0.34, 0.42), m=skin)                                       # bulbous head
+    add("sphere", (0, 0.04, z + 2.46), (0.3, 0.3, 0.2), m=mat((200, 140, 220), rough=0.5))          # crest
+    for x in (-0.15, 0.15):
+        add("sphere", (x, -0.3, z + 2.16), (0.1, 0.05, 0.07), m=mat((24, 12, 34)))
+        add("sphere", (x, -0.34, z + 2.16), (0.04, 0.02, 0.04), m=glow((200, 140, 255), 8))
+    for side in (-1, 1):
+        sh = (side * 0.42, 0, z + 1.72)
+        if pose == "attack":
+            hand = (side * 1.05, -0.2, z + 2.3)
+            limb(sh, hand, 0.09, robe)
+            add("sphere", hand, (0.28, 0.28, 0.28), m=glow((110, 255, 160), 3.5))
+        else:
+            hand = (side * 0.62, -0.15, z + 0.95)
+            limb(sh, hand, 0.09, robe)
+            add("sphere", hand, (0.1, 0.1, 0.1), m=skin)
+
+
+def overmind(pose):
+    """The Overmind (Heresiarch): a brain in a jar on a hover base, guarded by three orbiting cores."""
+    sway = {"walk0": -7, "walk1": 7}.get(pose, 0)
+    brain = mat((255, 215, 230), emit=(255, 150, 200), strength=2.5) if pose == "pain" else mat((222, 130, 172), rough=0.45)
+    metal = mat((80, 86, 98), metal=0.6, rough=0.4)
+    add("cyl", (0, 0, 0.42), (1.05, 1.05, 0.2), m=metal)                                          # hover base
+    add("torus", (0, 0, 0.42), (1, 1, 1), m=glow((120, 220, 255), 4), major_radius=1.05, minor_radius=0.05)
+    add("cone", (0, 0, 0.1), (1, 1, 1), rot=(180, 0, 0), m=glow((120, 220, 255), 5), radius1=0.5, radius2=0.0, depth=0.25)
+    for side in (-1, 1):
+        limb((side * 0.7, -0.2, 0.4), (side * 1.4, -0.5, 0.02), 0.06, mat((60, 50, 70), rough=0.6))   # cables
+    jar = [add("cyl", (0, 0, 0.72), (0.8, 0.8, 0.12), m=metal),
+           add("sphere", (0, 0.2, 1.62), (0.95, 0.75, 0.95), m=mat((26, 34, 56), metal=0.3, rough=0.2)),  # dark back of the jar
+           add("torus", (0, 0, 1.62), (1, 1, 1), rot=(90, 0, 0), m=mat((150, 220, 255), metal=0.2, rough=0.1), major_radius=0.95, minor_radius=0.07),
+           add("sphere", (0, -0.25, 1.6), (0.72, 0.6, 0.64), m=brain)]
+    for i in range(4):                                                                              # brain folds
+        jar.append(add("torus", (0, -0.25, 1.35 + i * 0.16), (0.72 * (1 - abs(i - 1.5) * 0.18), 0.6, 0.4),
+                       m=mat((170, 90, 130), rough=0.5), major_radius=1.0, minor_radius=0.05))
+    jar.append(add("sphere", (-0.28, -0.72, 1.95), (0.1, 0.06, 0.1), m=glow((255, 255, 255), 3)))   # glint
+    pivot(jar, (0, 0, 0.7), (0, sway, 0))
+    for i, color in enumerate(((255, 80, 80), (80, 255, 120), (80, 150, 255))):                   # orbiting cores
+        a = math.radians(-90 + i * 120 + sway * 3)
+        add("cube", (math.cos(a) * 1.45, math.sin(a) * 0.6, 1.3 + (0.9 if i == 2 else 0)), (0.36, 0.36, 0.36), rot=(45, 45, 0), m=glow(color, 3))
+    if pose == "attack":
+        for side in (-1, 1):
+            tip = (side * 1.6, -0.6, 2.4)
+            add("sphere", tip, (0.3, 0.3, 0.3), m=glow((255, 90, 255), 3.5))
+            limb((side * 0.5, -0.6, 1.9), tip, 0.06, glow((255, 140, 255), 3.5))
 
 
 # ---------------------------------------------------------------- wall and floor textures
@@ -477,9 +657,12 @@ def main():
     sprite("sprites", "jetpack", jetpack)
     sprite("sprites", "weapon2", lambda: weapon_crate((80, 160, 255)))
     sprite("sprites", "weapon3", lambda: weapon_crate((80, 240, 110)))
-    # the neutral pain pose first sets the framing; the banked walk frames and the bigger attack glow fit inside it
-    for pose in ("pain", "walk0", "walk1", "attack"):
-        sprite("monsters", "afrit_" + pose, lambda: drone(pose), tilt=14, fill=0.86, bottom=6, group="afrit")
+    monster("afrit", drone, tilt=14, fill=0.86, bottom=6)
+    monster("ettin", brute, tilt=6, yaw=18, fill=0.98)
+    monster("centaur", lambda pose: strider(pose, False), tilt=12, yaw=35)
+    monster("slaughtaur", lambda pose: strider(pose, True), tilt=12, yaw=35)
+    monster("bishop", wraith, tilt=6, yaw=10, bottom=2)
+    monster("heresiarch", overmind, tilt=8, yaw=0)
     texture("stone", wall_panels)
     texture("marble", wall_white)
     texture("brick", wall_pipes)

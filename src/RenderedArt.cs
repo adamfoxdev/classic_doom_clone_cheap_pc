@@ -30,7 +30,7 @@ public static class RenderedArt
     };
 
     /// <summary>Monsters with rendered frames: the four live poses; the death frames are derived as usual.</summary>
-    static readonly string[] Monsters = { "afrit" };
+    static readonly string[] Monsters = { "afrit", "ettin", "centaur", "slaughtaur", "bishop", "heresiarch" };
     static readonly string[] LivePoses = { "walk0", "walk1", "attack", "pain" };
 
     static Dictionary<string, byte[]> _files;

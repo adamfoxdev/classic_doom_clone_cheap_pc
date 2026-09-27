@@ -255,7 +255,8 @@ public static class Headless
         check(back.W == 37 && back.H == 23 && back.Px.SequenceEqual(src), "PNG reader round-trips a saved image");
 
         var covered = RenderedArt.Covered.ToList();
-        check(RenderedArt.Available && covered.Count == 16, $"the pilot pack covers 11 pickups, 4 textures and the drone ({covered.Count})");
+        check(RenderedArt.Available && covered.Count == 21, $"the pack covers 11 pickups, 4 textures and all 6 monsters ({covered.Count})");
+        check(new[] { "afrit", "ettin", "centaur", "slaughtaur", "bishop", "heresiarch" }.All(m => covered.Contains("monsters/" + m)), "every monster has rendered frames");
         bool shapes = true;
         foreach (var (file, png) in RenderedArt.Files)
         {
@@ -1662,15 +1663,21 @@ public static class Headless
         return 0;
     }
 
-    /// <summary>Procedural art (top row of each pair) against the Blender-rendered pack (bottom row), for reviewing the pack.</summary>
-    static void RenderedArtSheet(string path)
+    static Tex[] SheetItems() => new[]
     {
-        Tex[] Pick() => new[]
-        {
-            Art.Vial, Art.Flask, Art.Urn, Art.BlueMana, Art.GreenMana, Art.SteelKey, Art.FireKey, Art.Armor, Art.Jetpack,
-            Art.WeaponPiece2, Art.WeaponPiece3, Art.Monsters["afrit"][0], Art.Monsters["afrit"][1], Art.Monsters["afrit"][2],
-            Art.Monsters["afrit"][3], Art.Monsters["afrit"][(int)Pose.Die1], Art.Stone, Art.Marble, Art.Brick, Art.FloorStone,
-        };
+        Art.Vial, Art.Flask, Art.Urn, Art.BlueMana, Art.GreenMana, Art.SteelKey, Art.FireKey, Art.Armor, Art.Jetpack,
+        Art.WeaponPiece2, Art.WeaponPiece3, Art.Stone, Art.Marble, Art.Brick, Art.FloorStone,
+    };
+
+    /// <summary>Each monster's walk, walk, attack, pain and two death frames, one monster per row.</summary>
+    static Tex[] SheetMonsters() =>
+        new[] { "afrit", "ettin", "centaur", "slaughtaur", "bishop", "heresiarch" }
+            .SelectMany(m => new[] { Pose.Walk0, Pose.Walk1, Pose.Attack, Pose.Pain, Pose.Die1, Pose.Dead }.Select(p => Art.Monsters[m][(int)p]))
+            .ToArray();
+
+    /// <summary>Procedural art (top row of each pair) against the Blender-rendered pack (bottom row), for reviewing the pack.</summary>
+    static void RenderedArtSheet(string path, Func<Tex[]> Pick, int cols)
+    {
         bool was = Art.Rendered;
         var style = Art.Style;
         Art.Rendered = false; Art.Init(ArtStyle.SciFi);
@@ -1679,7 +1686,7 @@ public static class Headless
         var after = Pick();
         Art.Rendered = was; Art.Init(style);
 
-        const int cols = 10, cell = 66 * 2, pad = 6;
+        const int cell = 66 * 2, pad = 6;
         int rows = (before.Length + cols - 1) / cols;
         int w = cols * cell + pad * 2, h = rows * 2 * cell + pad * 2 + rows * pad;
         var px = new uint[w * h];
@@ -2072,7 +2079,8 @@ public static class Headless
         g.Messages.Clear();
 
         // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on
-        RenderedArtSheet(Path.Combine(dir, "52_rendered_sheet.png"));
+        RenderedArtSheet(Path.Combine(dir, "52_rendered_sheet.png"), SheetItems, 8);
+        RenderedArtSheet(Path.Combine(dir, "55_rendered_monsters.png"), SheetMonsters, 6);
         g.SetRenderedArt(true);
         g.NewGame(PClass.Fighter);
         g.Level.Things.RemoveAll(t => t is Monster);
@@ -2087,6 +2095,20 @@ public static class Headless
         Shot("53_rendered_hab_ring");
         g.SetRenderedArt(false);
         Shot("54_procedural_hab_ring");
+
+        // every monster lined up in the great hall, rendered then procedural
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster or Decor or Pickup or Chest or LoreStone);
+        var lineup = new[] { Monster.Afrit, Monster.Ettin, Monster.Centaur, Monster.Slaughtaur, Monster.Bishop, Monster.Heresiarch };
+        for (int i = 0; i < lineup.Length; i++)
+            g.Level.Things.Add(new Monster(lineup[i]) { X = 11.3f + i * 1.25f, Y = 5.2f + (i % 2) * 0.9f, Level = g.Level });
+        PlaceCam(14.5f, 10.4f, 0, 0, -MathF.PI / 2, 4);
+        g.SetRenderedArt(true);
+        Tick(default, 1); PlaceCam(14.5f, 10.4f, 0, 0, -MathF.PI / 2, 4);
+        g.Messages.Clear();
+        Shot("56_rendered_monsters_ingame");
+        g.SetRenderedArt(false);
+        Shot("57_procedural_monsters_ingame");
         g.Vars.Freeze = false;
         g.SetArtStyle(ArtStyle.Fantasy);
         PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
