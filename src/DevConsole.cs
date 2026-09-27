@@ -8,7 +8,7 @@ public sealed class GameVars
     public float Speed = 1f, Sens = 1f, Damage = 1f, MonsterDamage = 1f, MonsterSpeed = 1f;
     public float FireRate = 1f, ManaCost = 1f, Fog = 1f, Fov = 74f;
     public float Gravity = 12f, JumpPower = 3.3f, SlideSpeed = 4.5f, Chests = 2f;
-    public bool God, NoClip, NoTarget, Freeze, InfiniteMana, FullBright, ShowFps;
+    public bool God, NoClip, NoTarget, Freeze, InfiniteMana, FullBright, ShowFps, InvertMouse;
 
     public sealed record Var(string Name, string Help, Func<GameVars, float> Get, Action<GameVars, float> Set, bool IsBool = false);
 
@@ -16,6 +16,7 @@ public sealed class GameVars
     {
         new("speed", "player move speed multiplier", v => v.Speed, (v, x) => v.Speed = Math.Clamp(x, 0.1f, 5f)),
         new("sens", "mouse sensitivity multiplier", v => v.Sens, (v, x) => v.Sens = Math.Clamp(x, 0.05f, 10f)),
+        new("invertmouse", "invert mouse up/down", v => B(v.InvertMouse), (v, x) => v.InvertMouse = x != 0, true),
         new("damage", "damage you deal (multiplier)", v => v.Damage, (v, x) => v.Damage = Math.Clamp(x, 0f, 100f)),
         new("monsterdamage", "damage monsters deal (multiplier)", v => v.MonsterDamage, (v, x) => v.MonsterDamage = Math.Clamp(x, 0f, 100f)),
         new("monsterspeed", "monster move speed multiplier", v => v.MonsterSpeed, (v, x) => v.MonsterSpeed = Math.Clamp(x, 0f, 5f)),
@@ -158,6 +159,44 @@ public sealed class DevConsole
             _g.FixedSeed = n;
             Print($"seed = {n}; 'restart' to apply");
         });
+        Add("bind", "[action] [key] [key2]", "show or change key bindings", a =>
+        {
+            if (a.Length == 1)
+            {
+                foreach (var b in Bindings.All)
+                    Print($"  {b.Id,-12} {Keys.Name(_g.Binds.Get(b.Act, 0)),-9} {Keys.Name(_g.Binds.Get(b.Act, 1))}");
+                return;
+            }
+            var info = Bindings.Find(a[1]);
+            if (info == null) { Print($"unknown action '{a[1]}'. Actions: " + string.Join(" ", Bindings.All.Select(b => b.Id))); return; }
+            if (a.Length == 2) { Print($"{info.Id} = {Keys.Name(_g.Binds.Get(info.Act, 0))} {Keys.Name(_g.Binds.Get(info.Act, 1))}"); return; }
+            for (int slot = 0; slot < Bindings.Slots && slot + 2 < a.Length; slot++)
+            {
+                int code = Keys.Parse(a[slot + 2]);
+                if (code == Keys.None && a[slot + 2] != "---") { Print($"unknown key '{a[slot + 2]}'"); return; }
+                if (Keys.Reserved(code)) { Print($"{Keys.Name(code)} is reserved for menus"); return; }
+                var d = _g.Binds.Set(info.Act, slot, code);
+                if (d is Act other) Print($"  (removed {Keys.Name(code)} from {Bindings.All[(int)other].Id})");
+            }
+            if (a.Length == 3) _g.Binds.Set(info.Act, 1, Keys.None);
+            Print($"{info.Id} = {Keys.Name(_g.Binds.Get(info.Act, 0))} {Keys.Name(_g.Binds.Get(info.Act, 1))}");
+            _g.SaveSettings();
+        });
+        Add("unbind", "<action>", "clear an action's keys", a =>
+        {
+            var info = a.Length > 1 ? Bindings.Find(a[1]) : null;
+            if (info == null) { Print("usage: unbind <action>"); return; }
+            _g.Binds.Set(info.Act, 0, Keys.None);
+            _g.Binds.Set(info.Act, 1, Keys.None);
+            Print($"{info.Id} unbound");
+            _g.SaveSettings();
+        });
+        Add("binddefaults", "", "restore the default key bindings", _ =>
+        {
+            _g.Binds.Reset();
+            Print("key bindings reset");
+            _g.SaveSettings();
+        });
         Add("clear", "", "clear the console", _ => { Log.Clear(); Scroll = 0; });
         Add("quit", "", "exit the game", _ => _g.QuitRequested = true);
 
@@ -168,6 +207,7 @@ public sealed class DevConsole
 
     public void Print(string s)
     {
+        if (_quiet > 0) return;
         Log.Add(s);
         if (Log.Count > 200) Log.RemoveAt(0);
         Scroll = 0;
@@ -263,6 +303,17 @@ public sealed class DevConsole
             return;
         }
         Print(_g.Summon(match.glyph) ? $"summoned {match.name}" : "no room in front of you");
+    }
+
+    int _quiet;
+
+    /// <summary>Runs a command. Quiet mode (used when loading settings) prints nothing.</summary>
+    public void Execute(string line, bool quiet)
+    {
+        if (!quiet) { Execute(line); return; }
+        _quiet++;
+        try { Execute(line); }
+        finally { _quiet--; }
     }
 
     public void Execute(string line)

@@ -9,7 +9,8 @@ public struct Input
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
     public bool Fire, Walk;               // held
-    public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Quit, Screenshot; // pressed
+    public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot; // pressed
+    public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
     public bool ConsoleToggle, Backspace, Tab, PageUp, PageDown, Jump, Slide;
@@ -114,7 +115,35 @@ public sealed class Game
     readonly Random _rng = new(1234);
     float _exitMsgCd;
 
-    public Game() { Con = new DevConsole(this); }
+    public readonly Bindings Binds = new();
+    public readonly MenuSystem Menu;
+    /// <summary>Where options and key bindings are saved; null (as in tests) means don't touch the disk.</summary>
+    public string ConfigPath;
+
+    public Game()
+    {
+        Con = new DevConsole(this);
+        Menu = new MenuSystem(this);
+        Menu.Show(MenuPage.Main);
+    }
+
+    public void SaveSettings()
+    {
+        if (ConfigPath != null) Settings.Save(this, ConfigPath);
+    }
+
+    public void LoadSettings()
+    {
+        if (ConfigPath != null) Settings.Load(this, ConfigPath);
+    }
+
+    public void GoToTitle()
+    {
+        Mode = GameMode.Title;
+        Paused = false;
+        Menu.Close();
+        Menu.Show(MenuPage.Main);
+    }
 
     public int Rand(int lo, int hi) => _rng.Next(lo, hi + 1);
     public float RandF() => (float)_rng.NextDouble();
@@ -153,6 +182,7 @@ public sealed class Game
         Mode = GameMode.Playing;
         PlayTime = 0;
         Paused = false;
+        Menu.Close();
         ShowMap = false;
         Say(Level.EntryMessage);
         Say($"You are the {P.Def.Name}. Find a way through the hub.");
@@ -180,28 +210,34 @@ public sealed class Game
             if (m.time <= 0) Messages.RemoveAt(i); else Messages[i] = m;
         }
 
+        if (Menu.Open)
+        {
+            Menu.Update(inp, dt);
+            return;
+        }
+
         switch (Mode)
         {
             case GameMode.Title:
-                if (inp.Confirm || inp.Fire) { Mode = GameMode.ClassSelect; MenuIndex = 0; PlaySound(Sfx.Item, 1); }
-                if (inp.Pause || inp.Quit) QuitRequested = true;
+                Menu.Show(MenuPage.Main);
                 return;
             case GameMode.ClassSelect:
                 if (inp.Up) { MenuIndex = (MenuIndex + 2) % 3; PlaySound(Sfx.Swing, 0.6f); }
                 if (inp.Down) { MenuIndex = (MenuIndex + 1) % 3; PlaySound(Sfx.Swing, 0.6f); }
                 if (inp.Slot >= 1 && inp.Slot <= 3) { MenuIndex = inp.Slot - 1; NewGame((PClass)MenuIndex); PlaySound(Sfx.Teleport, 1); }
                 else if (inp.Confirm) { NewGame((PClass)MenuIndex); PlaySound(Sfx.Teleport, 1); }
-                if (inp.Pause) Mode = GameMode.Title;
+                if (inp.Pause) GoToTitle();
                 return;
             case GameMode.Victory:
-                if (inp.Confirm) Mode = GameMode.Title;
+                if (inp.Confirm) GoToTitle();
                 return;
         }
 
-        if (inp.Pause) Paused = !Paused;
-        if (Paused)
+        if (inp.Pause)
         {
-            if (inp.Quit) QuitRequested = true;
+            Paused = true;
+            Menu.Show(MenuPage.Pause);
+            PlaySound(Sfx.Swing, 0.6f);
             return;
         }
         if (inp.Map) ShowMap = !ShowMap;
@@ -229,7 +265,7 @@ public sealed class Game
 
         // look
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
-        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens, -70f, 70f);
+        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), -70f, 70f);
 
         // move
         float speed = 3.6f * p.Def.Speed * Vars.Speed * (inp.Walk ? 0.5f : 1f);

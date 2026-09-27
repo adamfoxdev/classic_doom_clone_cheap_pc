@@ -23,7 +23,12 @@ public static class Program
         Raylib.SetTargetFPS(120);
         Raylib.InitAudioDevice();
 
-        var game = new Game();
+        var game = new Game
+        {
+            ConfigPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HexenSharp", "settings.cfg"),
+        };
+        game.LoadSettings();
+        var keys = new RaylibKeys();
         var renderer = new Renderer();
         Audio audio = null;
         if (Raylib.IsAudioDeviceReady())
@@ -42,9 +47,9 @@ public static class Program
 
         while (!Raylib.WindowShouldClose() && !game.QuitRequested)
         {
-            var inp = ReadInput(game.Con.Open);
+            var inp = ReadInput(game, keys);
 
-            bool wantCapture = game.Mode is GameMode.Playing or GameMode.Dead && !game.Paused && !game.Con.Open;
+            bool wantCapture = game.Mode is GameMode.Playing or GameMode.Dead && !game.Menu.Open && !game.Con.Open;
             if (wantCapture != captured)
             {
                 if (wantCapture) Raylib.DisableCursor(); else Raylib.EnableCursor();
@@ -79,50 +84,58 @@ public static class Program
             Raylib.EndDrawing();
         }
 
+        game.SaveSettings();
         Raylib.UnloadTexture(tex);
         audio?.Dispose();
         Raylib.CloseAudioDevice();
         Raylib.CloseWindow();
     }
 
-    static bool Down(KeyboardKey k) => Raylib.IsKeyDown(k);
-    static bool Pressed(KeyboardKey k) => Raylib.IsKeyPressed(k);
-
-    static Input ReadInput(bool consoleOpen)
+    /// <summary>Raylib key and mouse state, exposed through the game's key codes.</summary>
+    sealed class RaylibKeys : IKeySource
     {
-        var i = new Input();
-        if (Down(KeyboardKey.W) || Down(KeyboardKey.Up)) i.Move += 1;
-        if (Down(KeyboardKey.S) || Down(KeyboardKey.Down)) i.Move -= 1;
-        if (Down(KeyboardKey.D)) i.Strafe += 1;
-        if (Down(KeyboardKey.A)) i.Strafe -= 1;
-        if (Down(KeyboardKey.Right)) i.Turn += 1;
-        if (Down(KeyboardKey.Left)) i.Turn -= 1;
-        i.Walk = Down(KeyboardKey.LeftShift) || Down(KeyboardKey.RightShift);
-        i.Fire = Raylib.IsMouseButtonDown(MouseButton.Left) || Down(KeyboardKey.LeftControl) || Down(KeyboardKey.RightControl);
-        i.Use = Pressed(KeyboardKey.E);
-        i.Jump = Pressed(KeyboardKey.Space);
-        i.Slide = Pressed(KeyboardKey.C);
-        i.ConsoleToggle = Pressed(KeyboardKey.Grave);
-        i.Backspace = Pressed(KeyboardKey.Backspace) || Raylib.IsKeyPressedRepeat(KeyboardKey.Backspace);
-        i.Tab = Pressed(KeyboardKey.Tab);
-        i.PageUp = Pressed(KeyboardKey.PageUp);
-        i.PageDown = Pressed(KeyboardKey.PageDown);
+        float _wheel;
+        public int AnyPressed;
+
+        /// <summary>Call once per frame before reading.</summary>
+        public void Poll()
+        {
+            _wheel = Raylib.GetMouseWheelMove();
+            AnyPressed = Keys.None;
+            for (int k = Raylib.GetKeyPressed(); k != 0; k = Raylib.GetKeyPressed())
+                if (AnyPressed == Keys.None) AnyPressed = k;
+            for (int b = 0; b < 5 && AnyPressed == Keys.None; b++)
+                if (Raylib.IsMouseButtonPressed((MouseButton)b)) AnyPressed = Keys.Mouse1 + b;
+            if (AnyPressed == Keys.None && _wheel != 0) AnyPressed = _wheel > 0 ? Keys.WheelUp : Keys.WheelDown;
+        }
+
+        public bool Down(int code) => code switch
+        {
+            Keys.None => false,
+            >= Keys.Mouse1 and <= Keys.Mouse5 => Raylib.IsMouseButtonDown((MouseButton)(code - Keys.Mouse1)),
+            >= 1000 => false,
+            _ => Raylib.IsKeyDown((KeyboardKey)code),
+        };
+
+        public bool Pressed(int code) => code switch
+        {
+            Keys.None => false,
+            >= Keys.Mouse1 and <= Keys.Mouse5 => Raylib.IsMouseButtonPressed((MouseButton)(code - Keys.Mouse1)),
+            Keys.WheelUp => _wheel > 0,
+            Keys.WheelDown => _wheel < 0,
+            >= 1000 => false,
+            _ => Raylib.IsKeyPressed((KeyboardKey)code) || (code == Keys.Backspace && Raylib.IsKeyPressedRepeat(KeyboardKey.Backspace)),
+        };
+    }
+
+    static Input ReadInput(Game game, RaylibKeys keys)
+    {
+        keys.Poll();
+        var i = game.Binds.Read(keys, game.Con.Open);
+        i.KeyPressed = keys.AnyPressed;
         var typed = new System.Text.StringBuilder();
         for (int c = Raylib.GetCharPressed(); c != 0; c = Raylib.GetCharPressed()) typed.Append((char)c);
         i.Typed = typed.ToString();
-        i.UseItem = Pressed(KeyboardKey.F);
-        i.Map = Pressed(KeyboardKey.Tab) || Pressed(KeyboardKey.M);
-        i.Pause = Pressed(KeyboardKey.Escape);
-        i.Confirm = Pressed(KeyboardKey.Enter) || Pressed(KeyboardKey.KpEnter);
-        i.Up = Pressed(KeyboardKey.Up) || (!consoleOpen && Pressed(KeyboardKey.W));
-        i.Down = Pressed(KeyboardKey.Down) || (!consoleOpen && Pressed(KeyboardKey.S));
-        i.Quit = Pressed(KeyboardKey.Q);
-        i.Screenshot = Pressed(KeyboardKey.F12);
-        if (Pressed(KeyboardKey.One)) i.Slot = 1;
-        if (Pressed(KeyboardKey.Two)) i.Slot = 2;
-        if (Pressed(KeyboardKey.Three)) i.Slot = 3;
-        float wheel = Raylib.GetMouseWheelMove();
-        if (wheel > 0) i.Cycle = -1; else if (wheel < 0) i.Cycle = 1;
         return i;
     }
 }

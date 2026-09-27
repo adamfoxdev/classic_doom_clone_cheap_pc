@@ -60,6 +60,9 @@ public static class Headless
         Console.WriteLine("Chests:");
         ChestChecks(Check);
 
+        Console.WriteLine("Options and key bindings:");
+        OptionsChecks(Check);
+
         Console.WriteLine("Audio synthesis:");
         bool audioOk = true;
         for (int i = 0; i < (int)Sfx.Count; i++) audioOk &= Audio.Synth((Sfx)i).Length > 1000;
@@ -425,6 +428,131 @@ public static class Headless
         check(Enumerable.Range(0, 50).Any(_ => ArenaState.Compose(6, r).Contains(Monster.Bishop)), "bishops join the arena from wave 4");
     }
 
+    /// <summary>Scripted keyboard for tests: keys held down, and keys pressed this frame.</summary>
+    sealed class FakeKeys : IKeySource
+    {
+        public readonly HashSet<int> Held = new(), Hit = new();
+        public bool Down(int code) => code != Keys.None && Held.Contains(code);
+        public bool Pressed(int code) => code != Keys.None && Hit.Contains(code);
+    }
+
+    static void OptionsChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        var keys = new FakeKeys();
+        // press one key for a frame, the way the real host reports it
+        void Press(int code, string typed = null)
+        {
+            keys.Hit.Add(code);
+            var inp = g.Binds.Read(keys, g.Con.Open);
+            inp.KeyPressed = code; inp.Typed = typed;
+            g.Update(inp, 1f / 35f);
+            keys.Hit.Clear();
+            g.Update(g.Binds.Read(keys, g.Con.Open), 1f / 35f);
+        }
+        Input Read() => g.Binds.Read(keys, false);
+
+        // defaults
+        keys.Held.Add(Keys.Letter('W')); keys.Held.Add(Keys.Mouse1);
+        var r = Read();
+        check(r.Move == 1 && r.Fire, "default W moves forward, left mouse attacks");
+        keys.Held.Clear();
+        keys.Hit.Add(Keys.WheelDown); check(Read().Cycle == 1, "mouse wheel cycles weapons"); keys.Hit.Clear();
+        keys.Hit.Add(Keys.Space); check(Read().Jump, "Space jumps"); keys.Hit.Clear();
+
+        // title menu: New game / Options / Quit
+        check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
+        Press(Keys.Down);
+        Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
+        Press(Keys.Escape);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 1, "Esc goes back to the main menu");
+        Press(Keys.Up); Press(Keys.Enter);
+        check(g.Mode == GameMode.ClassSelect, "New game goes to class select");
+        Press(Keys.Enter);
+        check(g.Mode == GameMode.Playing, "choosing a class starts the game");
+
+        // Esc in game: pause menu -> Options -> Key bindings
+        Press(Keys.Escape);
+        check(g.Paused && g.Menu.Page == MenuPage.Pause, "Esc during play opens the pause menu");
+        Press(Keys.Down); Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Options, "pause menu opens Options");
+        Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Bindings, "Options opens Key bindings");
+
+        // rebind Jump (primary) to J
+        int jump = (int)Act.Jump;
+        for (int k = 0; k < jump; k++) Press(Keys.Down);
+        check(g.Menu.Cursor == jump, "cursor on Jump");
+        Press(Keys.Enter);
+        check(g.Menu.Capturing, "Enter waits for a new key");
+        Press(Keys.Letter('J'));
+        check(!g.Menu.Capturing && g.Binds.Get(Act.Jump, 0) == Keys.Letter('J'), "pressing J binds Jump to J");
+        keys.Hit.Add(Keys.Letter('J')); check(Read().Jump, "J now jumps"); keys.Hit.Clear();
+        keys.Hit.Add(Keys.Space); check(!Read().Jump, "Space no longer jumps"); keys.Hit.Clear();
+
+        // second slot, conflicts and reserved keys
+        Press(Keys.Right); Press(Keys.Enter); Press(Keys.Letter('E'));
+        check(g.Binds.Get(Act.Jump, 1) == Keys.Letter('E') && g.Binds.Get(Act.Use, 0) == Keys.None, "binding E to Jump takes it off Use");
+        check(g.Menu.Notice.Contains("removed from Use"), "the conflict is reported");
+        Press(Keys.Enter); Press(Keys.Escape);
+        check(!g.Menu.Capturing && g.Binds.Get(Act.Jump, 1) == Keys.Letter('E'), "Esc cancels capture without changing the key");
+        Press(Keys.Backspace);
+        check(g.Binds.Get(Act.Jump, 1) == Keys.None, "Backspace clears a slot");
+        Press(Keys.Enter); Press(Keys.Mouse2);
+        check(g.Binds.Get(Act.Jump, 1) == Keys.Mouse2, "mouse buttons can be bound");
+        Press(Keys.Enter); Press(Keys.Escape); Press(Keys.Enter); Press(Keys.Escape);
+        check(Keys.Reserved(Keys.Escape) && g.Binds.Get(Act.Jump, 1) == Keys.Mouse2, "Escape can't be bound (it cancels instead)");
+
+        // settings file round trip
+        string path = Path.Combine(Path.GetTempPath(), $"hexensharp-test-{Environment.ProcessId}.cfg");
+        g.ConfigPath = path;
+        g.Vars.Sens = 1f;
+        Press(Keys.Escape); // back to Options (saves)
+        Press(Keys.Down); Press(Keys.Right); Press(Keys.Right);
+        check(MathF.Abs(g.Vars.Sens - 1.2f) < 0.001f, "Right raises mouse sensitivity");
+        Press(Keys.Down); Press(Keys.Enter);
+        check(g.Vars.InvertMouse, "Enter toggles invert mouse");
+        Press(Keys.Escape); // back to pause menu (saves)
+        check(File.Exists(path), "leaving Options saves the settings file");
+        var g2 = new Game { ConfigPath = path };
+        g2.LoadSettings();
+        check(g2.Binds.Get(Act.Jump, 0) == Keys.Letter('J') && g2.Binds.Get(Act.Jump, 1) == Keys.Mouse2
+              && g2.Binds.Get(Act.Use, 0) == Keys.None, "bindings survive a restart");
+        check(MathF.Abs(g2.Vars.Sens - 1.2f) < 0.001f && g2.Vars.InvertMouse, "options survive a restart");
+        check(g2.Con.Log.Count == 1, "loading settings is silent in the console");
+        File.Delete(path);
+
+        // invert mouse flips looking up/down
+        Press(Keys.Escape);
+        check(!g.Paused && !g.Menu.Open, "Esc on the pause menu resumes");
+        g.P.Pitch = 0;
+        g.Update(new Input { LookY = 10 }, 1f / 35f);
+        check(g.P.Pitch > 0, "with invert on, moving the mouse down looks up");
+        g.Vars.InvertMouse = false; g.P.Pitch = 0;
+        g.Update(new Input { LookY = 10 }, 1f / 35f);
+        check(g.P.Pitch < 0, "with invert off, moving the mouse down looks down");
+
+        // reset and console binding
+        g.Con.Execute("bind use e f");
+        check(g.Binds.Get(Act.Use, 0) == Keys.Letter('E') && g.Binds.Get(Act.Use, 1) == Keys.Letter('F')
+              && g.Binds.Get(Act.UseItem, 0) == Keys.None, "console 'bind use e f' (moving F off Use item)");
+        g.Con.Execute("bind jump escape");
+        check(g.Binds.Get(Act.Jump, 0) == Keys.Letter('J'), "console refuses to bind Escape");
+        g.Con.Execute("binddefaults");
+        check(g.Binds.Get(Act.Jump, 0) == Keys.Space && g.Binds.Get(Act.UseItem, 0) == Keys.Letter('F'), "'binddefaults' restores the defaults");
+        check(Bindings.All.All(b => Keys.Known(b.Key1)) && Bindings.All.Select(b => b.Id).Distinct().Count() == Bindings.Count,
+              "every action has a named default key and a unique id");
+
+        // pause menu: quit to title, then Quit from the main menu
+        Press(Keys.Escape);
+        for (int k = 0; k < 3; k++) Press(Keys.Down);
+        Press(Keys.Enter);
+        check(g.Mode == GameMode.Title && g.Menu.Page == MenuPage.Main, "Quit to title");
+        Press(Keys.Down); Press(Keys.Down); Press(Keys.Enter);
+        check(g.QuitRequested, "Quit exits");
+    }
+
     static void ChestChecks(Action<bool, string> check)
     {
         var g = new Game { FixedSeed = 99 };
@@ -672,6 +800,22 @@ public static class Headless
         Tick(default, 2);
         Shot("19_dark_bishop");
         g.Vars.Freeze = false;
+
+        // menus: pause over the game, options, key bindings (mid-capture, scrolled)
+        g.NewGame(PClass.Mage);
+        Tick(default, 40);
+        g.Paused = true; g.Menu.Show(MenuPage.Pause);
+        Shot("20_pause_menu");
+        g.Menu.Show(MenuPage.Options); g.Menu.Cursor = 1;
+        Shot("21_options");
+        g.Menu.Show(MenuPage.Bindings);
+        g.Binds.Set(Act.Jump, 1, Keys.Mouse2);
+        g.Menu.Cursor = 8; g.Menu.Column = 1; g.Menu.Capturing = true;
+        g.Menu.Notice = "Use / push: E"; g.Menu.NoticeTime = 2;
+        Shot("22_key_bindings");
+        g.Binds.Reset();
+        g.GoToTitle();
+        Shot("23_title_menu");
 
         // victory screen
         g.Mode = GameMode.Victory;
