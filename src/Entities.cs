@@ -156,6 +156,8 @@ public sealed class Projectile : Thing
     public int DmgMin, DmgMax;
     public float Splash;               // radius of splash damage, 0 = none
     public bool FromPlayer, Exploding;
+    /// <summary>Climbs or dives at VZ in a straight line (aimed up or down at a target) instead of levelling out.</summary>
+    public bool Aimed;
     public float Homing;               // turn rate toward the player in radians/second (0 = flies straight)
     public float Life = 6f, ExplodeTime;
     public Thing Owner;

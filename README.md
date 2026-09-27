@@ -11,6 +11,8 @@ There are no asset files.
 ![The Overmind](docs/scifi_overmind.png)
 ![Artifacts](docs/scifi_artifacts.png)
 ![Jetpack flight](docs/scifi_jetpack.png)
+![Comms Spire](docs/scifi_spire.png)
+![Comms Spire summit](docs/scifi_spire_summit.png)
 
 <details>
 <summary>More screenshots, including the original fantasy style</summary>
@@ -62,7 +64,7 @@ There are no asset files.
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt* and the optional
-  *Chaos Arena*. Each map keeps its state (dead monsters, opened doors, pulled levers) when you leave and come back.
+  *Chaos Arena* and *Windspire*. Each map keeps its state (dead monsters, opened doors, pulled levers) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
@@ -79,6 +81,15 @@ There are no asset files.
   screen tallies how many you opened.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
+- **The Windspire** (the **Comms Spire** in sci-fi): an optional vertical level through portal **4** in
+  Winnowing Hall's north-east room. It's an open-topped tower ten units tall with eight ledges and pillars
+  spiralling up its walls, each at least a unit higher than the last, so none can be walked or jumped onto. You
+  have to fly ledge to ledge with the jetpack (a spare waits beside the arrival portal), resting on each to
+  refuel, while Afrits and a Dark Bishop harry you. At the top, 8.5 units up, the beacon lever opens the vault
+  at the foot of the tower. A secret wall off a high ledge hides a nook that only a flyer can reach.
+- **Vertical aiming.** Shots climb or dive to meet a monster above or below you, or follow your view when you
+  look well up or down or fire from the air. Monsters aim their missiles up at you when you're on a ledge or
+  flying.
 - **Jetpack** (the **Wings of Wrath** in the fantasy style): pick it up right by the start of the Hab Ring. Jump,
   then hold Jump to fly. Keep holding to climb (up to the ceiling), hold Slide to sink, or let go of both to
   hover. Fly up onto ledges and terraces you could never jump to. A gauge in the corner of the view shows the
@@ -143,7 +154,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 ## Walkthrough (spoilers)
 
 Names here are the fantasy ones. In the sci-fi style: Winnowing Hall = Hab Ring, Frozen Keep = Cryo Labs,
-Darkmere Crypt = Hydroponics Bay, Chaos Arena = Combat Sim, Steel/Fire Key = blue/red keycard, lever = switch,
+Darkmere Crypt = Hydroponics Bay, Chaos Arena = Combat Sim, Windspire = Comms Spire, Steel/Fire Key = blue/red keycard, lever = switch,
 portcullis = force field, Heresiarch = Overmind, relic = artifact, lore stone = data terminal.
 
 1. In Winnowing Hall, grab the class weapon piece in the north-east room.
@@ -159,10 +170,20 @@ portcullis = force field, Heresiarch = Overmind, relic = artifact, lore stone = 
 
 Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival (Dark Bishops join from wave 4).
 
-**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 12 relics, which
-are spread over all four maps (including the arena) before the exit rune wakes. Secret walls sit in the wall
+Optional: portal **4** in Winnowing Hall's north-east room leads to the Windspire. Grab the jetpack (in the hall's
+start room, or the spare by the arrival portal) and go through the opening into the tower. Then fly clockwise from
+the lowest ledge: south-east ledge (1.5), east pillar (2.5), north-east ledge (3.5), north pillar (4.5),
+north-west ledge (5.5), west pillar (6.5) and south-west ledge (7.5), then across to the summit (8.5) in the
+middle. Land on each ledge to let the tank recharge. Pull the beacon lever, step off the summit (there's no
+fall damage), and collect the vault's Mystic Urn, armor and mana. The secret wall is at the east end of the
+north-east ledge.
+
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 15 relics, which
+are spread over all five maps (including the arena and the Windspire, where some sit on high ledges) before the
+exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
-under the crypt's south-west room, and under the arena's antechamber.
+under the crypt's south-west room, under the arena's antechamber, and at the east end of the Windspire's
+north-east ledge.
 
 ## Level editor
 
@@ -177,10 +198,10 @@ of everything you can place is on the right, drawn with the game's own textures 
 | Mouse wheel / `[` `]`, or click the palette | Choose a piece |
 | Arrows / `WASD`, `Space`, `Delete` | Move the cursor, paint, erase (no mouse needed) |
 | `F` | Toggle the fill tool (flood-fills the area you click) |
-| `G` | Cycle layers: tiles → ceilings (`2`–`9` pick 1.0–4.5, `1` the map default) → floors (`0`–`9` pick 0–2.25) |
+| `G` | Cycle layers: tiles → ceilings (1.0–10.0, or the map default) → floors (ground up to 8.5) |
 | `K` | Stair brush (floors layer): each cell you drag over is one step (0.25) higher than the last |
 | `-` / `=` | Zoom out / in |
-| `T` | Cycle theme (hall, ice, crypt, arena) |
+| `T` | Cycle theme (hall, ice, crypt, arena, spire) |
 | `R` | Rename the map |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+S` | Save |
@@ -191,13 +212,13 @@ of everything you can place is on the right, drawn with the game's own textures 
 | `Esc` | Leave (asks again if there are unsaved changes) |
 
 A play-test needs a player start (`@`); the editor warns about a missing or unreachable exit and anything
-that can't be reached. While testing, **Esc → Back to editor** returns to your map, and so does winning.
+that can't be reached (on foot, or by flying if the map has a jetpack in it). While testing, **Esc → Back to editor** returns to your map, and so does winning.
 A custom map without a Heresiarch has its exit open from the start. Portal digits only link maps in the
 built-in hub.
 
 **Heights and floors:** in the ceilings layer every open cell shows its ceiling height as a digit over a colour
 tint (blue is low, orange is tall); in the floors layer it shows the floor height (`0` ground, `1`–`9` = 0.25–2.25,
-green to pale yellow). You can walk up a difference of 2 (0.5) without jumping; ceilings are absolute, and are
+green to pale yellow, then letters for towers and high ledges, yellow to pink). You can walk up a difference of 2 (0.5) without jumping; ceilings are absolute, and are
 kept at least one storey above a raised floor. Doors are always one storey tall; when a taller room opens onto a lower cell, wall is drawn
 above the opening. New maps default to 1.5; the built-in maps use 1 for corridors and doorways up to 3.5 for
 the arenas.
@@ -205,8 +226,9 @@ the arenas.
 Maps are saved as `.hxm` text files in the `maps` folder next to `settings.cfg`
 (`~/.config/HexenSharp/maps/` on Linux, `%APPDATA%\HexenSharp\maps\` on Windows): a `name:`, `theme:` and
 `height:` (default ceiling height) header, a `---` line, the rows using the map legend below, and optionally a
-second `---` line followed by a same-sized grid of ceiling heights (`2`–`9` = 1.0–4.5, `.` = default) and a third
-`---` line followed by a grid of floor heights (`1`–`9` = 0.25–2.25, `.` = ground). You can edit them
+second `---` line followed by a same-sized grid of ceiling heights (`2`–`9` = 1.0–4.5, then `a`–`k` = 5.0–10.0 in
+half steps, `.` = default) and a third `---` line followed by a grid of floor heights (`1`–`9` = 0.25–2.25, then
+`a`–`z` = 2.5–8.75 in quarter steps, `.` = ground). You can edit them
 by hand too; files without heights are one storey everywhere.
 The console command `playmap <name>` plays a saved map directly.
 
@@ -243,7 +265,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
-| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena) |
+| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire) |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
@@ -272,7 +294,7 @@ dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styl
 |---|---|
 | `src/Program.cs` | Raylib window, input mapping, framebuffer upload |
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
-| `src/Level.cs` | Map parsing, doors, collision, line of sight; the hub's four maps and the themes |
+| `src/Level.cs` | Map parsing, doors, collision, line of sight; the hub's five maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
 | `src/Editor.cs` | Level editor: map document and file format, palette, tools, undo, validation, play-testing |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |

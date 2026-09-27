@@ -675,7 +675,7 @@ public sealed class Renderer
                         Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + 13, py + k, Col.Rgb(255, 230, 80));
                     }
             }
-            int hy = 50;
+            int hy = Math.Max(50, Editor.PaletteY + (pal.Length + Editor.PaletteCols - 1) / Editor.PaletteCols * Editor.PaletteCell + 4);
             string what = floors ? "Floor " + Editor.FloorLabel(ed.CurrentFloor) : "Ceiling " + Editor.HeightLabel(ed.CurrentHeight, doc.DefaultHeight);
             foreach (var line in Wrap(what.ToUpperInvariant(), 12)) { Text(Editor.PaletteX, hy, line, Col.Rgb(255, 230, 120)); hy += 9; }
             if (floors) { Text(Editor.PaletteX, hy + 4, ed.StairBrush ? "K: STAIRS ON" : "K: STAIRS", ed.StairBrush ? Col.Rgb(120, 255, 140) : Col.Rgb(150, 140, 120)); hy += 9; }
@@ -762,6 +762,12 @@ public sealed class Renderer
     /// <summary>Floor-mode tint: ground dark green, rising to pale yellow.</summary>
     static uint FloorColor(float f)
     {
+        if (f > 2.25f)
+        {
+            // towers and high ledges shade on from yellow toward pink
+            float u = MathF.Min(1, (f - 2.25f) / 6.5f);
+            return Col.Rgb(240, (int)(230 - 130 * u), (int)(120 + 110 * u));
+        }
         float t = f / 2.25f;
         return Col.Rgb((int)(40 + 200 * t), (int)(110 + 120 * t), (int)(60 + 60 * t));
     }

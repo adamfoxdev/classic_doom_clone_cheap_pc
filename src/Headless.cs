@@ -30,12 +30,13 @@ public static class Headless
                 if (t is Monster m && m.Def.Boss) Check(reach[(int)t.Y * lv.W + (int)t.X], "boss reachable");
                 Check(!lv.BlocksPoint(t.X, t.Y), $"{t.GetType().Name} at {t.X - 0.5f},{t.Y - 0.5f} not inside a wall");
             }
-            // levers must be touchable from an open cell
+            // levers must be touchable from an open cell (the Windspire's needs the jetpack to get to)
+            var flyReach = lv.Reachable(start.Item1, start.Item2, move: Level.Move.Fly);
             for (int i = 0; i < lv.Cells.Length; i++)
                 if (lv.Cells[i] == 'L')
                 {
                     int x = i % lv.W, y = i / lv.W;
-                    bool ok = (x > 0 && reach[i - 1]) || (x < lv.W - 1 && reach[i + 1]) || (y > 0 && reach[i - lv.W]) || (y < lv.H - 1 && reach[i + lv.W]);
+                    bool ok = (x > 0 && flyReach[i - 1]) || (x < lv.W - 1 && flyReach[i + 1]) || (y > 0 && flyReach[i - lv.W]) || (y < lv.H - 1 && flyReach[i + lv.W]);
                     Check(ok, $"lever at {x},{y} usable");
                 }
         }
@@ -80,6 +81,9 @@ public static class Headless
 
         Console.WriteLine("Jetpack:");
         JetpackChecks(Check);
+        Console.WriteLine("Windspire:");
+        SpireChecks(Check);
+        VerticalAimChecks(Check);
 
         Console.WriteLine("Audio synthesis:");
         SoundChecks(Check);
@@ -112,6 +116,138 @@ public static class Headless
         }
         var wav = Sounds.Wav(new short[] { 1, -1 });
         check(wav.Length == 48 && wav[0] == 'R' && wav[8] == 'W' && BitConverter.ToInt32(wav, 24) == Sounds.Rate, "WAV export writes a valid header");
+    }
+
+    static void SpireChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int si = Array.FindIndex(hub, l => l.RawName == "Windspire");
+        check(si == hub.Length - 1 && si >= 4, "the Windspire joins the hub after the Chaos Arena");
+        var lv = hub[si];
+        var (ax, ay) = lv.ArrivalCell();
+        var walk = lv.Reachable(ax, ay);
+        var jump = lv.Reachable(ax, ay, move: Level.Move.Jump);
+        var fly = lv.Reachable(ax, ay, move: Level.Move.Fly);
+        int lever = Array.IndexOf(lv.Cells, 'L');
+        int summit = lever + 1;
+        check(lv.Floors[summit] == 8.5f && lv.HeightAt(lever % lv.W + 1.5f, lever / lv.W + 0.5f) == 10f, "the beacon sits 8.5 up, under a 10-unit sky");
+        int raised = Enumerable.Range(0, lv.Cells.Length).Count(i => lv.Cells[i] == '\0' && lv.Floors[i] > 0);
+        check(raised > 60 && Enumerable.Range(0, lv.Cells.Length).All(i => lv.Floors[i] == 0 || !jump[i]),
+              $"no ledge ({raised} raised cells) can be walked or jumped onto from the ground");
+        check(fly[summit] && !jump[summit] && !walk[summit], "the summit lever can only be reached by flying");
+        var urn = lv.Things.OfType<Pickup>().First(p => p.Kind == PickupKind.Urn);
+        check(walk[(int)urn.Y * lv.W + (int)urn.X] && lv.Cells[Array.IndexOf(lv.Cells, 'P')] == 'P', "the vault at the foot of the tower sits behind a gate");
+        check(lv.Things.Any(t => t is Pickup { Kind: PickupKind.Jetpack } && walk[(int)t.Y * lv.W + (int)t.X]), "a spare jetpack waits by the arrival portal");
+        check(hub[0].FindMark('4') != null && lv.FindMark('4') != null, "portal 4 links Winnowing Hall and the Windspire");
+        check(Level.HeightFromGlyph('k', 1) == 10f && Level.HeightFromGlyph('a', 1) == 5f && Level.GlyphFromHeight(10f) == 'k' && Level.GlyphFromHeight(3f) == '6'
+              && Level.FloorFromGlyph('a') == 2.5f && Level.FloorFromGlyph('y') == 8.5f && Level.FloorFromGlyph('9') == 2.25f,
+              "tall glyphs: ceilings 'a'-'k' = 5-10, floors 'a'-'z' = 2.5-8.75");
+        var def = Maps.Hub[si];
+        var copy = MapDoc.Parse(MapDoc.FromDef(def).Serialize()).ToDef().Build();
+        check(copy.Floors.SequenceEqual(lv.Floors) && copy.Heights.SequenceEqual(lv.Heights), "the Windspire's towers survive a save and load in the editor");
+
+        // climb it for real: portal in, grab the spare jetpack, hop ledge to ledge, pull the beacon lever, loot the vault
+        var g = new Game { FixedSeed = 3 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Mage);
+        g.Warp(si);
+        var sp = g.Level;
+        var p = g.P;
+        check(sp.RawName == "Windspire" && MathF.Abs(p.X - 3.5f) < 0.01f && MathF.Abs(p.Y - 18.5f) < 0.01f, "warping in lands on the arrival portal");
+        sp.Things.RemoveAll(t => t is Monster);
+        void Face(float tx, float ty) => p.Angle = MathF.Atan2(ty - p.Y, tx - p.X);
+        void WalkTo(float tx, float ty)
+        {
+            for (int k = 0; k < 35 * 8 && Dist(tx, ty) > 0.15f; k++) { Face(tx, ty); Tick(new Input { Move = MathF.Min(1, Dist(tx, ty) * 2) }); }
+        }
+        float Dist(float tx, float ty) => MathF.Sqrt((tx - p.X) * (tx - p.X) + (ty - p.Y) * (ty - p.Y));
+        bool FlyTo(float tx, float ty, float floor)
+        {
+            Tick(default, 70); // let the tank recharge
+            Tick(new Input { Jump = true, JumpHeld = true });
+            for (int k = 0; k < 35 * 4 && p.FloorZ + p.Z < floor + 0.5f; k++) Tick(new Input { JumpHeld = true });
+            for (int k = 0; k < 35 * 8 && Dist(tx, ty) > 0.15f; k++)
+            {
+                Face(tx, ty);
+                Tick(new Input { Move = MathF.Min(1, Dist(tx, ty) * 2), JumpHeld = p.FloorZ + p.Z < floor + 0.4f });
+            }
+            for (int k = 0; k < 35 * 5 && p.Flying; k++) Tick(new Input { SlideHeld = true });
+            return p.OnGround && MathF.Abs(p.FloorZ - floor) < 0.01f;
+        }
+
+        // without the jetpack you can't get off the ground
+        WalkTo(9.9f, 16.5f); WalkTo(9.9f, 13.5f); WalkTo(15.2f, 13.5f);
+        for (int k = 0; k < 10; k++) { Tick(new Input { Jump = true, JumpHeld = true, Move = 1 }); Tick(new Input { JumpHeld = true, Move = 1 }, 25); }
+        check(!p.HasJetpack && p.FloorZ == 0f, "without a jetpack you're stuck on the ground floor");
+        WalkTo(9.9f, 16.5f); WalkTo(7.5f, 19.5f);
+        check(p.HasJetpack, "the spare jetpack by the portal");
+        WalkTo(9.9f, 16.5f); WalkTo(9.9f, 13.5f);
+
+        var route = new (float x, float y, float floor, string name)[]
+        {
+            (17.5f, 13.5f, 1.5f, "south-east ledge"), (19.5f, 7.5f, 2.5f, "east pillar"), (17.5f, 2.0f, 3.5f, "north-east ledge"),
+            (10.5f, 1.5f, 4.5f, "north pillar"), (3.0f, 2.2f, 5.5f, "north-west ledge"), (1.5f, 7.5f, 6.5f, "west pillar"),
+            (3.0f, 12.5f, 7.5f, "south-west ledge"), (9.5f, 9.5f, 8.5f, "summit"),
+        };
+        var reached = new List<string>();
+        foreach (var r in route) { if (!FlyTo(r.x, r.y, r.floor)) break; reached.Add(r.name); }
+        check(reached.Count == route.Length, $"fly up every ledge to the summit ({string.Join(", ", reached)})");
+        WalkTo(10.5f, 9.6f); p.Angle = -MathF.PI / 2;
+        Tick(new Input { Use = true });
+        int gate = Array.IndexOf(sp.Cells, 'P');
+        Tick(default, 35 * 2);
+        check(sp.LeverPulled && sp.DoorOpen[gate] >= 1f, "pulling the beacon lever opens the vault gate far below");
+        check(g.Messages.Any(m => m.text.Contains("force field")), "the sci-fi message says the force field powered down");
+
+        // step off the summit, glide down and collect the reward
+        WalkTo(12.9f, 9.6f); WalkTo(14.5f, 9.6f);
+        for (int k = 0; k < 35 * 3 && !p.OnGround; k++) Tick(default);
+        check(p.FloorZ == 0f && p.OnGround && p.Health == 100, "stepping off the summit drops you safely to the ground");
+        WalkTo(10.5f, 13.5f); WalkTo(9.9f, 16.5f); WalkTo(13.5f, 18.5f); WalkTo(15.5f, 18.5f); WalkTo(16.5f, 17.5f);
+        check(p.Urns == 1, "the vault's Nano canister is yours");
+    }
+
+    static void VerticalAimChecks(Action<bool, string> check)
+    {
+        // shots climb and dive to meet targets above and below, so fights between ledges work
+        var g = new Game { FixedSeed = 1 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Mage);
+        int si = Array.FindIndex(g.Hub, l => l.RawName == "Windspire");
+        g.Warp(si);
+        var lv = g.Level;
+        var p = g.P;
+        lv.Things.RemoveAll(t => t is Monster or LoreStone or Pickup);
+        // you at the east edge of the summit, an Afrit hovering over the ground to the east
+        p.X = 12.7f; p.Y = 9.5f; p.FloorZ = 8.5f; p.Angle = 0;
+        var target = new Monster(Monster.Afrit) { X = 17.5f, Y = 9.5f, Level = lv };
+        lv.Things.Add(target);
+        g.Vars.Freeze = true;
+        int hp = target.Health;
+        for (int k = 0; k < 35 * 3 && target.Health == hp; k++) Tick(new Input { Fire = true });
+        check(target.Health < hp, "shooting down from the summit auto-aims at a monster far below");
+        lv.Things.Remove(target);
+
+        // an Afrit on the ground fires up at you as you hover
+        p.X = 6.5f; p.Y = 9.5f; p.FloorZ = 0; p.HasJetpack = true; p.Fuel = Player.FuelMax;
+        g.Vars.InfiniteFuel = true;
+        Tick(new Input { Jump = true, JumpHeld = true });
+        for (int k = 0; k < 35 * 2; k++) Tick(new Input { JumpHeld = true });
+        float alt = p.Z;
+        var shooter = new Monster(Monster.Afrit) { X = 12.5f, Y = 12.5f, Level = lv };
+        lv.Things.Add(shooter);
+        g.Vars.Freeze = false; g.Vars.God = true;
+        int hurt = 0;
+        g.PlaySound = (s, _) => { if (s == Sfx.PlayerPain) hurt++; };
+        var shots = new List<Projectile>();
+        for (int k = 0; k < 35 * 8 && hurt == 0; k++)
+        {
+            Tick(default);
+            shots.AddRange(lv.Things.OfType<Projectile>().Where(pr => !pr.FromPlayer && !shots.Contains(pr)));
+        }
+        check(alt > 2f && shots.Count > 0 && shots.All(s => s.Aimed && s.VZ > 0), $"monsters aim their missiles up at you while you fly ({alt:0.0} up, {shots.Count} shots)");
+        check(hurt > 0 || shots.Any(s => s.Removed), "and those missiles can reach you up there");
+        g.Vars.God = false; g.Vars.InfiniteFuel = false;
     }
 
     static void JetpackChecks(Action<bool, string> check)
@@ -702,7 +838,7 @@ public static class Headless
         // secrets and lore exist in both modes
         var classic = new Game { FixedSeed = 4 };
         classic.NewGame(PClass.Fighter);
-        check(classic.SecretsTotal == 4 && classic.LoreTotal == 15, $"4 secrets and 15 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.SecretsTotal == 5 && classic.LoreTotal == 20, $"5 secrets and 20 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
         check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
@@ -714,32 +850,35 @@ public static class Headless
             var (sx, sy) = lv.ArrivalCell();
             var treasure = lv.Things.OfType<Pickup>().First(p => p.Kind == PickupKind.Urn && Math.Abs(p.X - (z % lv.W + 0.5f)) + Math.Abs(p.Y - (z / lv.W + 0.5f)) < 6.5f);
             int ti = (int)treasure.Y * lv.W + (int)treasure.X;
-            check(!lv.Reachable(sx, sy, new HashSet<int> { z })[ti] && lv.Reachable(sx, sy)[ti], $"{lv.Name}: secret nook only reachable through its hidden wall");
+            // (the Windspire's nook sits off a high ledge, so reach it by jetpack)
+            var mv = Level.Move.Fly;
+            check(!lv.Reachable(sx, sy, new HashSet<int> { z }, mv)[ti] && lv.Reachable(sx, sy, move: mv)[ti], $"{lv.Name}: secret nook only reachable through its hidden wall");
             check("#BWMIO".Contains(lv.SecretLook[z]), $"{lv.Name}: secret wall disguised as '{lv.SecretLook[z]}'");
         }
 
         var g = new Game { FixedSeed = 7, Style = GameStyle.Relaxed };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         g.NewGame(PClass.Cleric);
-        check(g.RelicsTotal == 12, $"12 relics hidden across the hub ({g.RelicsTotal})");
+        int relicCount = Maps.Hub.Length * 3;
+        check(g.RelicsTotal == relicCount, $"{relicCount} relics hidden across the hub ({g.RelicsTotal})");
         foreach (var lv in g.Hub)
         {
             var relics = lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).ToList();
             var (sx, sy) = lv.ArrivalCell();
-            var reach = lv.Reachable(sx, sy);
+            var reach = lv.Reachable(sx, sy, move: Level.Move.Fly);
             check(relics.Count == 3 && relics.All(r => reach[(int)r.Y * lv.W + (int)r.X] && !lv.BlocksPoint(r.X, r.Y)),
                   $"{lv.Name}: 3 reachable relics");
             check(relics.All(r => !string.IsNullOrEmpty(r.Name)), $"{lv.Name}: relics are named");
         }
-        check(g.Hub.SelectMany(l => l.Things.OfType<Pickup>()).Where(p => p.Kind == PickupKind.Relic).Select(p => p.Name).Distinct().Count() == 12, "relic names are unique");
+        check(g.Hub.SelectMany(l => l.Things.OfType<Pickup>()).Where(p => p.Kind == PickupKind.Relic).Select(p => p.Name).Distinct().Count() == relicCount, "relic names are unique");
         int short_ = 0;
         for (int seed = 0; seed < 60; seed++)
         {
             var sg = new Game { FixedSeed = seed, Style = GameStyle.Relaxed };
             sg.NewGame(PClass.Mage);
-            if (sg.RelicsTotal != 12) short_++;
+            if (sg.RelicsTotal != relicCount) short_++;
         }
-        check(short_ == 0, "60 random games all hide exactly 12 relics");
+        check(short_ == 0, $"60 random games all hide exactly {relicCount} relics");
         var g2 = new Game { FixedSeed = 8, Style = GameStyle.Relaxed }; g2.NewGame(PClass.Cleric);
         string Where(Game gg) => string.Join(";", gg.Hub[0].Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).Select(p => $"{p.X},{p.Y}"));
         check(Where(g) != Where(g2), "relic spots change between games");
@@ -821,9 +960,10 @@ public static class Headless
             foreach (var relic in lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).ToList())
             {
                 g.Level = lv; g.P.X = relic.X; g.P.Y = relic.Y; g.P.PortalLock = true;
+                g.P.FloorZ = lv.FloorAt(relic.X, relic.Y); g.P.Z = 0; g.P.VZ = 0;
                 Tick(default);
             }
-        check(g.P.Relics == 12, $"all relics collected ({g.P.Relics})");
+        check(g.P.Relics == relicCount, $"all relics collected ({g.P.Relics})");
         g.Level = g.Hub[0]; g.P.X = exit.x; g.P.Y = exit.y; Tick(default);
         check(g.Mode == GameMode.Victory, "with every relic found, the exit wins the game");
 
@@ -967,7 +1107,7 @@ public static class Headless
         check(g.Mode == GameMode.Playing && g.Level.Name == "Test Grotto", "console 'playmap test grotto'");
         g.GoToTitle();
         g.NewGame(PClass.Fighter);
-        check(g.Hub.Length == 4, "normal games still use the full hub afterwards");
+        check(g.Hub.Length == Maps.Hub.Length, "normal games still use the full hub afterwards");
         Directory.Delete(dir, true);
     }
 
@@ -1705,6 +1845,33 @@ public static class Headless
         Tick(default, 5);
         Shot("46_wings_fantasy");
         g.SetArtStyle(ArtStyle.SciFi);
+
+        // the Windspire: looking up from the foot of the tower, mid-climb, and down from the beacon
+        g.NewGame(PClass.Mage);
+        int spire = Array.FindIndex(g.Hub, l => l.RawName == "Windspire");
+        g.Warp(spire);
+        g.Con.Execute("give jetpack");
+        g.Messages.Clear();
+        g.Vars.Freeze = true;
+        void PlaceCam(float x, float y, float floor, float z, float angle, float pitch)
+        {
+            g.P.X = x; g.P.Y = y; g.P.FloorZ = floor; g.P.Z = z; g.P.VZ = 0; g.P.Flying = z > 0; g.P.Angle = angle; g.P.Pitch = pitch;
+            g.P.StepLag = 0; g.P.TeleportFlash = 0; g.P.PickupFlash = 0;
+        }
+        PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
+        Tick(default, 3); PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
+        Shot("47_spire_foot");
+        PlaceCam(16.5f, 6.5f, 0, 3.4f, MathF.PI + 0.35f, 12);
+        Tick(new Input { JumpHeld = false }, 1); PlaceCam(16.5f, 6.5f, 0, 3.4f, MathF.PI + 0.35f, 12);
+        Shot("48_spire_climb");
+        PlaceCam(9.3f, 10.75f, 8.5f, 0, -1.2f, -25);
+        Tick(default, 1); PlaceCam(9.3f, 10.75f, 8.5f, 0, -1.2f, -25);
+        Shot("49_spire_summit");
+        g.SetArtStyle(ArtStyle.Fantasy);
+        PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
+        Shot("50_windspire_fantasy");
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
 
         // the original fantasy look, kept as an option
         g.SetArtStyle(ArtStyle.Fantasy);

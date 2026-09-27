@@ -15,6 +15,8 @@ public static class Words
         ["The Frozen Keep"] = "The Cryo Labs",
         ["Darkmere Crypt"] = "Hydroponics Bay",
         ["Chaos Arena"] = "Combat Sim",
+        ["Windspire"] = "Comms Spire",
+        ["The Windspire. Only the winged may reach the beacon at its crown."] = "The Comms Spire. Only a jetpack will get you to the summit console.",
         ["The Chaos Arena - step on the altar to begin"] = "The Combat Sim - step on the pad to begin",
         // classes
         ["Fighter"] = "Marine",

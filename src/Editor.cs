@@ -37,7 +37,7 @@ public sealed class MapDoc
     public bool HasFloors => Floors.Any(f => f != '.');
     public MapDef ToDef() => new(Name, Name, ThemeId, Rows(), HasHeights ? HeightRows() : null, DefaultHeight, HasFloors ? FloorRows() : null);
 
-    public static bool IsHeightGlyph(char c) => c is >= '2' and <= '9';
+    public static bool IsHeightGlyph(char c) => Level.IsHeightGlyph(c);
 
     public static MapDoc FromDef(MapDef d)
     {
@@ -50,7 +50,7 @@ public sealed class MapDoc
                 // store only what differs from the default, so the default stays editable
                 doc.Heights[y * doc.W + x] = IsHeightGlyph(h) && Level.HeightFromGlyph(h, 1f) != doc.DefaultHeight ? h : '.';
                 char f = d.Floors != null && y < d.Floors.Length && x < d.Floors[y].Length ? d.Floors[y][x] : '.';
-                doc.Floors[y * doc.W + x] = f is >= '1' and <= '9' ? f : '.';
+                doc.Floors[y * doc.W + x] = Level.IsFloorGlyph(f) ? f : '.';
             }
         return doc;
     }
@@ -107,7 +107,7 @@ public sealed class Editor
         new('P', "Portcullis", "Doors"), new('L', "Lever", "Doors"), new('Z', "Secret wall", "Doors"),
         new('X', "Push block", "Puzzles"), new('^', "Pressure plate", "Puzzles"),
         new('@', "Player start", "Markers"), new('E', "Exit", "Markers"), new('1', "Portal 1", "Markers"),
-        new('2', "Portal 2", "Markers"), new('3', "Portal 3", "Markers"), new('*', "Arena spawn rune", "Markers"),
+        new('2', "Portal 2", "Markers"), new('3', "Portal 3", "Markers"), new('4', "Portal 4", "Markers"), new('*', "Arena spawn rune", "Markers"),
         new('!', "Arena altar", "Markers"),
         new('e', "Ettin", "Monsters"), new('a', "Afrit", "Monsters"), new('c', "Centaur", "Monsters"),
         new('C', "Slaughtaur", "Monsters"), new('d', "Dark Bishop", "Monsters"), new('H', "Heresiarch", "Monsters"),
@@ -121,10 +121,10 @@ public sealed class Editor
 
     public static bool IsKnownGlyph(char c) => Palette.Any(b => b.Glyph == c);
 
-    /// <summary>Height-mode palette: the map default, then 1.0 to 4.5 in half steps.</summary>
-    public static readonly char[] HeightPalette = { '.', '2', '3', '4', '5', '6', '7', '8', '9' };
-    /// <summary>Floors-mode palette: ground level, then 0.25 to 2.25 in quarter steps.</summary>
-    public static readonly char[] FloorPalette = { '.', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
+    /// <summary>Height-mode palette: the map default, then 1.0 to 10.0 in half steps.</summary>
+    public static readonly char[] HeightPalette = ".23456789abcdefghijk".ToCharArray();
+    /// <summary>Floors-mode palette: ground level, 0.25 to 2.25 in quarter steps, then half steps up to 8.5 (towers and ledges).</summary>
+    public static readonly char[] FloorPalette = ".123456789acegikmoqsuwy".ToCharArray();
     public static string FloorLabel(char c) =>
         c == '.' ? "Ground (0)" : Level.FloorFromGlyph(c).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
 
@@ -343,7 +343,9 @@ public sealed class Editor
         int starts = Doc.Cells.Count(c => c == '@');
         if (starts == 0) { issues.Add("! Place a player start (@) first."); return issues; }
         var lv = Doc.ToDef().Build();
-        var reach = lv.Reachable((int)lv.StartX, (int)lv.StartY);
+        // a map with a jetpack in it can be flown around; otherwise only what you can walk to counts
+        var move = lv.Things.Any(t => t is Pickup { Kind: PickupKind.Jetpack }) ? Level.Move.Fly : Level.Move.Walk;
+        var reach = lv.Reachable((int)lv.StartX, (int)lv.StartY, move: move);
         int unreachable = lv.Things.Count(t => t is Monster or Pickup or Chest && !reach[(int)t.Y * lv.W + (int)t.X]);
         var exit = lv.FindMark('E');
         if (exit == null) issues.Add("No exit (E): the map can't be won.");
@@ -539,7 +541,7 @@ public sealed class Editor
                 {
                     // each new cell of the stroke is one step above the previous one
                     if (cell == _stairLastCell) return;
-                    if (_stairLastCell >= 0) hg = _stairLast == '9' ? '9' : _stairLast == '.' ? '1' : (char)(_stairLast + 1);
+                    if (_stairLastCell >= 0) hg = _stairLast == '.' ? '1' : _stairLast == '9' ? 'a' : _stairLast == 'z' ? 'z' : (char)(_stairLast + 1);
                     _stairLastCell = cell; _stairLast = hg;
                 }
                 if (FillTool && !erase)

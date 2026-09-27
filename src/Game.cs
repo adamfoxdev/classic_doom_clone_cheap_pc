@@ -575,18 +575,54 @@ public sealed class Game
             return;
         }
 
+        float launchZ = p.FloorZ + p.Z + 0.32f;
+        float? vz = VerticalAim(launchZ, w.Speed);
         for (int i = 0; i < w.Count; i++)
         {
             float a = p.Angle + (i - (w.Count - 1) / 2f) * w.Spread;
             var pr = new Projectile
             {
                 Kind = w.Proj, FromPlayer = true, DmgMin = w.DmgMin, DmgMax = w.DmgMax, Splash = w.Splash, Owner = null,
-                X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = p.FloorZ + p.Z + 0.32f,
+                X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = launchZ,
                 VX = MathF.Cos(a) * w.Speed, VY = MathF.Sin(a) * w.Speed, Level = Level,
+                VZ = vz ?? 0f, Aimed = vz != null,
             };
             if (w.Proj == ProjKind.Hammer || w.Proj == ProjKind.Flame) { pr.SpriteW = pr.SpriteH = 0.4f; }
             Level.Things.Add(pr);
         }
+    }
+
+    /// <summary>
+    /// Climb rate for your shots when there's height to cover: straight at a monster above or below you
+    /// (Hexen-style vertical auto-aim), or along your view when you're up in the air or looking well up or down.
+    /// Null means the usual level shot, which follows the floor.
+    /// </summary>
+    float? VerticalAim(float launchZ, float speed)
+    {
+        var p = P;
+        Monster best = null;
+        float bestDiff = 0.15f, bestD = 0;
+        foreach (var t in Level.Things)
+        {
+            if (t is not Monster m || !m.Alive || m.Blurring) continue;
+            float d = Dist(m.X, m.Y, p.X, p.Y);
+            if (d > 24f || d < 0.3f) continue;
+            float diff = MathF.Abs(AngleDiff(MathF.Atan2(m.Y - p.Y, m.X - p.X), p.Angle));
+            if (diff >= bestDiff || !Level.Sight(p.X, p.Y, m.X, m.Y)) continue;
+            best = m; bestDiff = diff; bestD = d;
+        }
+        if (best != null)
+        {
+            float mz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
+            if (MathF.Abs(mz - launchZ) > 0.45f) return (mz - launchZ) * speed / bestD;
+            return null;
+        }
+        if (p.Z > 0.6f || MathF.Abs(p.Pitch) > 25f)
+        {
+            float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f);
+            return speed * p.Pitch / proj;
+        }
+        return null;
     }
 
     void UseLine(bool pull)
@@ -1144,6 +1180,11 @@ public sealed class Game
             ProjKind.Seeker => (6, 11, 4.8f),
             _ => (10, 18, 6.0f),
         };
+        // aim up or down at you when you're well above or below (on a ledge, or flying)
+        float launchZ = Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH * 0.45f;
+        float chest = P.FloorZ + P.Z + Player.Height * 0.55f, dist = MathF.Max(0.5f, Dist(m.X, m.Y, P.X, P.Y));
+        bool aimed = kind != ProjKind.Seeker && MathF.Abs(chest - launchZ) > 0.6f;
+        float vz = aimed ? (chest - launchZ) * speed / dist : 0f;
         for (int i = 0; i < m.Def.MissileCount; i++)
         {
             float a = baseA + (i - (m.Def.MissileCount - 1) / 2f) * m.Def.MissileSpread + (RandF() - 0.5f) * 0.06f;
@@ -1151,7 +1192,7 @@ public sealed class Game
             {
                 Kind = kind, FromPlayer = false, DmgMin = (int)(lo * m.DamageMult), DmgMax = (int)(hi * m.DamageMult), Owner = m, Level = Level,
                 X = m.X + MathF.Cos(a) * (m.Radius + 0.1f), Y = m.Y + MathF.Sin(a) * (m.Radius + 0.1f),
-                Z = Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH * 0.45f, VX = MathF.Cos(a) * speed, VY = MathF.Sin(a) * speed,
+                Z = launchZ, VX = MathF.Cos(a) * speed, VY = MathF.Sin(a) * speed, VZ = vz, Aimed = aimed,
                 Homing = kind == ProjKind.Seeker ? 1.9f : 0f, Life = kind == ProjKind.Seeker ? 4.5f : 6f,
             });
         }
@@ -1163,7 +1204,8 @@ public sealed class Game
         pr.Life -= dt;
         if (pr.Life <= 0) { pr.Removed = true; return; }
         // aim player shots gently toward eye-level as they fly
-        if (pr.FromPlayer) pr.Z += (Level.FloorAt(pr.X, pr.Y) + 0.4f - pr.Z) * MathF.Min(1, dt * 2);
+        if (pr.Aimed) pr.Z += pr.VZ * dt;
+        else if (pr.FromPlayer) pr.Z += (Level.FloorAt(pr.X, pr.Y) + 0.4f - pr.Z) * MathF.Min(1, dt * 2);
         // homing missiles steer toward you at a limited turn rate (tighter up close so they don't just
         // orbit you), and burn out after a few seconds; strafing hard shakes them off
         if (pr.Homing > 0 && Mode != GameMode.Dead && pr.Life > 1.5f)
@@ -1309,6 +1351,7 @@ public sealed class Game
         {
             var mark = lv.FindMark('1') ?? lv.FindMark('2') ?? lv.FindMark('E');
             if (mark != null) (x, y) = mark.Value;
+            else { var (cx, cy) = lv.ArrivalCell(); (x, y) = (cx + 0.5f, cy + 0.5f); } // e.g. the Windspire's portal 4
         }
         foreach (var t in Level.Things) if (t is Projectile or Puff) t.Removed = true;
         Level = lv;
