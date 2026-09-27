@@ -205,7 +205,7 @@ public sealed class Renderer
         _fogDist = th.FogDist * g.Vars.Fog;
         _fullBright = g.Vars.FullBright;
         _plX = -_dirY * PlaneLen; _plY = _dirX * PlaneLen;
-        _eyeZ = MathF.Min(p.ViewZ + MathF.Sin(p.Bob) * 0.025f * p.BobAmount, lv.HeightAt(p.X, p.Y) - 0.05f);
+        _eyeZ = MathF.Min(p.FloorZ + p.ViewZ + MathF.Sin(p.Bob) * 0.025f * p.BobAmount, lv.HeightAt(p.X, p.Y) - 0.05f);
         _horizon = ViewH / 2f + p.Pitch;
         uint fog = th.FogColor;
         int baseLight = Light(th);
@@ -228,22 +228,27 @@ public sealed class Renderer
             // where the next cell's ceiling is lower, the band of wall above the opening is drawn; the first
             // solid wall reaches up to the ceiling in front of it. clipTop tracks how far down the column
             // (from the top) has been drawn already, which is what hides farther, taller things.
-            float clipTop = 0f, perp = 64f;
+            // Front to back, clipTop / clipBot track how much of the column is already drawn from the top
+            // and from the bottom. Each open cell draws its ceiling and floor at its own heights; where the
+            // next cell's ceiling is lower a band of wall hangs down, where its floor is higher a step face
+            // (riser) rises; the first solid wall fills whatever is left between them.
+            float clipTop = 0f, clipBot = ViewH;
             int curCell = lv.InBounds(mapX, mapY) ? mapY * lv.W + mapX : -1;
             float curH = curCell >= 0 ? lv.Heights[curCell] : Level.MinHeight;
+            float curF = curCell >= 0 ? lv.Floors[curCell] : 0f;
             if (curCell >= 0) lv.Seen[curCell] = true;
-            for (int guard = 0; guard < 128; guard++)
+            for (int guard = 0; guard < 128 && clipTop < clipBot - 0.5f; guard++)
             {
                 if (sideX < sideY) { sideX += ddx; mapX += stepX; side = 0; }
                 else { sideY += ddy; mapY += stepY; side = 1; }
                 float d = MathF.Max(0.001f, side == 0 ? sideX - ddx : sideY - ddy);
-                CeilingSpan(lv, x, curCell, curH, ref clipTop, RowOf(curH, d), rdx, rdy, rayAng, baseLight);
+                CeilingSpan(lv, x, curCell, curH, ref clipTop, clipBot, RowOf(curH, d), rdx, rdy, rayAng, baseLight);
+                FloorSpan(lv, x, curCell, curF, clipTop, ref clipBot, RowOf(curF, d), rdx, rdy, baseLight);
                 float wx = side == 0 ? _py + d * rdy : _px + d * rdx;
                 wx -= MathF.Floor(wx);
                 if (!lv.InBounds(mapX, mapY))
                 {
-                    perp = d;
-                    WallSpan(x, Art.Stone, d, side, wx, curH, 0f, clipTop, rdx, rdy, baseLight);
+                    WallSpan(x, Art.Stone, d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight);
                     break;
                 }
                 int ci = mapY * lv.W + mapX;
@@ -252,59 +257,35 @@ public sealed class Renderer
                 bool door = Level.IsDoor(c);
                 if (c != '\0' && !door)
                 {
-                    perp = d;
-                    WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, 0f, clipTop, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null);
+                    WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null);
                     break;
                 }
-                float newH = lv.Heights[ci];
+                float newH = lv.Heights[ci], newF = lv.Floors[ci];
                 if (newH < curH)
                 {
                     // the ceiling steps down: a band of wall hangs over the opening
-                    WallSpan(x, UpperTex(lv, ci), d, side, wx, curH, newH, clipTop, rdx, rdy, baseLight);
+                    WallSpan(x, UpperTex(lv, ci), d, side, wx, curH, newH, clipTop, clipBot, rdx, rdy, baseLight);
                     clipTop = MathF.Max(clipTop, RowOf(newH, d));
+                }
+                if (newF > curF)
+                {
+                    // the floor steps up: the face of the step
+                    WallSpan(x, Art.StepRiser, d, side, wx, newF, curF, clipTop, clipBot, rdx, rdy, baseLight);
+                    clipBot = MathF.Min(clipBot, RowOf(newF, d));
                 }
                 if (door)
                 {
                     float open = lv.DoorOpen[ci];
                     if (open <= 0f && c != 'P')
                     {
-                        perp = d;
-                        WallSpan(x, WallTex(lv, c, ci), d, side, wx, newH, 0f, clipTop, rdx, rdy, baseLight);
+                        WallSpan(x, WallTex(lv, c, ci), d, side, wx, newH, newF, clipTop, clipBot, rdx, rdy, baseLight);
                         break;
                     }
                     if (open < 1f) _doors.Add((d, side, wx, ci));
                 }
                 curCell = ci;
                 curH = newH;
-            }
-            if (perp < 0.01f) perp = 0.01f;
-            int yBot = Math.Min(ViewH, (int)MathF.Ceiling(_horizon + _eyeZ * Proj / perp - 0.5f));
-
-            // ---- floor
-            for (int y = Math.Max(yBot, 0); y < ViewH; y++)
-            {
-                float dy = y + 0.5f - _horizon;
-                int idx = y * W + x;
-                if (dy <= 0.01f) { Fb[idx] = fog; _depth[idx] = 999; continue; }
-                float rowDist = _eyeZ * Proj / dy;
-                float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
-                int cx = (int)MathF.Floor(wx), cy = (int)MathF.Floor(wy);
-                Tex ft = th.FloorIn;
-                int fl = baseLight;
-                if (lv.InBounds(cx, cy))
-                {
-                    int ci = cy * lv.W + cx;
-                    char mk = lv.Marks[ci];
-                    if (mk == 'E') { ft = lv.BossDead ? Art.ExitFloor : Art.ExitFloorOff; fl = 300; }
-                    else if (mk == '*') { ft = Art.SpawnFloor; fl = 280; }
-                    else if (mk == '^') ft = Art.PlateFloor;
-                    else if (mk == '!') { ft = lv.Arena?.Started == true ? Art.AltarFloorOff : Art.AltarFloor; fl = 300; }
-                    else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
-                    else if (lv.Outdoor[ci]) ft = th.OutdoorFloor;
-                }
-                int u = (int)((wx - cx) * ft.W) & (ft.W - 1), vv = (int)((wy - cy) * ft.H) & (ft.H - 1);
-                Fb[idx] = Col.Fog(ft.Px[vv * ft.W + u], fl, Vis(th, rowDist), fog);
-                _depth[idx] = rowDist;
+                curF = newF;
             }
 
             // ---- doors and gates, far to near, depth tested
@@ -318,9 +299,9 @@ public sealed class Renderer
                 if (dside == 0 && rdx < 0) dtx = dt.W - 1 - dtx;
                 if (dside == 1 && rdy > 0) dtx = dt.W - 1 - dtx;
                 dtx = Math.Clamp(dtx, 0, dt.W - 1);
-                float s = Proj / d, dh = lv.Heights[ci];
-                float dTop = _horizon - (dh - _eyeZ) * s;
-                float dBot = _horizon - (open * dh - _eyeZ) * s;
+                float s = Proj / d, df = lv.Floors[ci], dh = lv.Heights[ci] - df;
+                float dTop = _horizon - (df + dh - _eyeZ) * s;
+                float dBot = _horizon - (df + open * dh - _eyeZ) * s;
                 int y0 = Math.Max(0, (int)MathF.Ceiling(dTop - 0.5f)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(dBot - 0.5f));
                 int dl = dside == 1 ? baseLight * 200 >> 8 : baseLight;
                 int dv = Vis(th, d);
@@ -329,7 +310,7 @@ public sealed class Renderer
                     int idx = y * W + x;
                     if (d >= _depth[idx]) continue;
                     float z = _eyeZ + (_horizon - (y + 0.5f)) / s;
-                    float zp = z - open * dh;
+                    float zp = z - df - open * dh;
                     float v = 1f - (zp - MathF.Floor(zp));
                     int ty = Math.Clamp((int)(v * dt.H), 0, dt.H - 1);
                     uint texel = dt.Px[ty * dt.W + dtx];
@@ -352,10 +333,10 @@ public sealed class Renderer
     /// A vertical slice of wall between heights `bottom` and `top` at distance d, below clipTop.
     /// The texture repeats every unit of height, anchored to the floor.
     /// </summary>
-    void WallSpan(int x, Tex tex, float d, int side, float wallX, float top, float bottom, float clipTop, float rdx, float rdy, int baseLight, Tex above = null)
+    void WallSpan(int x, Tex tex, float d, int side, float wallX, float top, float bottom, float clipTop, float clipBot, float rdx, float rdy, int baseLight, Tex above = null)
     {
         float s = Proj / d;
-        float yT = MathF.Max(clipTop, RowOf(top, d)), yB = RowOf(bottom, d);
+        float yT = MathF.Max(clipTop, RowOf(top, d)), yB = MathF.Min(clipBot, RowOf(bottom, d));
         int y0 = Math.Max(0, (int)MathF.Ceiling(yT - 0.5f)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(yB - 0.5f));
         if (y0 >= y1) return;
         int tx = (int)(wallX * tex.W);
@@ -367,8 +348,9 @@ public sealed class Renderer
         for (int y = y0; y < y1; y++)
         {
             float z = _eyeZ + (_horizon - (y + 0.5f)) / s;
-            float v = 1f - (z - MathF.Floor(z));
-            var t = above != null && z >= 1f ? above : tex; // e.g. a lever only on the bottom storey
+            float zr = z - bottom; // texture anchored to the wall's base
+            float v = 1f - (zr - MathF.Floor(zr));
+            var t = above != null && z >= bottom + 1f ? above : tex; // e.g. a lever only on the bottom storey
             int ty = Math.Clamp((int)(v * t.H), 0, t.H - 1);
             int idx = y * W + x;
             Fb[idx] = Col.Fog(t.Px[ty * t.W + Math.Min(tx, t.W - 1)], light, vis, _theme.FogColor);
@@ -377,10 +359,12 @@ public sealed class Renderer
     }
 
     /// <summary>Ceiling (or sky, outdoors) of one cell, from clipTop down to row yEnd.</summary>
-    void CeilingSpan(Level lv, int x, int cell, float h, ref float clipTop, float yEnd, float rdx, float rdy, float rayAng, int baseLight)
+    void CeilingSpan(Level lv, int x, int cell, float h, ref float clipTop, float clipBot, float yEnd, float rdx, float rdy, float rayAng, int baseLight)
     {
-        int y0 = Math.Max(0, (int)MathF.Ceiling(clipTop - 0.5f)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(yEnd - 0.5f));
+        int y0 = Math.Max(0, (int)MathF.Ceiling(clipTop - 0.5f)), y1 = Math.Min((int)MathF.Ceiling(clipBot - 0.5f), (int)MathF.Ceiling(yEnd - 0.5f));
+        y1 = Math.Min(y1, ViewH);
         bool outdoor = cell >= 0 && lv.Outdoor[cell];
+        if (!outdoor && h <= _eyeZ + 0.001f) { clipTop = MathF.Max(clipTop, yEnd); return; }
         var ct = _theme.CeilIn;
         for (int y = y0; y < y1; y++)
         {
@@ -394,6 +378,39 @@ public sealed class Renderer
             _depth[idx] = rowDist;
         }
         clipTop = MathF.Max(clipTop, yEnd);
+    }
+
+    /// <summary>Floor of one cell at height f, from row yStart down to clipBot (only visible from above).</summary>
+    void FloorSpan(Level lv, int x, int cell, float f, float clipTop, ref float clipBot, float yStart, float rdx, float rdy, int baseLight)
+    {
+        if (f >= _eyeZ - 0.001f) { clipBot = MathF.Min(clipBot, yStart); return; }
+        int y0 = Math.Max(Math.Max(0, (int)MathF.Ceiling(clipTop - 0.5f)), (int)MathF.Ceiling(yStart - 0.5f));
+        int y1 = Math.Min(ViewH, (int)MathF.Ceiling(clipBot - 0.5f));
+        var th = _theme;
+        Tex ft = th.FloorIn;
+        int fl = baseLight;
+        if (cell >= 0)
+        {
+            char mk = lv.Marks[cell];
+            if (mk == 'E') { ft = lv.BossDead ? Art.ExitFloor : Art.ExitFloorOff; fl = 300; }
+            else if (mk == '*') { ft = Art.SpawnFloor; fl = 280; }
+            else if (mk == '^') ft = Art.PlateFloor;
+            else if (mk == '!') { ft = lv.Arena?.Started == true ? Art.AltarFloorOff : Art.AltarFloor; fl = 300; }
+            else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
+            else if (lv.Outdoor[cell]) ft = th.OutdoorFloor;
+        }
+        for (int y = y0; y < y1; y++)
+        {
+            float dy = y + 0.5f - _horizon;
+            if (dy <= 0.01f) continue;
+            float rowDist = (_eyeZ - f) * Proj / dy;
+            float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
+            int u = (int)((wx - MathF.Floor(wx)) * ft.W) & (ft.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ft.H) & (ft.H - 1);
+            int idx = y * W + x;
+            Fb[idx] = Col.Fog(ft.Px[vv * ft.W + u], fl, Vis(th, rowDist), th.FogColor);
+            _depth[idx] = rowDist;
+        }
+        clipBot = MathF.Min(clipBot, yStart);
     }
 
     uint SkyPixel(Theme th, float rayAng, int y)
@@ -428,7 +445,8 @@ public sealed class Renderer
             float screenX = W / 2f * (1 + tX / depth);
             float scale = Proj / depth;
             float sw = t.SpriteW * scale, sh = t.SpriteH * scale;
-            float left = screenX - sw / 2, top = _horizon - (t.Z + t.SpriteH - _eyeZ) * scale;
+            float baseZ = t is Projectile or Puff ? t.Z : lv.FloorAt(t.X, t.Y) + t.Z;
+            float left = screenX - sw / 2, top = _horizon - (baseZ + t.SpriteH - _eyeZ) * scale;
             int x0 = Math.Max(0, (int)MathF.Ceiling(left)), x1 = Math.Min(W, (int)MathF.Ceiling(left + sw));
             int y0 = Math.Max(0, (int)MathF.Ceiling(top)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(top + sh));
             if (x0 >= x1 || y0 >= y1) continue;
@@ -603,15 +621,15 @@ public sealed class Renderer
                         Shade(px + cs - 1, py + i, Editor.MapViewW, Editor.MapViewH);
                     }
             }
-        // height mode: tint open cells by ceiling height and label them
-        if (ed.HeightMode)
+        // ceiling / floor modes: tint open cells by height and label them
+        bool floors = ed.Mode == Editor.Layer.Floors;
+        if (ed.Mode != Editor.Layer.Tiles)
             for (int y = ed.CamY; y < doc.H && (y - ed.CamY) * cs < Editor.MapViewH; y++)
                 for (int x = ed.CamX; x < doc.W && (x - ed.CamX) * cs < Editor.MapViewW; x++)
                 {
                     if ("#BWMIO".Contains(doc[x, y])) continue;
-                    char hg = doc.Heights[y * doc.W + x];
-                    float h = Level.HeightFromGlyph(hg, doc.DefaultHeight);
-                    uint tint = HeightColor(h);
+                    char hg = floors ? doc.Floors[y * doc.W + x] : doc.Heights[y * doc.W + x];
+                    uint tint = floors ? FloorColor(Level.FloorFromGlyph(hg)) : HeightColor(Level.HeightFromGlyph(hg, doc.DefaultHeight));
                     int px = (x - ed.CamX) * cs, py = (y - ed.CamY) * cs;
                     for (int j = 0; j < cs; j++)
                         for (int i = 0; i < cs; i++)
@@ -619,7 +637,7 @@ public sealed class Renderer
                                 Fb[(py + j) * W + px + i] = Col.Lerp(Fb[(py + j) * W + px + i], tint, 150);
                     if (cs >= 8)
                     {
-                        char label = hg == '.' ? Level.GlyphFromHeight(h) : hg;
+                        char label = hg != '.' ? hg : floors ? '0' : Level.GlyphFromHeight(doc.DefaultHeight);
                         Font.Draw(Fb, W, H, px + (cs - 5) / 2, py + (cs - 7) / 2, label.ToString(), hg == '.' ? Col.Rgb(170, 170, 170) : Col.Rgb(255, 255, 255), 1, false);
                     }
                 }
@@ -635,17 +653,19 @@ public sealed class Renderer
         Rect(Editor.MapViewW, 0, 1, Editor.MapViewH, Col.Rgb(120, 90, 50));
 
         // ---- palette panel
-        Text(Editor.PaletteX, 2, ed.HeightMode ? "HEIGHTS" : "PALETTE", Col.Rgb(230, 190, 80));
-        if (ed.HeightMode)
+        Text(Editor.PaletteX, 2, ed.Mode switch { Editor.Layer.Ceilings => "CEILINGS", Editor.Layer.Floors => "FLOORS", _ => "PALETTE" }, Col.Rgb(230, 190, 80));
+        if (ed.Mode != Editor.Layer.Tiles)
         {
-            for (int i = 0; i < Editor.HeightPalette.Length; i++)
+            var pal = floors ? Editor.FloorPalette : Editor.HeightPalette;
+            int sel = floors ? ed.FloorIndex : ed.HeightIndex;
+            for (int i = 0; i < pal.Length; i++)
             {
                 int px = Editor.PaletteX + (i % Editor.PaletteCols) * Editor.PaletteCell;
                 int py = Editor.PaletteY + (i / Editor.PaletteCols) * Editor.PaletteCell;
-                char hg = Editor.HeightPalette[i];
-                Rect(px, py, 13, 13, HeightColor(Level.HeightFromGlyph(hg, doc.DefaultHeight)));
-                Font.Draw(Fb, W, H, px + 4, py + 3, hg == '.' ? "D" : hg.ToString(), Col.Rgb(255, 255, 255), 1, true);
-                if (i == ed.HeightIndex)
+                char hg = pal[i];
+                Rect(px, py, 13, 13, floors ? FloorColor(Level.FloorFromGlyph(hg)) : HeightColor(Level.HeightFromGlyph(hg, doc.DefaultHeight)));
+                Font.Draw(Fb, W, H, px + 4, py + 3, hg == '.' ? (floors ? "0" : "D") : hg.ToString(), Col.Rgb(255, 255, 255), 1, true);
+                if (i == sel)
                     for (int k = -1; k <= 13; k++)
                     {
                         Put(px + k, py - 1, Col.Rgb(255, 230, 80)); Put(px + k, py + 13, Col.Rgb(255, 230, 80));
@@ -653,10 +673,12 @@ public sealed class Renderer
                     }
             }
             int hy = 50;
-            foreach (var line in Wrap(("Ceiling " + Editor.HeightLabel(ed.CurrentHeight, doc.DefaultHeight)).ToUpperInvariant(), 12)) { Text(Editor.PaletteX, hy, line, Col.Rgb(255, 230, 120)); hy += 9; }
-            foreach (var line in Wrap("G: BACK TO TILES", 12)) { Text(Editor.PaletteX, hy + 6, line, Col.Rgb(150, 140, 120)); hy += 9; }
+            string what = floors ? "Floor " + Editor.FloorLabel(ed.CurrentFloor) : "Ceiling " + Editor.HeightLabel(ed.CurrentHeight, doc.DefaultHeight);
+            foreach (var line in Wrap(what.ToUpperInvariant(), 12)) { Text(Editor.PaletteX, hy, line, Col.Rgb(255, 230, 120)); hy += 9; }
+            if (floors) { Text(Editor.PaletteX, hy + 4, ed.StairBrush ? "K: STAIRS ON" : "K: STAIRS", ed.StairBrush ? Col.Rgb(120, 255, 140) : Col.Rgb(150, 140, 120)); hy += 9; }
+            foreach (var line in Wrap("G: NEXT LAYER", 12)) { Text(Editor.PaletteX, hy + 8, line, Col.Rgb(150, 140, 120)); hy += 9; }
         }
-        for (int i = 0; i < Editor.Palette.Length && !ed.HeightMode; i++)
+        for (int i = 0; i < Editor.Palette.Length && ed.Mode == Editor.Layer.Tiles; i++)
         {
             int px = Editor.PaletteX + (i % Editor.PaletteCols) * Editor.PaletteCell;
             int py = Editor.PaletteY + (i / Editor.PaletteCols) * Editor.PaletteCell;
@@ -672,7 +694,7 @@ public sealed class Renderer
                 }
         }
         int iy = Editor.PaletteY + ((Editor.Palette.Length + Editor.PaletteCols - 1) / Editor.PaletteCols) * Editor.PaletteCell + 2;
-        if (!ed.HeightMode)
+        if (ed.Mode == Editor.Layer.Tiles)
             foreach (var line in Wrap(ed.Current.Label.ToUpperInvariant(), 12)) { Text(Editor.PaletteX, iy, line, Col.Rgb(255, 230, 120)); iy += 9; }
         Text(Editor.PaletteX, 160, ed.FillTool ? "TOOL: FILL" : "TOOL: BRUSH", Col.Rgb(170, 200, 255));
         Text(Editor.PaletteX, 170, ed.PlayClass.ToString().ToUpperInvariant(), Col.Rgb(150, 140, 120));
@@ -693,7 +715,8 @@ public sealed class Renderer
                 "MIDDLE / Q PICK    WHEEL / [ ] BRUSH",
                 "ARROWS / WASD MOVE   SPACE PAINT",
                 "F FILL TOOL        DEL ERASE",
-                "G HEIGHT MODE (CEILING HEIGHTS)",
+                "G LAYER: TILES/CEILINGS/FLOORS",
+                "K STAIR BRUSH (IN FLOORS)",
                 "- = ZOOM   T THEME   R RENAME",
                 "CTRL+Z UNDO        CTRL+Y REDO",
                 "CTRL+S SAVE  CTRL+O OPEN  CTRL+N NEW",
@@ -731,6 +754,13 @@ public sealed class Renderer
             if (ed.RenameText.Length == 0) Text(36, 88, ed.Doc.Name.ToUpperInvariant(), Col.Rgb(110, 100, 90));
             Text(36, 88, ed.RenameText.ToUpperInvariant() + cursor, Col.Rgb(255, 255, 255));
         }
+    }
+
+    /// <summary>Floor-mode tint: ground dark green, rising to pale yellow.</summary>
+    static uint FloorColor(float f)
+    {
+        float t = f / 2.25f;
+        return Col.Rgb((int)(40 + 200 * t), (int)(110 + 120 * t), (int)(60 + 60 * t));
     }
 
     /// <summary>Height-mode tint: low ceilings blue, tall ones warm.</summary>

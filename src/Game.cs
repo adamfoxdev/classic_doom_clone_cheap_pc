@@ -90,12 +90,16 @@ public sealed class Player
     public float DamageFlash, PickupFlash, TeleportFlash;
     public bool SteelKey, FireKey, PortalLock, Dead;
     public float EyeZ = 0.5f;
+    /// <summary>Height of the floor you're standing on; Z (jump height) is measured from it.</summary>
+    public float FloorZ;
+    /// <summary>Camera lag when stepping up, so stairs feel smooth rather than jerky.</summary>
+    public float StepLag;
     public float Z, VZ;                                   // height above the floor while jumping
     public float SlideTime, SlideCd, SlideDX, SlideDY, SlideLow;
     public const float SlideLength = 0.55f, Height = 0.55f;
     public bool OnGround => Z <= 0f;
     /// <summary>Camera height: eye level, raised by jumps and lowered while sliding.</summary>
-    public float ViewZ => Math.Min(0.95f, EyeZ + Z - SlideLow * 0.25f);
+    public float ViewZ => EyeZ + Z - SlideLow * 0.25f + StepLag;
     public WeaponDef CurWeapon => Def.Weapons[Weapon];
 }
 
@@ -238,6 +242,7 @@ public sealed class Game
         ReadingLore = null;
         Level = Hub[0];
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
+        P.FloorZ = Level.FloorUnder(P.X, P.Y, P.Radius);
         Messages.Clear();
         Mode = GameMode.Playing;
         PlayTime = 0;
@@ -401,6 +406,21 @@ public sealed class Game
             if (!Blocked(p.X + dx, p.Y, p.Radius, null)) p.X += dx;
             if (!Blocked(p.X, p.Y + dy, p.Radius, null)) p.Y += dy;
         }
+
+        // stairs and ledges: step up smoothly, fall off edges
+        float floor = Vars.NoClip ? Level.FloorAt(p.X, p.Y) : Level.FloorUnder(p.X, p.Y, p.Radius);
+        if (floor < p.FloorZ) p.Z += p.FloorZ - floor;                 // walked off an edge: now airborne
+        else if (floor > p.FloorZ)
+        {
+            float up = floor - p.FloorZ;
+            if (p.Z >= up) p.Z -= up;                                   // landed on a ledge mid-jump
+            else { p.StepLag -= up - p.Z; p.Z = 0; }                   // stepped up: ease the camera
+        }
+        p.FloorZ = floor;
+        p.StepLag *= MathF.Exp(-dt * 14f);
+        // bump your head on low ceilings
+        float headroom = Level.HeightAt(p.X, p.Y) - p.FloorZ - Player.Height - 0.05f;
+        if (p.Z > headroom) { p.Z = MathF.Max(0, headroom); if (p.VZ > 0) p.VZ = 0; }
         float moving = p.OnGround && p.SlideTime <= 0 ? MathF.Min(1, len) : 0f;
         p.BobAmount += (moving - p.BobAmount) * MathF.Min(1, dt * 8);
         p.Bob += dt * 9 * moving;
@@ -430,7 +450,8 @@ public sealed class Game
 
         // pickups
         foreach (var t in Level.Things)
-            if (t is Pickup pk && !pk.Removed && Dist(t.X, t.Y, p.X, p.Y) < 0.55f)
+            if (t is Pickup pk && !pk.Removed && Dist(t.X, t.Y, p.X, p.Y) < 0.55f
+                && MathF.Abs(Level.FloorAt(t.X, t.Y) - (p.FloorZ + p.Z)) < 0.8f)
                 TryPickup(pk);
 
         // actions
@@ -504,8 +525,9 @@ public sealed class Game
             {
                 int dmg = Rand(w.DmgMin, w.DmgMax);
                 if (!powered) dmg /= 2;
-                if (powered && w.Mana > 0) SpawnPuff(Art.Bolt[1], best.X, best.Y, best.Z + best.SpriteH * 0.5f, 0.4f);
-                else SpawnPuff(Art.Fireball[1], best.X, best.Y, best.Z + best.SpriteH * 0.5f, 0.25f);
+                float bz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
+                if (powered && w.Mana > 0) SpawnPuff(Art.Bolt[1], best.X, best.Y, bz, 0.4f);
+                else SpawnPuff(Art.Fireball[1], best.X, best.Y, bz, 0.25f);
                 DamageMonster(best, dmg);
                 PlaySound(Sfx.Hit, 1);
             }
@@ -518,7 +540,7 @@ public sealed class Game
             var pr = new Projectile
             {
                 Kind = w.Proj, FromPlayer = true, DmgMin = w.DmgMin, DmgMax = w.DmgMax, Splash = w.Splash, Owner = null,
-                X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = 0.32f,
+                X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = p.FloorZ + p.Z + 0.32f,
                 VX = MathF.Cos(a) * w.Speed, VY = MathF.Sin(a) * w.Speed, Level = Level,
             };
             if (w.Proj == ProjKind.Hammer || w.Proj == ProjKind.Flame) { pr.SpriteW = pr.SpriteH = 0.4f; }
@@ -642,7 +664,7 @@ public sealed class Game
             t.Level = Level;
             Level.Things.Add(t);
         }
-        SpawnPuff(Art.Fireball[1], c.X, c.Y, 0.35f, 0.3f);
+        SpawnPuff(Art.Fireball[1], c.X, c.Y, Level.FloorAt(c.X, c.Y) + 0.35f, 0.3f);
 
         bool trap = !Relaxed && Level.Arena == null && _loot.NextDouble() < Chests.TrapChance;
         if (trap)
@@ -680,14 +702,14 @@ public sealed class Game
         if (!pull)
         {
             tx = bx + sx; ty = by + sy;
-            if (!Level.BlockCanEnter(tx, ty) || PlayerTouchesCell(tx, ty)) { Say("The block won't budge that way."); PlaySound(Sfx.Locked, 0.6f); return; }
+            if (!Level.BlockCanEnter(tx, ty, bx, by) || PlayerTouchesCell(tx, ty)) { Say("The block won't budge that way."); PlaySound(Sfx.Locked, 0.6f); return; }
         }
         else
         {
             tx = bx - sx; ty = by - sy;
             // step back one cell (snapping to its centre on the pull axis)
             if (sx != 0) nx = tx - sx + 0.5f; else ny = ty - sy + 0.5f;
-            if (!Level.BlockCanEnter(tx, ty) || Level.BlocksCircle(nx, ny, p.Radius) || Blocked(nx, ny, p.Radius, null))
+            if (!Level.BlockCanEnter(tx, ty, bx, by) || Level.BlocksCircle(nx, ny, p.Radius) || Blocked(nx, ny, p.Radius, null))
             {
                 Say("No room to pull the block.");
                 PlaySound(Sfx.Locked, 0.6f);
@@ -701,7 +723,7 @@ public sealed class Game
         Level.Cells[from] = '\0';
         Level.Cells[to] = 'X';
         PlaySound(Sfx.Push, 1);
-        SpawnPuff(Art.Shard[1], tx + 0.5f - sx * 0.5f, ty + 0.5f - sy * 0.5f, 0.1f, 0.4f);
+        SpawnPuff(Art.Shard[1], tx + 0.5f - sx * 0.5f, ty + 0.5f - sy * 0.5f, Level.Floors[to] + 0.1f, 0.4f);
 
         if (nowOnPlate) { PlaySound(Sfx.Lever, 0.8f); CheckPuzzle($"A pressure plate sinks under the block ({Level.PlatesCovered}/{Level.PlateCount})."); }
         else if (wasOnPlate) { PlaySound(Sfx.Lever, 0.5f); CheckPuzzle("A pressure plate clicks back up."); }
@@ -820,6 +842,7 @@ public sealed class Game
             if (dest == null) continue;
             Level = lv;
             P.X = dest.Value.x; P.Y = dest.Value.y;
+            P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0;
             P.PortalLock = true;
             P.TeleportFlash = 1;
             // drop any in-flight projectiles from the level we left
@@ -867,6 +890,12 @@ public sealed class Game
     bool Blocked(float x, float y, float r, Thing self)
     {
         if (Level.BlocksCircle(x, y, r)) return true;
+        // steps: you can walk up MaxStep; jumping (or flying) lifts you higher
+        {
+            float from = self == null ? P.FloorZ : Level.FloorAt(self.X, self.Y);
+            float lift = self == null ? P.Z : self is Monster fm ? fm.Z : 0f;
+            if (Level.TooHigh(x, y, r, from, Level.MaxStep + lift)) return true;
+        }
         foreach (var t in Level.Things)
         {
             if (t == self || !t.Solid || t.Removed) continue;
@@ -959,7 +988,7 @@ public sealed class Game
                         if (m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius + 0.25f)
                         {
                             Sound(Sfx.Swing, m.X, m.Y);
-                            if (playerAlive && P.Z < 0.3f) DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult));
+                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f) DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult));
                         }
                         else if (m.Def.Missile != null) FireMissile(m);
                     }
@@ -1076,7 +1105,7 @@ public sealed class Game
             {
                 Kind = kind, FromPlayer = false, DmgMin = (int)(lo * m.DamageMult), DmgMax = (int)(hi * m.DamageMult), Owner = m, Level = Level,
                 X = m.X + MathF.Cos(a) * (m.Radius + 0.1f), Y = m.Y + MathF.Sin(a) * (m.Radius + 0.1f),
-                Z = m.Z + m.SpriteH * 0.45f, VX = MathF.Cos(a) * speed, VY = MathF.Sin(a) * speed,
+                Z = Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH * 0.45f, VX = MathF.Cos(a) * speed, VY = MathF.Sin(a) * speed,
                 Homing = kind == ProjKind.Seeker ? 1.9f : 0f, Life = kind == ProjKind.Seeker ? 4.5f : 6f,
             });
         }
@@ -1088,7 +1117,7 @@ public sealed class Game
         pr.Life -= dt;
         if (pr.Life <= 0) { pr.Removed = true; return; }
         // aim player shots gently toward eye-level as they fly
-        if (pr.FromPlayer) pr.Z += (0.4f - pr.Z) * MathF.Min(1, dt * 2);
+        if (pr.FromPlayer) pr.Z += (Level.FloorAt(pr.X, pr.Y) + 0.4f - pr.Z) * MathF.Min(1, dt * 2);
         // homing missiles steer toward you at a limited turn rate (tighter up close so they don't just
         // orbit you), and burn out after a few seconds; strafing hard shakes them off
         if (pr.Homing > 0 && Mode != GameMode.Dead && pr.Life > 1.5f)
@@ -1101,7 +1130,7 @@ public sealed class Game
             float turn = Math.Clamp(AngleDiff(MathF.Atan2(P.Y - pr.Y, P.X - pr.X), cur), -rate * dt, rate * dt);
             cur += turn;
             pr.VX = MathF.Cos(cur) * speed; pr.VY = MathF.Sin(cur) * speed;
-            float tz = 0.22f * (1f - 0.4f * P.SlideLow); // skims low and tracks your stance, not jumps: hop over them
+            float tz = P.FloorZ + 0.22f * (1f - 0.4f * P.SlideLow); // skims low and tracks your stance, not jumps: hop over them
             pr.Z += Math.Clamp(tz - pr.Z, -0.6f * dt, 0.6f * dt);
         }
         float sp = MathF.Sqrt(pr.VX * pr.VX + pr.VY * pr.VY);
@@ -1110,7 +1139,9 @@ public sealed class Game
         for (int s = 0; s < steps; s++)
         {
             pr.X += sx; pr.Y += sy;
-            if (Level.BlocksPoint(pr.X, pr.Y)) { pr.X -= sx; pr.Y -= sy; Explode(pr, null); return; }
+            // walls, the face of a ledge, or a low ceiling
+            if (Level.BlocksPoint(pr.X, pr.Y) || pr.Z < Level.FloorAt(pr.X, pr.Y) - 0.02f || pr.Z > Level.HeightAt(pr.X, pr.Y))
+            { pr.X -= sx; pr.Y -= sy; Explode(pr, null); return; }
             if (pr.FromPlayer)
             {
                 foreach (var t in Level.Things)
@@ -1133,8 +1164,8 @@ public sealed class Game
     /// <summary>Is height z within the player's body? Jumping lifts it, sliding shrinks it.</summary>
     bool HitsPlayerHeight(float z)
     {
-        float top = P.Z + Player.Height * (1f - 0.5f * P.SlideLow);
-        return z >= P.Z - 0.05f && z <= top;
+        float feet = P.FloorZ + P.Z, top = feet + Player.Height * (1f - 0.5f * P.SlideLow);
+        return z >= feet - 0.05f && z <= top;
     }
 
     void Explode(Projectile pr, Monster direct)
@@ -1236,6 +1267,7 @@ public sealed class Game
         foreach (var t in Level.Things) if (t is Projectile or Puff) t.Removed = true;
         Level = lv;
         P.X = x; P.Y = y;
+        P.FloorZ = lv.FloorUnder(x, y, P.Radius); P.Z = 0; P.VZ = 0;
         P.PortalLock = true;
         P.TeleportFlash = 1;
         PlaySound(Sfx.Teleport, 1);
@@ -1248,7 +1280,7 @@ public sealed class Game
         var m = new Monster(def) { X = x, Y = y, Level = Level, DamageMult = damageMult, SpeedMult = speedMult };
         m.Health = (int)(def.Health * healthMult);
         Level.Things.Add(m);
-        SpawnPuff(Art.BossBall[1], x, y, 0.5f, 0.8f);
+        SpawnPuff(Art.BossBall[1], x, y, Level.FloorAt(x, y) + 0.5f, 0.8f);
         Sound(Sfx.Teleport, x, y);
         SetState(m, AiState.Chase);
         m.AttackCd = 1f + RandF();

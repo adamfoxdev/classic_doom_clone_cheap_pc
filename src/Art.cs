@@ -8,7 +8,7 @@ public static class Art
     public const int TS = 64; // wall/floor texture size
 
     // Walls
-    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble, Block;
+    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble, Block, StepRiser;
     // Flats
     public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor;
     public static Tex SkyDusk, SkyIce, SkyNight;
@@ -186,6 +186,21 @@ public static class Art
             c.Glow(32, 32, 18, Col.Rgb(60, 200, 180));
             c.Noise(r, 16);
             Block = c.T;
+        }
+
+        // the face of a stair step: a dark slab under a worn, lighter lip
+        {
+            var r = new Rng(57); var c = new Canvas(TS, TS);
+            c.Clear(Col.Rgb(78, 74, 70));
+            for (int y = 0; y < 64; y += 16)
+            {
+                c.Rect(0, y, 64, 3, Col.Rgb(140, 134, 124));
+                c.Rect(0, y + 3, 64, 1, Col.Rgb(40, 38, 36));
+                c.Rect(0, y + 15, 64, 1, Col.Rgb(46, 44, 40));
+            }
+            for (int x = 0; x < 64; x += 21) c.Rect(x + (x / 21 % 2) * 7, 0, 1, 64, Col.Rgb(52, 50, 46));
+            c.Noise(r, 18);
+            StepRiser = c.T;
         }
 
         LeverOff = BuildLever(false);
