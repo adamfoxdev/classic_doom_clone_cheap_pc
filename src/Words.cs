@@ -19,6 +19,8 @@ public static class Words
         ["The Windspire. Only the winged may reach the beacon at its crown."] = "The Comms Spire. Only a jetpack will get you to the summit console.",
         ["The Chaos Arena - step on the altar to begin"] = "The Combat Sim - step on the pad to begin",
         ["Deepdelve Quarry"] = "Asteroid Mine",
+        ["Bedrock Depths"] = "Asteroid Core",
+        ["The Bedrock Depths. Solid rock all around - dig ahead, below or above."] = "The Asteroid Core. Solid rock all around - dig ahead, below or above.",
         ["Deepdelve Quarry. The miners sealed every tunnel with rubble - smash your way through."] = "The Asteroid Mine. Cave-ins have sealed every tunnel - blast your way through.",
         // classes
         ["Fighter"] = "Marine",

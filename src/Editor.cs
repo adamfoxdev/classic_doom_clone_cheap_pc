@@ -107,7 +107,7 @@ public sealed class Editor
         new('P', "Portcullis", "Doors"), new('L', "Lever", "Doors"), new('Z', "Secret wall", "Doors"),
         new('X', "Push block", "Puzzles"), new('^', "Pressure plate", "Puzzles"), new('K', "Rubble (breakable)", "Puzzles"),
         new('@', "Player start", "Markers"), new('E', "Exit", "Markers"), new('1', "Portal 1", "Markers"),
-        new('2', "Portal 2", "Markers"), new('3', "Portal 3", "Markers"), new('4', "Portal 4", "Markers"), new('5', "Portal 5", "Markers"),
+        new('2', "Portal 2", "Markers"), new('3', "Portal 3", "Markers"), new('4', "Portal 4", "Markers"), new('5', "Portal 5", "Markers"), new('6', "Portal 6", "Markers"),
         new('*', "Arena spawn rune", "Markers"),
         new('!', "Arena altar", "Markers"), new('+', "Checkpoint pad", "Markers"), new('=', "Lift pad (to checkpoint)", "Markers"),
         new('e', "Ettin", "Monsters"), new('a', "Afrit", "Monsters"), new('c', "Centaur", "Monsters"),

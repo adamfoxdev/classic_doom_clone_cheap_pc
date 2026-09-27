@@ -210,6 +210,9 @@ public sealed class Renderer
         _horizon = ViewH / 2f + p.Pitch;
         uint fog = th.FogColor;
         int baseLight = Light(th);
+        _hiCell = g.DigTarget is (var hx, var hy, _) ? hy * lv.W + hx : -1;
+        _hiFace = g.DigTarget?.face ?? Level.Face.Wall;
+        _hiGlow = 320 + (int)(35 * MathF.Sin(g.PlayTime * 6f));
 
         for (int x = 0; x < W; x++)
         {
@@ -258,20 +261,20 @@ public sealed class Renderer
                 bool door = Level.IsDoor(c);
                 if (c != '\0' && !door)
                 {
-                    WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null);
+                    WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null, Hi(ci, Level.Face.Wall));
                     break;
                 }
                 float newH = lv.Heights[ci], newF = lv.Floors[ci];
                 if (newH < curH)
                 {
                     // the ceiling steps down: a band of wall hangs over the opening
-                    WallSpan(x, UpperTex(lv, ci), d, side, wx, curH, newH, clipTop, clipBot, rdx, rdy, baseLight);
+                    WallSpan(x, lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Ceiling)] : UpperTex(lv, ci), d, side, wx, curH, newH, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, Level.Face.Ceiling));
                     clipTop = MathF.Max(clipTop, RowOf(newH, d));
                 }
                 if (newF > curF)
                 {
                     // the floor steps up: the face of the step
-                    WallSpan(x, Art.StepRiser, d, side, wx, newF, curF, clipTop, clipBot, rdx, rdy, baseLight);
+                    WallSpan(x, lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Floor)] : Art.StepRiser, d, side, wx, newF, curF, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, Level.Face.Floor));
                     clipBot = MathF.Min(clipBot, RowOf(newF, d));
                 }
                 if (door)
@@ -330,11 +333,18 @@ public sealed class Renderer
 
     Tex UpperTex(Level lv, int cell) => lv.Theme.Walls.TryGetValue(lv.UpperLook[cell], out var t) ? t : Art.Stone;
 
+    // the block your next swing would break: it glows, pulsing, with a bright outline round its face
+    int _hiCell = -1, _hiGlow = 256;
+    Level.Face _hiFace;
+    static readonly uint HiEdge = Col.Rgb(255, 236, 140);
+    bool Hi(int cell, Level.Face face) => cell == _hiCell && face == _hiFace;
+    uint Highlight(uint c, bool edge) => edge ? Col.Lerp(c, HiEdge, 210) : Col.Shade(c, _hiGlow);
+
     /// <summary>
     /// A vertical slice of wall between heights `bottom` and `top` at distance d, below clipTop.
     /// The texture repeats every unit of height, anchored to the floor.
     /// </summary>
-    void WallSpan(int x, Tex tex, float d, int side, float wallX, float top, float bottom, float clipTop, float clipBot, float rdx, float rdy, int baseLight, Tex above = null)
+    void WallSpan(int x, Tex tex, float d, int side, float wallX, float top, float bottom, float clipTop, float clipBot, float rdx, float rdy, int baseLight, Tex above = null, bool hi = false)
     {
         float s = Proj / d;
         float yT = MathF.Max(clipTop, RowOf(top, d)), yB = MathF.Min(clipBot, RowOf(bottom, d));
@@ -354,7 +364,9 @@ public sealed class Renderer
             var t = above != null && z >= bottom + 1f ? above : tex; // e.g. a lever only on the bottom storey
             int ty = Math.Clamp((int)(v * t.H), 0, t.H - 1);
             int idx = y * W + x;
-            Fb[idx] = Col.Fog(t.Px[ty * t.W + Math.Min(tx, t.W - 1)], light, vis, _theme.FogColor);
+            uint texel = t.Px[ty * t.W + Math.Min(tx, t.W - 1)];
+            if (hi) texel = Highlight(texel, tx < 2 || tx >= tex.W - 2 || z > top - 0.035f || z < bottom + 0.035f);
+            Fb[idx] = Col.Fog(texel, light, vis, _theme.FogColor);
             _depth[idx] = d;
         }
     }
@@ -366,7 +378,8 @@ public sealed class Renderer
         y1 = Math.Min(y1, ViewH);
         bool outdoor = cell >= 0 && lv.Outdoor[cell];
         if (!outdoor && h <= _eyeZ + 0.001f) { clipTop = MathF.Max(clipTop, yEnd); return; }
-        var ct = _theme.CeilIn;
+        var ct = lv.Dig && cell >= 0 ? Art.RubbleCracked[lv.CrackStage(cell, Level.Face.Ceiling)] : _theme.CeilIn;
+        bool hi = Hi(cell, Level.Face.Ceiling);
         for (int y = y0; y < y1; y++)
         {
             int idx = y * W + x;
@@ -375,7 +388,9 @@ public sealed class Renderer
             float rowDist = (h - _eyeZ) * Proj / dy;
             float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
             int u = (int)((wx - MathF.Floor(wx)) * ct.W) & (ct.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ct.H) & (ct.H - 1);
-            Fb[idx] = Col.Fog(ct.Px[vv * ct.W + u], baseLight * 220 >> 8, Vis(_theme, rowDist), _theme.FogColor);
+            uint texel = ct.Px[vv * ct.W + u];
+            if (hi) texel = Highlight(texel, u < 2 || u >= ct.W - 2 || vv < 2 || vv >= ct.H - 2);
+            Fb[idx] = Col.Fog(texel, baseLight * 220 >> 8, Vis(_theme, rowDist), _theme.FogColor);
             _depth[idx] = rowDist;
         }
         clipTop = MathF.Max(clipTop, yEnd);
@@ -401,7 +416,9 @@ public sealed class Renderer
             else if (mk == '!') { ft = lv.Arena?.Started == true ? Art.AltarFloorOff : Art.AltarFloor; fl = 300; }
             else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
             else if (lv.Outdoor[cell]) ft = th.OutdoorFloor;
+            else if (lv.Dig) ft = Art.RubbleCracked[lv.CrackStage(cell, Level.Face.Floor)];
         }
+        bool hi = Hi(cell, Level.Face.Floor);
         for (int y = y0; y < y1; y++)
         {
             float dy = y + 0.5f - _horizon;
@@ -410,7 +427,9 @@ public sealed class Renderer
             float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
             int u = (int)((wx - MathF.Floor(wx)) * ft.W) & (ft.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ft.H) & (ft.H - 1);
             int idx = y * W + x;
-            Fb[idx] = Col.Fog(ft.Px[vv * ft.W + u], fl, Vis(th, rowDist), th.FogColor);
+            uint texel = ft.Px[vv * ft.W + u];
+            if (hi) texel = Highlight(texel, u < 2 || u >= ft.W - 2 || vv < 2 || vv >= ft.H - 2);
+            Fb[idx] = Col.Fog(texel, fl, Vis(th, rowDist), th.FogColor);
             _depth[idx] = rowDist;
         }
         clipBot = MathF.Min(clipBot, yStart);

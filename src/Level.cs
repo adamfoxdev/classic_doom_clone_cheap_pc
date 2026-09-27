@@ -74,7 +74,30 @@ public sealed class Level
     /// <summary>Hit points left in each rubble block.</summary>
     public readonly int[] BlockHp;
     /// <summary>How cracked a rubble block looks: 0 (whole) .. RubbleStages-1 (about to give).</summary>
-    public int CrackStage(int i) => Math.Clamp((RubbleHp - BlockHp[i]) * RubbleStages / RubbleHp, 0, RubbleStages - 1);
+    public int CrackStage(int i) => Stage(BlockHp[i]);
+    static int Stage(int hp) => Math.Clamp((RubbleHp - hp) * RubbleStages / RubbleHp, 0, RubbleStages - 1);
+
+    /// <summary>Which side of a cell a block is on: the rubble filling it, the rock under its floor, or over its ceiling.</summary>
+    public enum Face { Wall, Floor, Ceiling }
+    /// <summary>Dig maps are solid rock you can also dig down into and up through, a DigStep at a time.</summary>
+    public bool Dig;
+    public const float DigStep = 0.5f;
+    /// <summary>Hit points left in the block under each cell's floor and over its ceiling (dig maps).</summary>
+    public readonly int[] FloorHp, CeilHp;
+    public int CrackStage(int i, Face f) => f switch { Face.Floor => Stage(FloorHp[i]), Face.Ceiling => Stage(CeilHp[i]), _ => CrackStage(i) };
+
+    /// <summary>Can this block be dug? Rubble always; floors down to the ground and ceilings up to the top only on dig maps.</summary>
+    public bool CanDig(int x, int y, Face f)
+    {
+        if (!InBounds(x, y)) return false;
+        int i = y * W + x;
+        return f switch
+        {
+            Face.Wall => Cells[i] == Rubble,
+            Face.Floor => Dig && Cells[i] == '\0' && Marks[i] == '\0' && Floors[i] >= DigStep - 0.001f,
+            _ => Dig && Cells[i] == '\0' && Heights[i] <= MaxHeight - DigStep + 0.001f,
+        };
+    }
 
     /// <summary>Ceiling height of each cell (1 = the original one-storey rooms). Doors are always 1 tall.</summary>
     public readonly float[] Heights;
@@ -164,6 +187,10 @@ public sealed class Level
         DoorMove = new sbyte[W * H];
         DoorWait = new float[W * H];
         BlockHp = new int[W * H];
+        FloorHp = new int[W * H];
+        CeilHp = new int[W * H];
+        Array.Fill(FloorHp, RubbleHp);
+        Array.Fill(CeilHp, RubbleHp);
 
         for (int y = 0; y < H; y++)
             for (int x = 0; x < W; x++)
@@ -281,15 +308,37 @@ public sealed class Level
     /// <summary>Cells a route can go through, given time: open floor, doors and gates, and rubble you can smash.</summary>
     static bool Passable(char c) => c == '\0' || IsDoor(c) || c == Rubble;
 
-    /// <summary>Chips at a rubble block; true when it breaks and the cell opens up.</summary>
-    public bool DamageBlock(int x, int y, int dmg)
+    /// <summary>
+    /// Chips at a block; true when it breaks. Rubble opens its cell (on a dig map, as a tunnel one storey tall at
+    /// `tunnelFloor`, the digger's level); a floor drops, or a ceiling rises, by a DigStep.
+    /// </summary>
+    public bool DamageBlock(int x, int y, int dmg, Face face = Face.Wall, float? tunnelFloor = null)
     {
-        if (Cell(x, y) != Rubble || dmg <= 0) return false;
+        if (!CanDig(x, y, face) || dmg <= 0) return false;
         int i = y * W + x;
+        if (face == Face.Floor)
+        {
+            if ((FloorHp[i] -= dmg) > 0) return false;
+            FloorHp[i] = RubbleHp;
+            Floors[i] = MathF.Max(0f, Floors[i] - DigStep);
+            return true;
+        }
+        if (face == Face.Ceiling)
+        {
+            if ((CeilHp[i] -= dmg) > 0) return false;
+            CeilHp[i] = RubbleHp;
+            Heights[i] = MathF.Min(MaxHeight, Heights[i] + DigStep);
+            return true;
+        }
         BlockHp[i] -= dmg;
         if (BlockHp[i] > 0) return false;
         BlockHp[i] = 0;
         Cells[i] = '\0';
+        if (Dig && tunnelFloor is float tf)
+        {
+            Floors[i] = Math.Clamp(MathF.Round(tf / DigStep) * DigStep, 0f, MaxHeight - MinHeight);
+            Heights[i] = Floors[i] + MinHeight;
+        }
         // the hole is open to the sky if most of its open neighbours are
         int open = 0, sky = 0;
         foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
@@ -492,9 +541,9 @@ public sealed class Level
 
 /// <summary>The hub's maps. Legend: see README.</summary>
 /// <summary>A map's source: its name, arrival message, theme and ASCII rows. The level editor reads and writes these.</summary>
-public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null)
+public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null, bool Dig = false)
 {
-    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId };
+    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId, Dig = Dig };
 }
 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
@@ -741,15 +790,27 @@ public static class Maps
             "#KKKKKKKKKK########KKKKKKKKKK#",
             "#KKKKKKKKKKKKKKKKKKKKKKKKKKKK#",
             "####KKKK##########KKKKKK######",
-            "#.......#.........#KKKKK#....#",
+            "#.......#.......6.#KKKKK#....#",
             "#..e.q..D....&....KKKKKKZ.%..#",
             "#.......#..r...u..#KKKKK#....#",
             "##############################",
         }),
             (9, 1, 19, 5, '5'), (12, 8, 17, 10, '4'), (9, 14, 17, 16, '3')),
+        // Bedrock Depths: through portal 6 in the quarry's strongroom. Solid rock in every direction but the cell you
+        // arrive in: tunnel ahead, dig down toward the bedrock or up toward the roof, and make your own way.
+        SolidRock("Bedrock Depths", "The Bedrock Depths. Solid rock all around - dig ahead, below or above.", 25, 25, '6'),
     };
 
     public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
+
+    /// <summary>A dig map: a walled square of rubble, all of it 4 units above the bedrock and 6 below the roof,
+    /// with a single open cell in the middle holding the arrival portal.</summary>
+    static MapDef SolidRock(string name, string entry, int w, int h, char portal)
+    {
+        var rows = Enumerable.Range(0, h).Select(y => new string(Enumerable.Range(0, w).Select(x =>
+            x == 0 || y == 0 || x == w - 1 || y == h - 1 ? '#' : x == w / 2 && y == h / 2 ? portal : Level.Rubble).ToArray())).ToArray();
+        return Elevate(Raise(new(name, entry, "hall", rows), (1, 1, w - 2, h - 2, 'a')), (1, 1, w - 2, h - 2, 'g')) with { Dig = true };
+    }
 
     /// <summary>Adds a floor grid to a map: rectangles (inclusive) of floor-height glyphs over ground level.</summary>
     static MapDef Elevate(MapDef d, params (int x0, int y0, int x1, int y1, char f)[] regions)

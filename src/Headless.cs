@@ -105,7 +105,7 @@ public static class Headless
     {
         var hub = Maps.BuildHub();
         int qi = Array.FindIndex(hub, l => l.RawName == "Deepdelve Quarry");
-        check(qi == hub.Length - 1 && hub.Count(l => l.FindMark('5') != null) == 2 && hub[0].FindMark('5') != null,
+        check(qi == 5 && hub.Count(l => l.FindMark('5') != null) == 2 && hub[0].FindMark('5') != null,
               "portal 5 in Winnowing Hall's courtyard leads to Deepdelve Quarry");
         var lv = hub[qi];
         var (ax, ay) = lv.ArrivalCell();
@@ -169,6 +169,93 @@ public static class Headless
                   $"{style} rubble has {Level.RubbleStages} crack stages");
         }
         g.SetArtStyle(ArtStyle.SciFi);
+        DigChecks(check);
+    }
+
+    static void DigChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int di = Array.FindIndex(hub, l => l.RawName == "Bedrock Depths");
+        var lv = hub[di];
+        check(di == hub.Length - 1 && lv.Dig && !hub.Take(di).Any(l => l.Dig), "the Bedrock Depths is the hub's only dig map");
+        check(lv.FindMark('6') != null && hub[5].FindMark('6') != null && hub.Count(l => l.FindMark('6') != null) == 2,
+              "portal 6 in the quarry's strongroom leads to the Bedrock Depths");
+        int open = Enumerable.Range(0, lv.Cells.Length).Count(i => lv.Cells[i] == '\0');
+        int interior = (lv.W - 2) * (lv.H - 2);
+        check(open == 1 && lv.Cells.Count(c => c == Level.Rubble) == interior - 1, $"solid rock but the arrival cell ({interior - 1} blocks)");
+
+        var g = new Game { FixedSeed = 2 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Warp(di);
+        var d = g.Level;
+        var p = g.P;
+        var (ax, ay) = d.ArrivalCell();
+        int here = ay * d.W + ax, e = here + 1;
+        void Punch(Func<bool> done)
+        {
+            for (int k = 0; k < 35 * 8 && !done(); k++) Tick(new Input { Fire = true });
+            Tick(default, 25);
+        }
+        p.X = ax + 0.5f; p.Y = ay + 0.5f; p.Angle = 0; p.Pitch = 0;
+        float start = d.Floors[here];
+        Tick(default);
+        check(g.DigTarget == (ax + 1, ay, Level.Face.Wall), "the block ahead is highlighted");
+        p.Pitch = 70; Tick(default);
+        check(g.DigTarget == (ax, ay, Level.Face.Ceiling), "looking up highlights the rock overhead");
+        p.Pitch = 0;
+        Punch(() => d.Cells[e] == '\0');
+        check(d.Cells[e] == '\0' && d.Floors[e] == start && d.Heights[e] == start + 1, "punch a tunnel ahead, at your own level");
+        check(!d.CanDig(ax, ay, Level.Face.Floor), "the portal's floor can't be dug away");
+
+        // step into the tunnel and dig down, then up
+        p.X = ax + 1.5f;
+        Tick(default, 2);
+        p.Pitch = -70;
+        Tick(default);
+        check(g.DigTarget == (ax + 1, ay, Level.Face.Floor), "looking down highlights the rock underfoot");
+        Punch(() => d.Floors[e] < start);
+        check(d.Floors[e] == start - Level.DigStep, "look down to dig out the rock under your feet");
+        check(MathF.Abs(p.FloorZ - d.Floors[e]) < 0.01f && p.Z < 0.01f, "and you drop into the hole");
+        float roof = d.Heights[e];
+        p.Pitch = 70;
+        Punch(() => d.Heights[e] > roof);
+        check(d.Heights[e] == roof + Level.DigStep, "look up to dig into the rock overhead");
+
+        p.Pitch = 0; p.Angle = 0;
+        Punch(() => d.Cells[e + 1] == '\0');
+        check(d.Floors[e + 1] == start - Level.DigStep, "tunnels dug from lower down open lower down");
+
+        // Use digs too (the way to dig in relaxed mode)
+        p.Pitch = 70;
+        float before = d.Heights[e];
+        for (int k = 0; k < 35 * 4 && d.Heights[e] == before; k++) Tick(new Input { Use = true });
+        check(d.Heights[e] == before + Level.DigStep, "Use digs upward");
+        check(d.CrackStage(e, Level.Face.Ceiling) == 0, "each new layer starts whole");
+        Tick(default, 25);
+
+        // half a step down, so you can walk back up onto the portal
+        p.Pitch = 0; p.Angle = MathF.PI;
+        Tick(new Input { Move = 1 }, 40);
+        check(g.Level == g.Hub[5], "walk up out of the hole and back onto the portal to the quarry");
+
+        // floors stop at the bedrock and ceilings at the roof
+        d.Floors[e] = 0;
+        check(!d.CanDig(ax + 1, ay, Level.Face.Floor) && !d.DamageBlock(ax + 1, ay, 999, Level.Face.Floor) && d.Floors[e] == 0, "nothing to dig below the bedrock");
+        d.Heights[e] = Level.MaxHeight;
+        check(!d.CanDig(ax + 1, ay, Level.Face.Ceiling), "nor above the roof");
+
+        // floors and ceilings of ordinary maps stay put
+        var hall = hub[0];
+        check(!hall.CanDig(3, 2, Level.Face.Floor) && !hall.CanDig(3, 2, Level.Face.Ceiling), "you can't dig through an ordinary map's floor");
+
+        // relaxed mode buries a couple of relics in the rock
+        var rg = new Game { FixedSeed = 4, Style = GameStyle.Relaxed };
+        rg.NewGame(PClass.Mage);
+        var rd = rg.Hub[di];
+        var relics = rd.Things.OfType<Pickup>().Where(t => t.Kind == PickupKind.Relic).ToList();
+        check(relics.Count == 2 && relics.All(r => new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.All(o => rd.Cell((int)r.X + o.Item1, (int)r.Y + o.Item2) == Level.Rubble)),
+              "relaxed mode buries relics deep in the rock");
     }
 
     static void SoundChecks(Action<bool, string> check)
@@ -1135,7 +1222,7 @@ public static class Headless
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
 
-        foreach (var lv in classic.Hub)
+        foreach (var lv in classic.Hub.Where(l => l.SecretCount > 0))
         {
             // a secret really is secret: with the Z wall shut, its treasure can't be reached
             int z = Array.IndexOf(lv.Cells, 'Z');
@@ -1151,15 +1238,18 @@ public static class Headless
         var g = new Game { FixedSeed = 7, Style = GameStyle.Relaxed };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         g.NewGame(PClass.Cleric);
-        int relicCount = Maps.Hub.Length * 3;
+        // every map hides 2 relics, plus 1 in its secret nook if it has one
+        int RelicsIn(MapDef d) => d.Rows.Any(r => r.Contains('%')) ? 3 : 2;
+        int relicCount = Maps.Hub.Sum(RelicsIn);
         check(g.RelicsTotal == relicCount, $"{relicCount} relics hidden across the hub ({g.RelicsTotal})");
-        foreach (var lv in g.Hub)
+        for (int li = 0; li < g.Hub.Length; li++)
         {
+            var lv = g.Hub[li];
             var relics = lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).ToList();
             var (sx, sy) = lv.ArrivalCell();
             var reach = lv.Reachable(sx, sy, move: Level.Move.Fly);
-            check(relics.Count == 3 && relics.All(r => reach[(int)r.Y * lv.W + (int)r.X] && !lv.BlocksPoint(r.X, r.Y)),
-                  $"{lv.Name}: 3 reachable relics");
+            check(relics.Count == RelicsIn(Maps.Hub[li]) && relics.All(r => reach[(int)r.Y * lv.W + (int)r.X] && !lv.BlocksPoint(r.X, r.Y)),
+                  $"{lv.Name}: {RelicsIn(Maps.Hub[li])} reachable relics");
             check(relics.All(r => !string.IsNullOrEmpty(r.Name)), $"{lv.Name}: relics are named");
         }
         check(g.Hub.SelectMany(l => l.Things.OfType<Pickup>()).Where(p => p.Kind == PickupKind.Relic).Select(p => p.Name).Distinct().Count() == relicCount, "relic names are unique");
@@ -2277,6 +2367,36 @@ public static class Headless
         g.SetRenderedArt(false);
         g.SetArtStyle(ArtStyle.Fantasy);
         Shot("60_quarry_fantasy");
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+
+        // Bedrock Depths: boxed in by rock on arrival, then a dug-out tunnel with a pit, a shaft and a cracked roof
+        int depths = Array.FindIndex(g.Hub, l => l.RawName == "Bedrock Depths");
+        g.Warp(depths);
+        var dl = g.Level;
+        var (dax, day) = dl.ArrivalCell();
+        g.Messages.Clear();
+        g.Vars.Freeze = true;
+        PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0, 0);
+        Tick(default, 1); PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0, 0);
+        g.HitBlock(dax + 1, day, 30);
+        Shot("62_depths_arrival");
+        for (int x = dax + 1; x <= dax + 5; x++) g.HitBlock(x, day, 999);
+        g.HitBlock(dax + 2, day - 1, 999);
+        for (int k = 0; k < 3; k++) g.HitBlock(dax + 3, day, 999, Level.Face.Floor);
+        g.HitBlock(dax + 4, day, 999, Level.Face.Floor);
+        for (int k = 0; k < 4; k++) g.HitBlock(dax + 2, day, 999, Level.Face.Ceiling);
+        g.HitBlock(dax + 5, day, 40, Level.Face.Floor);
+        g.HitBlock(dax + 1, day, 45, Level.Face.Ceiling);
+        g.Vars.Freeze = false;
+        Tick(default, 35);
+        g.Vars.Freeze = true;
+        PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0.05f, -20);
+        Tick(default, 1); PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0.05f, -20);
+        g.Messages.Clear();
+        Shot("63_depths_dug");
+        g.SetArtStyle(ArtStyle.Fantasy);
+        Shot("64_depths_fantasy");
         g.SetArtStyle(ArtStyle.SciFi);
         g.Vars.Freeze = false;
 

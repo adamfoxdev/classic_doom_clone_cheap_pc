@@ -31,6 +31,18 @@ public static class Chests
         for (int attempt = 0; attempt < 600 && placed < want; attempt++)
         {
             int i = rng.Next(lv.Cells.Length);
+            if (lv.Dig)
+            {
+                // on a dig map chests are buried treasure: a pocket carved deep in the rock
+                int bx = i % lv.W, by = i / lv.W;
+                if (lv.Cells[i] != Level.Rubble || Math.Abs(bx - sx) + Math.Abs(by - sy) < 3) continue;
+                if (new[] { (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1) }.Any(o => lv.Cell(bx + o.Item1, by + o.Item2) != Level.Rubble)) continue;
+                lv.Cells[i] = '\0';
+                lv.BlockHp[i] = 0;
+                lv.Things.Add(new Chest { X = bx + 0.5f, Y = by + 0.5f, Level = lv });
+                placed++;
+                continue;
+            }
             if (!reach[i] || blocked.Contains(i) || !Suitable(lv, i, sx, sy, strict: attempt < 400)) continue;
 
             // make sure the chest doesn't cut the map in two

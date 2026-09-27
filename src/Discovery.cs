@@ -23,7 +23,7 @@ public static class Discovery
     {
         "Xeno Idol", "Quantum Core", "Ancient Probe", "Star Chart Crystal", "Void Compass", "Captain's Log",
         "Alien Skull", "Gravity Pearl", "Plasma Lily", "Signal Beacon", "Cryo Seed", "Founders' Badge",
-        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal", "Ore Heart", "Miner's Lamp",
+        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal", "Ore Heart", "Miner's Lamp", "Core Sample", "Drill Bit Zero",
     };
 
     public static string LoreText(string map, int index)
@@ -82,7 +82,7 @@ public static class Discovery
     {
         "Chalice of Ages", "Crown of Winnowing", "Orb of Dusk", "Codex of Silence", "Serpent Idol", "Bell of the Keep",
         "Marsh Lantern", "Bishop's Mitre", "Star Map", "Ember Heart", "Frost Circlet", "Champion's Laurel",
-        "Mirror of Tides", "Obsidian Quill", "Hourglass of Ash", "Seal of the Hub", "Quarryman's Pick", "Geode of Echoes",
+        "Mirror of Tides", "Obsidian Quill", "Hourglass of Ash", "Seal of the Hub", "Quarryman's Pick", "Geode of Echoes", "Bedrock Crown", "Delver's Candle",
     };
 
     /// <summary>Lore for each map, in the order its stones ('&') appear reading the map row by row.</summary>
@@ -141,8 +141,16 @@ public static class Discovery
         var candidates = new List<(int cell, float score)>();
         for (int i = 0; i < lv.Cells.Length; i++)
         {
-            if (dist[i] < 4 || lv.Cells[i] != '\0' || lv.Marks[i] != '\0') continue;
+            // on a dig map relics are buried: a pocket carved deep inside the rock
+            bool buried = lv.Dig && lv.Cells[i] == Level.Rubble;
+            if (dist[i] < 4 || (lv.Cells[i] != '\0' && !buried) || lv.Marks[i] != '\0') continue;
             int x = i % lv.W, y = i / lv.W, walls = 0;
+            if (buried)
+            {
+                if (new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.Any(o => lv.Cell(x + o.Item1, y + o.Item2) != Level.Rubble)) continue;
+                candidates.Add((i, dist[i] + (float)rng.NextDouble() * 8));
+                continue;
+            }
             bool nearDoor = false;
             foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
             {
@@ -169,6 +177,7 @@ public static class Discovery
             int x = cell % lv.W, y = cell / lv.W;
             if (chosen.Any(c => Math.Abs(c % lv.W - x) + Math.Abs(c / lv.W - y) < 6)) continue; // spread them out
             chosen.Add(cell);
+            if (lv.Cells[cell] == Level.Rubble) { lv.Cells[cell] = '\0'; lv.BlockHp[cell] = 0; }
             lv.Things.Add(MakeRelic(x + 0.5f, y + 0.5f, lv, nextName()));
             placed++;
         }
