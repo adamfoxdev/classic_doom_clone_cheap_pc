@@ -35,6 +35,11 @@ public sealed class Level
     public bool LeverPulled => LeverCount > 0 && PulledLevers.Count >= LeverCount;
     public int PlateCount;
 
+    /// <summary>Secret walls ('Z') look like the wall beside them until opened.</summary>
+    public readonly Dictionary<int, char> SecretLook = new();
+    public readonly HashSet<int> SecretsFound = new();
+    public int SecretCount => SecretLook.Count;
+
     /// <summary>Pressure plates ('^') with a stone block pushed onto them.</summary>
     public int PlatesCovered
     {
@@ -52,7 +57,7 @@ public sealed class Level
     public ArenaState Arena;   // non-null on wave-survival maps
 
     public const string DoorGlyphs = "DSFP";
-    public const string WallGlyphs = "#BWMIODSFPLX";
+    public const string WallGlyphs = "#BWMIODSFPLXZ";
 
     public Level(string name, string entry, string[] rows, Theme theme)
     {
@@ -90,6 +95,25 @@ public sealed class Level
 
         if (Array.IndexOf(Marks, '*') >= 0) Arena = new ArenaState(this);
 
+        // disguise each secret wall as its most common neighbouring wall
+        for (int i = 0; i < Cells.Length; i++)
+        {
+            if (Cells[i] != 'Z') continue;
+            int x = i % W, y = i / W;
+            var look = new[] { Cell(x + 1, y), Cell(x - 1, y), Cell(x, y + 1), Cell(x, y - 1) }
+                .Where(c => c != '\0' && !IsDoor(c) && c != 'L' && c != 'X')
+                .GroupBy(c => c).OrderByDescending(gr => gr.Count()).Select(gr => gr.Key).FirstOrDefault();
+            SecretLook[i] = look == '\0' ? '#' : look;
+        }
+
+        // lore stones get their text in reading order
+        if (Discovery.Lore.TryGetValue(Name, out var lore))
+        {
+            int k = 0;
+            foreach (var stone in Things.OfType<LoreStone>())
+                if (k < lore.Length) stone.Text = lore[k++];
+        }
+
         // Cells holding things or markers inherit "outdoor" from their neighbours.
         for (int y = 1; y < H - 1; y++)
             for (int x = 1; x < W - 1; x++)
@@ -108,7 +132,7 @@ public sealed class Level
 
     public bool InBounds(int x, int y) => (uint)x < (uint)W && (uint)y < (uint)H;
     public char Cell(int x, int y) => InBounds(x, y) ? Cells[y * W + x] : '#';
-    public static bool IsDoor(char c) => c == 'D' || c == 'S' || c == 'F' || c == 'P';
+    public static bool IsDoor(char c) => c == 'D' || c == 'S' || c == 'F' || c == 'P' || c == 'Z';
 
     /// <summary>True when a cell blocks movement (walls, and doors that are not fully open).</summary>
     public bool Blocks(int x, int y)
@@ -146,6 +170,45 @@ public sealed class Level
         if (StartX > 0) return ((int)StartX, (int)StartY);
         int i = Array.FindIndex(Marks, char.IsDigit);
         return i >= 0 ? (i % W, i / W) : (1, 1);
+    }
+
+    /// <summary>Walking distance (in cells) from a start cell to every cell; -1 where unreachable.</summary>
+    public int[] Distances(int sx, int sy)
+    {
+        var d = new int[W * H];
+        Array.Fill(d, -1);
+        var q = new Queue<int>();
+        d[sy * W + sx] = 0;
+        q.Enqueue(sy * W + sx);
+        while (q.Count > 0)
+        {
+            int c = q.Dequeue(), x = c % W, y = c / W;
+            foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                int nx = x + dx, ny = y + dy;
+                if (!InBounds(nx, ny)) continue;
+                int i = ny * W + nx;
+                if (d[i] >= 0) continue;
+                char ch = Cells[i];
+                if (ch != '\0' && !IsDoor(ch)) continue;
+                d[i] = d[c] + 1;
+                q.Enqueue(i);
+            }
+        }
+        return d;
+    }
+
+    int[] _walkable;
+    /// <summary>Open floor cells reachable from the arrival point (cached; used for the explored percentage).</summary>
+    public int[] WalkableFloor
+    {
+        get
+        {
+            if (_walkable != null) return _walkable;
+            var (sx, sy) = ArrivalCell();
+            var r = Reachable(sx, sy);
+            return _walkable = Enumerable.Range(0, r.Length).Where(i => r[i] && (Cells[i] == '\0' || Cells[i] == 'X')).ToArray();
+        }
     }
 
     /// <summary>Flood fill of cells reachable on foot, treating every door and gate as passable.</summary>
@@ -279,7 +342,7 @@ public static class Maps
         var winnowing = new Level("Winnowing Hall", "Winnowing Hall", new[]
         {
             "################################",
-            "#......#..............#........#",
+            "#....&.#............&.#........#",
             "#.@....#..p.......p...#..b..e..#",
             "#......D..............D........#",
             "#..h...#......e.......#....w...#",
@@ -290,10 +353,10 @@ public static class Maps
             "#......D..p.......p...#..h..e..#",
             "#..q...#.............e#........#",
             "########WWWLWWWWWPWWWW##########",
-            "#################.##############",
-            "#################.##############",
+            "#################.#####.%.&.####",
+            "#################.#######Z######",
             "#OOOOOOO#,,,,,,,,,,,,,,,,,,,,,,#",
-            "#O.....O#,,c,,,,,,,,,,,,,,c,,,,#",
+            "#O.....O#,,c,,,,,,,,,,,,,,c,,&,#",
             "#O.....O#,,,,T,,,,,,,,T,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,3,,,#",
             "#OE.H...S,,,,,,,,,,1,,,,,,,,,,,#",
@@ -310,20 +373,20 @@ public static class Maps
         var keep = new Level("Frozen Keep", "The Frozen Keep", new[]
         {
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
-            "I,,,,,,,,,,,,,,I,,,,,,,,,,,,,,,I",
+            "I,,,,,,,,,,,,&,I,,,,,,,,,,,,,,,I",
             "I,,1,,,,,,,,,,,D,,,,,a,,,,g,,,,I",
             "I,,,,,,,,,,,,,,I,,,,,,,,d,,,,,,I",
             "I,,,,T,,,,T,,,,I,,,,C,,,,,,b,,,I",
             "I,,,,,,,,,,,,,,I,,,,,,,,,,,,,,,I",
             "IIIIIIIDIIIIIIIIIIIIIIIIIFIIIIII",
-            "I...........I......I...........I",
+            "I...........I......I..........&I",
             "I..a....c...D......I...c....h..I",
             "I.........2.I..x...I...........L",
             "I....q......I......I...a.......I",
-            "IIIIIIIIIIIIIIIPIIIIIIIIIIIIIIII",
-            "IIIIIIIIII............IIIIIIIIII",
-            "IIIIIIIIII.C...k...C..IIIIIIIIII",
-            "IIIIIIIIII............IIIIIIIIII",
+            "IIIIZIIIIIIIIIIPIIIIIIIIIIIIIIII",
+            "II.....III...........&IIIIIIIIII",
+            "II.....III.C...k...C..IIIIIIIIII",
+            "II%...&III............IIIIIIIIII",
             "IIIIIIIIII..u....g....IIIIIIIIII",
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
         }, ice);
@@ -342,10 +405,10 @@ public static class Maps
         var darkmere = new Level("Darkmere Crypt", "Darkmere Crypt", new[]
         {
             "MMMMMMMMMMMMMMMMMMMMMMMMMMMM",
-            "M2.....M,,,,,,,,,,,,M......M",
+            "M2.....M,,,,,,,,,,,&M......M",
             "M......D,,,e,,,,T,,,D..b...M",
             "M..h...M,,,,,,,,,,,,M...d..M",
-            "M......M,,T,,,,,,,,,M......L",
+            "M.....&M,,T,,,,,,,,,M......L",
             "MMMDMMMM,,,,,,d,,,,,MMMMMMMM",
             "M......M,,,,,,,,,,,,M......M",
             "M..e...M,,,,,,,,T,,,M^....^M",
@@ -353,10 +416,10 @@ public static class Maps
             "M..g...M....p..p....M..XX..M",
             "M......D............D......M",
             "ML.....M..e......e..M.....rM",
-            "MMMMMMMM....t..t....MMMMMMMM",
-            "BBBBBBBBMMMMMPMMMMMMBBBBBBBB",
-            "BBBBBBBBBC........CBBBBBBBBB",
-            "BBBBBBBBB....f.....BBBBBBBBB",
+            "MMMMZMMM....t..t...&MMMMMMMM",
+            "BB.....BMMMMMPMMMMMMBBBBBBBB",
+            "BB.....BBC........CBBBBBBBBB",
+            "BB%...&BB....f.....BBBBBBBBB",
             "BBBBBBBBB..u....g..BBBBBBBBB",
             "BBBBBBBBBBBBBBBBBBBBBBBBBBBB",
         }, crypt);
@@ -380,11 +443,11 @@ public static class Maps
             "O..h..O,,,,,,,,,,,,,,,,,,O",
             "O.....D,,,,,,,,,,,,,,,,,,O",
             "O..b..O,*,,,,,,,,,,,,,,*,O",
-            "O.....O,,,,,,,,,,,,,,,,,,O",
-            "OOOOOOO,,,,,,,,!,,,,,,,,,O",
-            "OOOOOOO,,,,,,,,,,,,,,,,,,O",
-            "OOOOOOO,*,,,,,,,,,,,,,,*,O",
-            "OOOOOOO,,,p,,,,,,,,,,p,,,O",
+            "O....&O,,,,,,,,,,,,,,,,,&O",
+            "OOOZOOO,,,,,,,,!,,,,,,,,,O",
+            "OO...OO,,,,,,,,,,,,,,,,,,O",
+            "OO...OO,*,,,,,,,,,,,,,,*,O",
+            "OO%.&OO,,,p,,,,,,,,,,p,,,O",
             "OOOOOOO,,,,,,,,,,,,,,,,,,O",
             "OOOOOOO,*,,,,,,,*,,,,,,*,O",
             "OOOOOOOOOOOOOOOOOOOOOOOOOO",

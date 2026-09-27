@@ -63,6 +63,9 @@ public static class Headless
         Console.WriteLine("Options and key bindings:");
         OptionsChecks(Check);
 
+        Console.WriteLine("Relaxed mode and discovery:");
+        RelaxedChecks(Check);
+
         Console.WriteLine("Audio synthesis:");
         bool audioOk = true;
         for (int i = 0; i < (int)Sfx.Count; i++) audioOk &= Audio.Synth((Sfx)i).Length > 1000;
@@ -468,7 +471,9 @@ public static class Headless
         Press(Keys.Escape);
         check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 1, "Esc goes back to the main menu");
         Press(Keys.Up); Press(Keys.Enter);
-        check(g.Mode == GameMode.ClassSelect, "New game goes to class select");
+        check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
+        Press(Keys.Enter);
+        check(g.Mode == GameMode.ClassSelect && g.Style == GameStyle.Classic, "Classic goes to class select");
         Press(Keys.Enter);
         check(g.Mode == GameMode.Playing, "choosing a class starts the game");
 
@@ -551,6 +556,149 @@ public static class Headless
         check(g.Mode == GameMode.Title && g.Menu.Page == MenuPage.Main, "Quit to title");
         Press(Keys.Down); Press(Keys.Down); Press(Keys.Enter);
         check(g.QuitRequested, "Quit exits");
+    }
+
+    static void RelaxedChecks(Action<bool, string> check)
+    {
+        // choosing Relaxed from the menu
+        var mg = new Game { FixedSeed = 1 };
+        mg.Update(new Input { Confirm = true }, 1f / 35f);                 // New game
+        mg.Update(new Input { Down = true }, 1f / 35f);                    // -> Relaxed
+        mg.Update(new Input { Confirm = true }, 1f / 35f);
+        check(mg.Style == GameStyle.Relaxed && mg.Mode == GameMode.ClassSelect, "menu: New game -> Relaxed -> class select");
+        mg.Update(new Input { Confirm = true }, 1f / 35f);
+        check(mg.Mode == GameMode.Playing && mg.Relaxed, "relaxed game starts");
+
+        // secrets and lore exist in both modes
+        var classic = new Game { FixedSeed = 4 };
+        classic.NewGame(PClass.Fighter);
+        check(classic.SecretsTotal == 4 && classic.LoreTotal == 15, $"4 secrets and 15 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
+        check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
+        check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
+
+        foreach (var lv in classic.Hub)
+        {
+            // a secret really is secret: with the Z wall shut, its treasure can't be reached
+            int z = Array.IndexOf(lv.Cells, 'Z');
+            var (sx, sy) = lv.ArrivalCell();
+            var treasure = lv.Things.OfType<Pickup>().First(p => p.Kind == PickupKind.Urn && Math.Abs(p.X - (z % lv.W + 0.5f)) + Math.Abs(p.Y - (z / lv.W + 0.5f)) < 6.5f);
+            int ti = (int)treasure.Y * lv.W + (int)treasure.X;
+            check(!lv.Reachable(sx, sy, new HashSet<int> { z })[ti] && lv.Reachable(sx, sy)[ti], $"{lv.Name}: secret nook only reachable through its hidden wall");
+            check("#BWMIO".Contains(lv.SecretLook[z]), $"{lv.Name}: secret wall disguised as '{lv.SecretLook[z]}'");
+        }
+
+        var g = new Game { FixedSeed = 7, Style = GameStyle.Relaxed };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Cleric);
+        check(g.RelicsTotal == 12, $"12 relics hidden across the hub ({g.RelicsTotal})");
+        foreach (var lv in g.Hub)
+        {
+            var relics = lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).ToList();
+            var (sx, sy) = lv.ArrivalCell();
+            var reach = lv.Reachable(sx, sy);
+            check(relics.Count == 3 && relics.All(r => reach[(int)r.Y * lv.W + (int)r.X] && !lv.BlocksPoint(r.X, r.Y)),
+                  $"{lv.Name}: 3 reachable relics");
+            check(relics.All(r => !string.IsNullOrEmpty(r.Name)), $"{lv.Name}: relics are named");
+        }
+        check(g.Hub.SelectMany(l => l.Things.OfType<Pickup>()).Where(p => p.Kind == PickupKind.Relic).Select(p => p.Name).Distinct().Count() == 12, "relic names are unique");
+        int short_ = 0;
+        for (int seed = 0; seed < 60; seed++)
+        {
+            var sg = new Game { FixedSeed = seed, Style = GameStyle.Relaxed };
+            sg.NewGame(PClass.Mage);
+            if (sg.RelicsTotal != 12) short_++;
+        }
+        check(short_ == 0, "60 random games all hide exactly 12 relics");
+        var g2 = new Game { FixedSeed = 8, Style = GameStyle.Relaxed }; g2.NewGame(PClass.Cleric);
+        string Where(Game gg) => string.Join(";", gg.Hub[0].Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).Select(p => $"{p.X},{p.Y}"));
+        check(Where(g) != Where(g2), "relic spots change between games");
+
+        // peaceful creatures: stand among them for 20 seconds
+        var lv0 = g.Level;
+        var ettin = lv0.Things.OfType<Monster>().First(m => (int)m.X == 14 && (int)m.Y == 4);
+        g.P.X = 13.5f; g.P.Y = 5.5f;
+        var start = lv0.Things.OfType<Monster>().Select(m => (m, m.X, m.Y)).ToList();
+        bool hostile = false, projectiles = false;
+        for (int k = 0; k < 35 * 20; k++)
+        {
+            Tick(new Input { Fire = true });
+            hostile |= lv0.Things.OfType<Monster>().Any(m => m.State is AiState.Chase or AiState.Attack or AiState.Pain);
+            projectiles |= lv0.Things.OfType<Projectile>().Any();
+        }
+        check(!hostile && g.P.Health == 100, "creatures never chase or attack");
+        check(!projectiles && ettin.Health == ettin.Def.Health, "your weapon stays sheathed");
+        check(start.Count(s => Game.Dist(s.m.X, s.m.Y, s.X, s.Y) > 0.5f) >= start.Count / 2, "creatures wander about");
+        ettin.X = g.P.X + 1.2f; ettin.Y = g.P.Y;
+        float before = Game.Dist(ettin.X, ettin.Y, g.P.X, g.P.Y);
+        Tick(default, 35);
+        check(Game.Dist(ettin.X, ettin.Y, g.P.X, g.P.Y) > before, "creatures shy away when you come close");
+
+        // lore: face a stone and press Use; reading pauses the world
+        var stone = lv0.Things.OfType<LoreStone>().First();
+        g.P.X = stone.X - 1f; g.P.Y = stone.Y; g.P.Angle = 0;
+        if (lv0.BlocksCircle(g.P.X, g.P.Y, 0.25f)) { g.P.X = stone.X; g.P.Y = stone.Y + 1f; g.P.Angle = -MathF.PI / 2; }
+        Tick(new Input { Use = true });
+        check(g.ReadingLore == stone.Text && g.P.LoreRead == 1, "Use on a lore stone shows its text");
+        var mover = lv0.Things.OfType<Monster>().First();
+        float mx = mover.X, my = mover.Y;
+        Tick(default, 35 * 2);
+        check(mover.X == mx && mover.Y == my && g.ReadingLore != null, "the world pauses while you read");
+        Tick(new Input { Use = true });
+        check(g.ReadingLore == null, "Use closes the lore panel");
+        Tick(new Input { Use = true }); Tick(new Input { Use = true });
+        check(g.P.LoreRead == 1, "re-reading a stone doesn't count twice");
+
+        // secret wall
+        int zc = Array.IndexOf(lv0.Cells, 'Z');
+        g.P.X = zc % lv0.W + 0.5f; g.P.Y = zc / lv0.W + 1.5f; g.P.Angle = -MathF.PI / 2;
+        Tick(new Input { Use = true }); Tick(default, 35);
+        check(lv0.DoorOpen[zc] >= 1f && g.P.Secrets == 1, "Use on a hidden wall opens a secret");
+        Tick(new Input { Use = true }); Tick(default, 35 * 6);
+        check(g.P.Secrets == 1 && lv0.DoorOpen[zc] >= 1f, "a found secret stays open and counts once");
+
+        // no traps, quiet arena
+        int traps = 0;
+        for (int k = 0; k < 100; k++)
+        {
+            int n = lv0.Things.Count(t => t is Monster);
+            var c = new Chest { X = 14.5f, Y = 7.5f, Level = lv0 };
+            lv0.Things.Add(c);
+            g.OpenChest(c);
+            if (lv0.Things.Count(t => t is Monster) > n) traps++;
+            lv0.Things.RemoveAll(t => t == c || t is Pickup { Kind: not PickupKind.Relic });
+        }
+        check(traps == 0, "chests are never traps");
+        g.Warp(3);
+        var altar = g.Level.FindMark('!').Value;
+        g.P.X = altar.x; g.P.Y = altar.y;
+        Tick(default, 35 * 3);
+        check(!g.Level.Arena.Started && !g.Level.Things.Any(t => t is Monster), "the arena stays quiet");
+
+        // exploring raises the explored percentage
+        float e0 = Discovery.Explored(g.Hub);
+        var r = new Renderer();
+        g.Warp(1);
+        for (int k = 0; k < 8; k++) { g.P.Angle = k * MathF.PI / 4; r.Render(g); }
+        check(Discovery.Explored(g.Hub) > e0, $"looking around raises exploration ({e0 * 100:0}% -> {Discovery.Explored(g.Hub) * 100:0}%)");
+
+        // the exit wakes once every relic is found
+        g.Warp(0);
+        var exit = g.Level.FindMark('E').Value;
+        g.P.X = exit.x; g.P.Y = exit.y; Tick(default);
+        check(g.Mode == GameMode.Playing, "the exit sleeps until every relic is found");
+        foreach (var lv in g.Hub)
+            foreach (var relic in lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).ToList())
+            {
+                g.Level = lv; g.P.X = relic.X; g.P.Y = relic.Y; g.P.PortalLock = true;
+                Tick(default);
+            }
+        check(g.P.Relics == 12, $"all relics collected ({g.P.Relics})");
+        g.Level = g.Hub[0]; g.P.X = exit.x; g.P.Y = exit.y; Tick(default);
+        check(g.Mode == GameMode.Victory, "with every relic found, the exit wins the game");
+
+        g.Con.Execute("mode classic");
+        check(!g.Relaxed && g.Mode == GameMode.Playing && g.RelicsTotal == 0, "console 'mode classic'");
     }
 
     static void ChestChecks(Action<bool, string> check)
@@ -667,6 +815,10 @@ public static class Headless
 
         Tick(default, 10);
         Shot("01_title");
+        Tick(new Input { Confirm = true });
+        Tick(new Input { Down = true });
+        Shot("02_style_select");
+        Tick(new Input { Up = true });
         Tick(new Input { Confirm = true });
         Tick(new Input { Down = true });
         Shot("02_class_select");
@@ -816,6 +968,34 @@ public static class Headless
         g.Binds.Reset();
         g.GoToTitle();
         Shot("23_title_menu");
+
+        // relaxed mode: HUD, a lore stone, reading it, and a secret nook
+        g.Style = GameStyle.Relaxed;
+        g.FixedSeed = 7;
+        g.NewGame(PClass.Fighter);
+        {
+            var lv = g.Level;
+            var stone = lv.Things.OfType<LoreStone>().First(st => st.Y > 14); // the courtyard stone
+            g.P.X = stone.X - 2.2f; g.P.Y = stone.Y + 1.4f;
+            g.P.Angle = MathF.Atan2(stone.Y - g.P.Y, stone.X - g.P.X) - 0.35f; g.P.Pitch = 6;
+            var e = lv.Things.OfType<Monster>().First(m => m.Def == Monster.Centaur && m.X > 20);
+            e.X = stone.X - 1.4f; e.Y = stone.Y - 0.6f; e.State = AiState.Wander;
+            g.P.Relics = 5; g.P.LoreRead = 3; g.P.Secrets = 1;
+            g.Vars.Freeze = true;
+            Tick(default, 60);
+            Shot("24_relaxed_courtyard");
+            g.ReadingLore = stone.Text;
+            Shot("25_lore_stone");
+            g.ReadingLore = null;
+
+            int z = Array.IndexOf(lv.Cells, 'Z');
+            lv.DoorOpen[z] = 1f;
+            g.P.X = z % lv.W + 0.5f; g.P.Y = z / lv.W + 2.3f; g.P.Angle = -MathF.PI / 2 - 0.25f; g.P.Pitch = 0;
+            Tick(default, 2);
+            Shot("26_secret_nook");
+            g.Vars.Freeze = false;
+        }
+        g.Style = GameStyle.Classic;
 
         // victory screen
         g.Mode = GameMode.Victory;

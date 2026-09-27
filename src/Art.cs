@@ -15,8 +15,8 @@ public static class Art
     // Sprites
     public static readonly Dictionary<string, Tex[]> Monsters = new();
     public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt, Seeker;
-    public static Tex[] Torch;
-    public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, ChestClosed, ChestOpen, WeaponPiece2, WeaponPiece3, Tree, Crystal;
+    public static Tex[] Torch, Relics;
+    public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, ChestClosed, ChestOpen, LoreStone, LoreStoneRead, WeaponPiece2, WeaponPiece3, Tree, Crystal;
     // HUD
     public static Tex HudBack;
     // First-person weapons, indexed [class*3 + slot][frame]
@@ -403,6 +403,47 @@ public static class Art
             c.Ellipse(32, 29, 7, 3, Col.Rgb(0, 0, 0) & 0x00FFFFFF);
             for (int y = 32; y < 56; y += 3) for (int x = 18 + (y % 2); x < 46; x += 3) c.T.Set(x, y, Col.Rgb(100, 100, 110));
         });
+        LoreStone = LoreTex(false);
+        LoreStoneRead = LoreTex(true);
+        Relics = new[]
+        {
+            // chalice
+            Item(c =>
+            {
+                c.Glow(32, 44, 20, Col.Rgb(255, 220, 120));
+                c.Ellipse(32, 38, 11, 7, Col.Rgb(220, 180, 60));
+                c.Rect(29, 42, 6, 12, Col.Rgb(200, 160, 50));
+                c.Ellipse(32, 56, 9, 3, Col.Rgb(220, 180, 60));
+                c.Circle(32, 40, 2.5f, Col.Rgb(220, 30, 60));
+            }, 71),
+            // crown
+            Item(c =>
+            {
+                c.Glow(32, 46, 20, Col.Rgb(255, 230, 140));
+                c.Rect(18, 44, 28, 10, Col.Rgb(230, 190, 60));
+                c.Tri(18, 44, 22, 32, 26, 44, Col.Rgb(230, 190, 60));
+                c.Tri(28, 44, 32, 30, 36, 44, Col.Rgb(230, 190, 60));
+                c.Tri(38, 44, 42, 32, 46, 44, Col.Rgb(230, 190, 60));
+                c.Circle(24, 49, 2, Col.Rgb(60, 120, 255)); c.Circle(32, 49, 2, Col.Rgb(220, 30, 60)); c.Circle(40, 49, 2, Col.Rgb(60, 200, 90));
+            }, 73),
+            // orb on a stand
+            Item(c =>
+            {
+                c.Glow(32, 40, 22, Col.Rgb(170, 110, 255));
+                c.Rect(26, 50, 12, 6, Col.Rgb(120, 100, 80));
+                c.Circle(32, 42, 9, Col.Rgb(140, 90, 230));
+                c.Circle(29, 39, 3, Col.Rgb(230, 210, 255));
+            }, 79),
+            // codex
+            Item(c =>
+            {
+                c.Glow(32, 46, 20, Col.Rgb(120, 220, 255));
+                c.Rect(18, 38, 28, 18, Col.Rgb(110, 40, 40));
+                c.Rect(20, 40, 24, 14, Col.Rgb(150, 60, 50));
+                c.Rect(18, 38, 3, 18, Col.Rgb(220, 190, 80));
+                c.Circle(33, 47, 4, Col.Rgb(120, 220, 255));
+            }, 83),
+        };
         ChestClosed = ChestTex(false);
         ChestOpen = ChestTex(true);
         WeaponPiece2 = WeaponIcon(Col.Rgb(80, 150, 255));
@@ -417,6 +458,21 @@ public static class Art
         var c = new Canvas(TS, TS);
         draw(c);
         c.Noise(new Rng((uint)seed), 12);
+        c.Outline(Dark);
+        return c.T;
+    }
+
+    static Tex LoreTex(bool read)
+    {
+        var c = new Canvas(TS, TS);
+        uint stone = Col.Rgb(120, 118, 110), glow = read ? Col.Rgb(90, 130, 150) : Col.Rgb(110, 230, 255);
+        c.Ellipse(32, 16, 18, 10, stone);
+        c.Rect(14, 16, 36, 44, stone);
+        c.Rect(10, 58, 44, 6, Col.Rgb(90, 88, 82));
+        c.Rect(14, 16, 3, 44, Col.Rgb(150, 148, 140));
+        if (!read) c.Glow(32, 34, 20, glow);
+        for (int i = 0; i < 6; i++) c.Rect(20 + (i % 2) * 2, 20 + i * 6, 22 - (i % 3) * 4, 2, glow);
+        c.Noise(new Rng(read ? 89u : 87u), 12);
         c.Outline(Dark);
         return c.T;
     }

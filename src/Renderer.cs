@@ -44,6 +44,7 @@ public sealed class Renderer
         if (g.ShowMap) DrawAutomap(g);
         DrawHud(g);
         DrawMessages(g);
+        if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
 
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
@@ -98,6 +99,19 @@ public sealed class Renderer
                     Text(272 - Font.Width(shown), y, shown, sel ? MenuSel : Col.Rgb(170, 200, 255));
                 }
                 CenterText("UP/DOWN: SELECT  LEFT/RIGHT: CHANGE  ESC: BACK", 186, MenuDim);
+                break;
+
+            case MenuPage.Style:
+                CenterText("CHOOSE A STYLE", 24, Col.Rgb(230, 190, 80), 2);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 64 + i * 16, i == m.Cursor);
+                string[] about = m.Cursor switch
+                {
+                    0 => new[] { "FIGHT YOUR WAY THROUGH THE HUB,", "SOLVE ITS PUZZLES AND SLAY THE HERESIARCH." },
+                    1 => new[] { "NO COMBAT: THE CREATURES ARE PEACEFUL.", "EXPLORE, READ LORE STONES, UNCOVER SECRETS", "AND FIND THE HIDDEN RELICS." },
+                    _ => Array.Empty<string>(),
+                };
+                for (int i = 0; i < about.Length; i++) CenterText(about[i], 128 + i * 10, Col.Rgb(170, 200, 255));
+                CenterText("ARROWS + ENTER    ESC: BACK", 186, MenuDim);
                 break;
 
             case MenuPage.Bindings:
@@ -166,6 +180,7 @@ public sealed class Renderer
             case 'P': return Art.Portcullis;
             case 'L': return lv.PulledLevers.Contains(cell) ? Art.LeverOn : Art.LeverOff;
             case 'X': return Art.Block;
+            case 'Z': return lv.Theme.Walls.TryGetValue(lv.SecretLook[cell], out var look) ? look : Art.Stone;
         }
         return lv.Theme.Walls.TryGetValue(c, out var t) ? t : Art.Stone;
     }
@@ -406,7 +421,7 @@ public sealed class Renderer
     void DrawWeapon(Game g)
     {
         var p = g.P;
-        if (g.Mode == GameMode.Dead) return;
+        if (g.Mode == GameMode.Dead || g.Relaxed) return; // relaxed mode: weapons stay sheathed
         int slot = p.Weapon;
         var frames = Art.Weapons[(int)p.Class * 3 + slot];
         var tex = p.FireAnim > 0.06f ? frames[1] : frames[0];
@@ -529,6 +544,15 @@ public sealed class Renderer
                         Put(ox + x * cs + xx, oy + y * cs + yy, c == '\0' || !edge ? col : Col.Shade(col, 150));
                     }
             }
+        // lore stones you've seen: cyan until read
+        foreach (var t in lv.Things)
+            if (t is LoreStone ls && lv.Seen[(int)t.Y * lv.W + (int)t.X])
+            {
+                uint lc = ls.Read ? Col.Rgb(60, 110, 130) : Col.Rgb(110, 230, 255);
+                int lx = ox + (int)(t.X * cs), ly = oy + (int)(t.Y * cs);
+                for (int yy = -1; yy <= 1; yy++) for (int xx = -1; xx <= 1; xx++) if (xx == 0 || yy == 0) Put(lx + xx, ly + yy, lc);
+            }
+
         // chests you've seen: gold when closed, brown once looted
         foreach (var t in lv.Things)
             if (t is Chest ch && lv.Seen[(int)t.Y * lv.W + (int)t.X])
@@ -567,6 +591,7 @@ public sealed class Renderer
 
         int by = ViewH + 3;
         uint label = Col.Rgb(200, 180, 140);
+        if (g.Relaxed) { DrawDiscoveryHud(g, by, label); return; }
         Text(6, by, "HEALTH", label);
         uint hcol = p.Health > 50 ? Col.Rgb(240, 230, 210) : p.Health > 25 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
         Text(8, by + 11, p.Health.ToString(), hcol, 2);
@@ -598,6 +623,63 @@ public sealed class Renderer
 
         string cls = p.Def.Name.ToUpperInvariant();
         Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
+    }
+
+    /// <summary>Relaxed-mode HUD: what you've discovered instead of health and ammo.</summary>
+    void DrawDiscoveryHud(Game g, int by, uint label)
+    {
+        var p = g.P;
+        uint val = Col.Rgb(240, 230, 210), done = Col.Rgb(120, 255, 140);
+        void Stat(int x, string name, int have, int total)
+        {
+            Text(x, by, name, label);
+            Text(x + 2, by + 11, $"{have}/{total}", have >= total && total > 0 ? done : val, 2);
+        }
+        Stat(6, "RELICS", p.Relics, g.RelicsTotal);
+        Stat(70, "LORE", p.LoreRead, g.LoreTotal);
+        Stat(134, "SECRETS", p.Secrets, g.SecretsTotal);
+        int pct = (int)(Discovery.Explored(g.Hub) * 100);
+        Text(198, by, "EXPLORED", label);
+        Text(200, by + 11, $"{pct}%", pct >= 100 ? done : val, 2);
+        if (p.SteelKey) Icon(Art.SteelKey, 262, by + 6, 20);
+        if (p.FireKey) Icon(Art.FireKey, 276, by + 6, 20);
+        string cls = p.Def.Name.ToUpperInvariant();
+        Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
+    }
+
+    void DrawLore(Game g)
+    {
+        const int x0 = 28, y0 = 26, w = W - 56, h = 118;
+        Rect(x0 - 2, y0 - 2, w + 4, h + 4, Col.Rgb(40, 26, 14));
+        for (int y = y0; y < y0 + h; y++)
+            for (int x = x0; x < x0 + w; x++)
+            {
+                int n = ((x * 7 + y * 13) ^ (x * y)) & 15;
+                Fb[y * W + x] = Col.Rgb(206 + n - 8, 186 + n - 8, 142 + n - 8);
+            }
+        uint ink = Col.Rgb(60, 36, 20);
+        string title = "LORE STONE";
+        Font.Draw(Fb, W, H, (W - Font.Width(title)) / 2, y0 + 6, title, Col.Rgb(120, 40, 20), 1, false);
+        Rect(x0 + 20, y0 + 16, w - 40, 1, Col.Rgb(150, 110, 70));
+        int maxChars = (w - 16) / Font.CharW, ly = y0 + 24;
+        foreach (var line in Wrap(g.ReadingLore.ToUpperInvariant(), maxChars))
+        {
+            Font.Draw(Fb, W, H, x0 + 8, ly, line, ink, 1, false);
+            ly += 10;
+        }
+        string foot = "E / ENTER: CLOSE";
+        Font.Draw(Fb, W, H, (W - Font.Width(foot)) / 2, y0 + h - 11, foot, Col.Rgb(120, 90, 60), 1, false);
+    }
+
+    static IEnumerable<string> Wrap(string text, int max)
+    {
+        var line = "";
+        foreach (var word in text.Split(' '))
+        {
+            if (line.Length > 0 && line.Length + 1 + word.Length > max) { yield return line; line = ""; }
+            line = line.Length == 0 ? word : line + " " + word;
+        }
+        if (line.Length > 0) yield return line;
     }
 
     void ManaBar(int x, int y, string name, int val, uint col)
@@ -633,10 +715,11 @@ public sealed class Renderer
         int y = 3;
         if (g.ShowMap) y = 14;
         foreach (var (text, _) in g.Messages)
-        {
-            Text(4, y, text, Col.Rgb(240, 225, 170));
-            y += 9;
-        }
+            foreach (var line in Wrap(text, (W - 8) / Font.CharW))
+            {
+                Text(4, y, line, Col.Rgb(240, 225, 170));
+                y += 9;
+            }
     }
 
     void Text(int x, int y, string s, uint c, int scale = 1) => Font.Draw(Fb, W, H, x, y, s, c, scale);
@@ -674,6 +757,7 @@ public sealed class Renderer
     {
         StoneBackdrop(g.Time);
         CenterText("CHOOSE YOUR CLASS", 10, Col.Rgb(230, 170, 50), 2);
+        CenterText(g.Relaxed ? "RELAXED MODE" : "CLASSIC MODE", 28, g.Relaxed ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 150, 120));
         for (int i = 0; i < 3; i++)
         {
             var cd = ClassDef.All[i];
@@ -710,10 +794,23 @@ public sealed class Renderer
     {
         StoneBackdrop(g.Time);
         CenterText("VICTORY!", 30, Col.Rgb(255, 220, 90), 4);
-        CenterText("THE HERESIARCH HAS FALLEN.", 80, Col.Rgb(230, 220, 200));
-        CenterText($"THE {g.P.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL...", 94, Col.Rgb(230, 220, 200));
+        var p = g.P;
         int t = (int)g.PlayTime;
-        CenterText($"KILLS: {g.P.Kills}    CHESTS: {g.P.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 120, Col.Rgb(170, 200, 255));
+        uint stat = Col.Rgb(170, 200, 255);
+        if (g.Relaxed)
+        {
+            CenterText("EVERY RELIC IS FOUND.", 72, Col.Rgb(230, 220, 200));
+            CenterText($"THE {p.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL, AT PEACE.", 84, Col.Rgb(230, 220, 200));
+            CenterText($"RELICS: {p.Relics}/{g.RelicsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}    SECRETS: {p.Secrets}/{g.SecretsTotal}", 108, stat);
+            CenterText($"EXPLORED: {(int)(Discovery.Explored(g.Hub) * 100)}%    CHESTS: {p.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 120, stat);
+        }
+        else
+        {
+            CenterText("THE HERESIARCH HAS FALLEN.", 80, Col.Rgb(230, 220, 200));
+            CenterText($"THE {p.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL...", 94, Col.Rgb(230, 220, 200));
+            CenterText($"KILLS: {p.Kills}    CHESTS: {p.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 116, stat);
+            CenterText($"SECRETS: {p.Secrets}/{g.SecretsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}", 128, stat);
+        }
         CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
     }
 }

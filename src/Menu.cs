@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings }
+public enum MenuPage { Main, Pause, Options, Bindings, Style }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -50,6 +50,7 @@ public sealed class MenuSystem
     {
         MenuPage.Main => new[] { "New game", "Options", "Quit" },
         MenuPage.Pause => new[] { "Resume", "Options", "Restart", "Quit to title", "Quit game" },
+        MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
     };
@@ -138,7 +139,9 @@ public sealed class MenuSystem
         _g.PlaySound(Sfx.Item, 0.8f);
         switch (Page, Cursor)
         {
-            case (MenuPage.Main, 0): Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Main, 0): Show(MenuPage.Style); Cursor = (int)_g.Style; break;
+            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Style, 2): Back(); break;
             case (MenuPage.Main, 1): Show(MenuPage.Options); break;
             case (MenuPage.Main, 2): _g.QuitRequested = true; break;
             case (MenuPage.Pause, 0): Close(); _g.Paused = false; break;

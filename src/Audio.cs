@@ -80,6 +80,9 @@ public sealed unsafe class Audio : IDisposable
                 : MathF.Sin(MathF.Tau * t * (t < 0.37f ? 784 : t < 0.49f ? 988 : 1319)) * 0.35f * Env(t - 0.25f, 0.01f, 0.35f)),
             Sfx.Push => Gen(0.45f, (t, n) => (r.Range(-1f, 1f) * 0.7f + Saw(t * 40) * 0.3f) * Env(t, 0.03f, 0.45f), lowpass: 0.06f),
             Sfx.Blur => Gen(0.35f, (t, n) => MathF.Sin(MathF.Tau * (900 * t - 1400 * t * t)) * MathF.Sin(t * 140) * 0.4f * Env(t, 0.02f, 0.35f)),
+            Sfx.Secret => Gen(0.9f, (t, n) => MathF.Sin(MathF.Tau * t * (t < 0.15f ? 523 : t < 0.3f ? 659 : t < 0.45f ? 784 : 1047)) * 0.4f * Env(t, 0.01f, 0.9f)),
+            Sfx.Lore => Gen(0.8f, (t, n) => (MathF.Sin(MathF.Tau * 220 * t) + MathF.Sin(MathF.Tau * 330 * t) * 0.6f) * 0.3f * Env(t, 0.15f, 0.8f)),
+            Sfx.Relic => Gen(0.8f, (t, n) => MathF.Sin(MathF.Tau * t * (880 + 440 * MathF.Floor(t * 8) / 4)) * MathF.Exp(-(t % 0.125f) * 20) * 0.4f * Env(t, 0.01f, 0.8f)),
             _ => new short[1],
         };
     }

@@ -14,8 +14,19 @@ There are no asset files.
 ![Block puzzle](docs/block_puzzle.png)
 ![Dark Bishops](docs/dark_bishop.png)
 ![Key bindings](docs/key_bindings.png)
+![Relaxed mode](docs/relaxed_mode.png)
+![Lore stone](docs/lore_stone.png)
 
 ## Features
+
+- **Two play styles**, chosen when you start a new game:
+  - **Classic:** fight through the hub, solve its puzzles and slay the Heresiarch.
+  - **Relaxed:** no combat. Creatures wander peacefully and shy away if you get close, your weapon stays
+    sheathed, and you can't die. Instead you explore: find the **12 relics** hidden across the hub (placed
+    differently every game, favouring dead ends and far corners), read **lore stones**, and uncover **secret
+    passages**. The HUD tracks relics, lore, secrets and how much of the hub you've explored. Finding every
+    relic awakens the exit portal. Keys, levers, block puzzles and chests all still work; chests are never
+    traps and the arena stays quiet.
 
 - **Three classes**, each with their own three weapons, like Hexen:
   | Class | 1 (no mana) | 2 (blue mana) | 3 (green mana) |
@@ -34,6 +45,8 @@ There are no asset files.
 - **Chaos Arena waves.** Step on the golden altar to start endless waves. Each wave has more monsters and
   tougher types (Afrits from wave 2, Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed
   scale up every wave, and every fifth wave adds Heresiarchs. Supplies appear at the altar after each wave.
+- **Secrets and lore (both styles):** each map hides a secret passage behind a wall that looks like any
+  other; press `E` on it to slide it open. 15 lore stones tell the story of the hub; press `E` to read one.
 - **Treasure chests** are scattered randomly through every map each new game. Open one with `E`: it spills
   1–3 random items (health, mana, armor, flasks, rarely an urn or a weapon piece you're missing). Watch out,
   roughly one in eight is a trap and a monster bursts out. Seen chests show on the automap, and the victory
@@ -73,7 +86,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `W` `A` `S` `D` / arrow keys | Move / strafe / turn |
 | Mouse | Look (including up/down) |
 | Left click / `Ctrl` | Attack |
-| `E` | Use (doors, levers, chests); push a stone block |
+| `E` | Use (doors, levers, chests, lore stones, secret walls); push a stone block |
 | `Shift+E` | Pull a stone block toward you |
 | `Space` | Jump |
 | `C` | Slide (while moving) |
@@ -99,6 +112,11 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
    exit rune.
 
 Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival (Dark Bishops join from wave 4).
+
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 12 relics, which
+are spread over all four maps (including the arena) before the exit rune wakes. Secret walls sit in the wall
+between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
+under the crypt's south-west room, and under the arena's antechamber.
 
 ## Options and key bindings
 
@@ -135,6 +153,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena) |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
+| `mode <classic\|relaxed>` | start a new game in a play style |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -159,6 +178,7 @@ dotnet run -c Release -- --shots shots    # renders scripted screenshots headles
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
 | `src/Level.cs` | Map parsing, doors, collision, line of sight, and the hub's four maps |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
+| `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
 | `src/Bindings.cs` | Rebindable actions, key names, turning key state into game input |
 | `src/Menu.cs` | Title, pause, options and key-binding menus; saving and loading settings |
@@ -185,5 +205,7 @@ Maps are ASCII grids in `src/Level.cs`:
 | `k` / `f` | Steel Key / Fire Key | `r` | Mesh Armor |
 | `$` | treasure chest (hand-placed; most are scattered randomly) | | |
 | `X` | pushable stone block | `^` | pressure plate |
+| `Z` | secret wall (looks like its neighbours) | `&` | lore stone |
+| `%` | secret treasure (a relic in Relaxed, a Mystic Urn in Classic) | | |
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |
 | `w` `x` | weapon piece for slot 2 / slot 3 | `t` `p` `T` | torch, pillar, tree |

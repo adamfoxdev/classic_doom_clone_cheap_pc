@@ -139,6 +139,14 @@ public sealed class DevConsole
             _g.NewGame(Enum.Parse<PClass>(n));
             Print($"new game as {n}");
         });
+        Add("mode", "<classic|relaxed>", "start a new game in a play style", a =>
+        {
+            var style = a.Length > 1 ? Enum.GetNames<GameStyle>().FirstOrDefault(n => n.StartsWith(a[1], StringComparison.OrdinalIgnoreCase)) : null;
+            if (style == null) { Print($"mode = {_g.Style.ToString().ToLowerInvariant()}. usage: mode <classic|relaxed>"); return; }
+            _g.Style = Enum.Parse<GameStyle>(style);
+            _g.NewGame(_g.P?.Class ?? PClass.Fighter);
+            Print($"new {style.ToLowerInvariant()} game");
+        });
         Add("restart", "", "restart with the current class", _ =>
         {
             _g.NewGame(_g.P?.Class ?? PClass.Fighter);
@@ -290,7 +298,7 @@ public sealed class DevConsole
     {
         ("ettin", 'e'), ("afrit", 'a'), ("centaur", 'c'), ("slaughtaur", 'C'), ("bishop", 'd'), ("heresiarch", 'H'),
         ("vial", 'h'), ("flask", 'q'), ("urn", 'u'), ("bluemana", 'b'), ("greenmana", 'g'), ("armor", 'r'),
-        ("chest", '$'), ("steelkey", 'k'), ("firekey", 'f'), ("weapon2", 'w'), ("weapon3", 'x'), ("torch", 't'), ("pillar", 'p'), ("tree", 'T'),
+        ("chest", '$'), ("lore", '&'), ("steelkey", 'k'), ("firekey", 'f'), ("weapon2", 'w'), ("weapon3", 'x'), ("torch", 't'), ("pillar", 'p'), ("tree", 'T'),
     };
 
     void Summon(string what)
