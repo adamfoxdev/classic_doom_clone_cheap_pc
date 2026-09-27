@@ -2,6 +2,9 @@ namespace HexenSharp;
 
 public enum Pose { Walk0, Walk1, Attack, Pain, Die0, Die1, Dead }
 
+/// <summary>Visual style: a space station (default) or the original dark-fantasy look.</summary>
+public enum ArtStyle { SciFi, Fantasy }
+
 /// <summary>All textures and sprites, generated procedurally at startup (no asset files needed).</summary>
 public static class Art
 {
@@ -22,13 +25,43 @@ public static class Art
     // First-person weapons, indexed [class*3 + slot][frame]
     public static Tex[][] Weapons = new Tex[9][];
 
-    public static void Init()
+    public static ArtStyle Style = ArtStyle.SciFi;
+    /// <summary>Bumped whenever the art is rebuilt, so caches (the editor's icons) know to refresh.</summary>
+    public static int Version;
+    public static Tex[] PillarFrames, TreeFrames;
+
+    /// <summary>Builds every texture and sprite. The fantasy art is always built first; the sci-fi style then
+    /// replaces it, so every slot is always filled.</summary>
+    public static void Init(ArtStyle style = ArtStyle.SciFi)
     {
+        Style = style;
+        Monsters.Clear();
         BuildWalls();
         BuildFlats();
         BuildSprites();
         BuildWeapons();
+        if (style == ArtStyle.SciFi) SciFiArt.Apply();
+        PillarFrames = new[] { Pillar };
+        TreeFrames = new[] { Tree };
+        Version++;
     }
+
+    public static Tex PickupSprite(PickupKind k, int variant) => k switch
+    {
+        PickupKind.Vial => Vial,
+        PickupKind.Flask => Flask,
+        PickupKind.Urn => Urn,
+        PickupKind.BlueMana => BlueMana,
+        PickupKind.GreenMana => GreenMana,
+        PickupKind.SteelKey => SteelKey,
+        PickupKind.FireKey => FireKey,
+        PickupKind.Armor => Armor,
+        PickupKind.Weapon2 => WeaponPiece2,
+        PickupKind.Weapon3 => WeaponPiece3,
+        _ => Relics[variant % Relics.Length],
+    };
+
+    public static Tex[] DecorFrames(char kind) => kind switch { 't' => Torch, 'T' => TreeFrames, _ => PillarFrames };
 
     // ------------------------------------------------------------------ walls
 
@@ -330,7 +363,7 @@ public static class Art
 
     // ------------------------------------------------------------------ sprites
 
-    static uint Dark = Col.Rgb(16, 12, 10);
+    internal static uint Dark = Col.Rgb(16, 12, 10);
 
     static void BuildSprites()
     {
@@ -468,7 +501,7 @@ public static class Art
         HudBack = Blocks(301, 32, 16, (70, 64, 60), 10, (26, 24, 22));
     }
 
-    static Tex Item(Action<Canvas> draw, int seed = 7)
+    internal static Tex Item(Action<Canvas> draw, int seed = 7)
     {
         var c = new Canvas(TS, TS);
         draw(c);
@@ -597,7 +630,7 @@ public static class Art
     }
 
     /// <summary>Monsters are drawn once per live pose; the death frames are derived by collapsing the pain frame.</summary>
-    static Tex[] PoseSet(Action<Canvas, Pose> draw)
+    internal static Tex[] PoseSet(Action<Canvas, Pose> draw)
     {
         var frames = new Tex[7];
         for (int i = 0; i <= (int)Pose.Pain; i++)

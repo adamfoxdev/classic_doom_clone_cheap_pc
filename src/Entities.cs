@@ -22,14 +22,19 @@ public abstract class Thing
 
 public sealed class Decor : Thing
 {
-    readonly Tex[] _frames;
+    /// <summary>Map glyph of the decoration (t torch, p pillar, T tree); its art comes from the current style.</summary>
+    public readonly char Kind;
     /// <summary>Pillars reach all the way up to their room's ceiling.</summary>
     public bool ReachCeiling;
-    public Decor(Tex[] frames, float w, float h, bool solid, bool bright)
+    public Decor(char kind, float w, float h, bool solid, bool bright)
     {
-        _frames = frames; SpriteW = w; SpriteH = h; Solid = solid; FullBright = bright; Radius = 0.3f;
+        Kind = kind; SpriteW = w; SpriteH = h; Solid = solid; FullBright = bright; Radius = 0.3f;
     }
-    public override Tex Sprite(float time) => _frames[(int)(time * 8) % _frames.Length];
+    public override Tex Sprite(float time)
+    {
+        var f = Art.DecorFrames(Kind);
+        return f[(int)(time * 8) % f.Length];
+    }
 }
 
 // ---------------------------------------------------------------- pickups
@@ -40,13 +45,13 @@ public sealed class Pickup : Thing
 {
     public readonly PickupKind Kind;
     public string Name;                // relics have a name
-    readonly Tex _tex;
-    public Pickup(PickupKind kind, Tex tex, float size = 0.4f)
+    public readonly int Variant;       // which relic sprite
+    public Pickup(PickupKind kind, float size = 0.4f, int variant = 0)
     {
-        Kind = kind; _tex = tex; SpriteW = size; SpriteH = size;
+        Kind = kind; Variant = variant; SpriteW = size; SpriteH = size;
         FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.Relic;
     }
-    public override Tex Sprite(float time) => _tex;
+    public override Tex Sprite(float time) => Art.PickupSprite(Kind, Variant);
 }
 
 // ---------------------------------------------------------------- monsters
@@ -55,7 +60,9 @@ public enum AiState { Idle, Chase, Attack, Pain, Dying, Dead, Wander }
 
 public sealed class MonsterDef
 {
-    public string Name, Art;
+    string _name;
+    public string Name { get => Words.T(_name); init => _name = value; }
+    public string Art;
     public int Health;
     public float Speed, Radius, Width, Height, FlyZ;
     public float MeleeRange;           // 0 = no melee
@@ -206,22 +213,22 @@ public static class ThingFactory
             'C' => new Monster(Monster.Slaughtaur),
             'H' => new Monster(Monster.Heresiarch),
             'd' => new Monster(Monster.Bishop),
-            'h' => new Pickup(PickupKind.Vial, Art.Vial, 0.35f),
-            'q' => new Pickup(PickupKind.Flask, Art.Flask, 0.4f),
-            'u' => new Pickup(PickupKind.Urn, Art.Urn, 0.45f),
-            'b' => new Pickup(PickupKind.BlueMana, Art.BlueMana, 0.4f),
-            'g' => new Pickup(PickupKind.GreenMana, Art.GreenMana, 0.4f),
-            'k' => new Pickup(PickupKind.SteelKey, Art.SteelKey, 0.4f),
-            'f' => new Pickup(PickupKind.FireKey, Art.FireKey, 0.4f),
-            'r' => new Pickup(PickupKind.Armor, Art.Armor, 0.5f),
-            'w' => new Pickup(PickupKind.Weapon2, Art.WeaponPiece2, 0.5f),
-            'x' => new Pickup(PickupKind.Weapon3, Art.WeaponPiece3, 0.5f),
-            't' => new Decor(Art.Torch, 0.5f, 0.75f, true, true),
-            'p' => new Decor(new[] { Art.Pillar }, 0.6f, 1.0f, true, false) { ReachCeiling = true },
-            'T' => new Decor(new[] { Art.Tree }, 1.0f, 1.3f, true, false),
+            'h' => new Pickup(PickupKind.Vial, 0.35f),
+            'q' => new Pickup(PickupKind.Flask, 0.4f),
+            'u' => new Pickup(PickupKind.Urn, 0.45f),
+            'b' => new Pickup(PickupKind.BlueMana, 0.4f),
+            'g' => new Pickup(PickupKind.GreenMana, 0.4f),
+            'k' => new Pickup(PickupKind.SteelKey, 0.4f),
+            'f' => new Pickup(PickupKind.FireKey, 0.4f),
+            'r' => new Pickup(PickupKind.Armor, 0.5f),
+            'w' => new Pickup(PickupKind.Weapon2, 0.5f),
+            'x' => new Pickup(PickupKind.Weapon3, 0.5f),
+            't' => new Decor('t', 0.5f, 0.75f, true, true),
+            'p' => new Decor('p', 0.6f, 1.0f, true, false) { ReachCeiling = true },
+            'T' => new Decor('T', 1.0f, 1.3f, true, false),
             '$' => new Chest(),
             '&' => new LoreStone(),
-            '%' => new Pickup(PickupKind.Relic, Art.Relics[0], 0.42f),
+            '%' => new Pickup(PickupKind.Relic, 0.42f),
             _ => null,
         };
         if (t == null) return null;

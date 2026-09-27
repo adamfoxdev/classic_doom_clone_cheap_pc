@@ -1,8 +1,17 @@
 # Hexen Sharp
 
-A small Hexen-style first-person dungeon crawler written in C#. It's built to run on cheap PCs: everything is
+A small Hexen-style first-person shooter written in C#, set on a derelict space station. The original
+dark-fantasy look is kept as an option (**Options → Visual style**). It's built to run on cheap PCs: everything is
 software-rendered into a 320×200 framebuffer, and all textures, sprites and sounds are generated in code.
 There are no asset files.
+
+![Title](docs/scifi_title.png)
+![Hab Ring](docs/scifi_start.png)
+![Hydroponics Bay](docs/scifi_hydroponics.png)
+![The Overmind](docs/scifi_overmind.png)
+
+<details>
+<summary>More screenshots, including the original fantasy style</summary>
 
 ![Great hall](docs/great_hall.png)
 ![Frozen Keep](docs/frozen_keep.png)
@@ -21,7 +30,16 @@ There are no asset files.
 ![Stairs](docs/stairs.png)
 ![Keep terrace](docs/terrace.png)
 
+</details>
+
 ## Features
+
+- **Two visual styles:** a **sci-fi** space station (the default) and the original **dark-fantasy** look.
+  Switch any time, even mid-game, from Options or with `artstyle scifi|fantasy` in the console; the choice is
+  saved. Each has its own textures, skies, monsters, items, first-person weapons, names and lore; the maps and
+  gameplay are identical. In sci-fi, the Fighter, Cleric and Mage become the Marine, Engineer and Psion; Ettins
+  become brute mechs, Afrits drones, Centaurs striders, Dark Bishops psi wraiths and the Heresiarch the Overmind;
+  mana becomes energy and plasma cells, keys become keycards, and portcullises become force fields.
 
 - **Two play styles**, chosen when you start a new game:
   - **Classic:** fight through the hub, solve its puzzles and slay the Heresiarch.
@@ -111,6 +129,10 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 
 ## Walkthrough (spoilers)
 
+Names here are the fantasy ones. In the sci-fi style: Winnowing Hall = Hab Ring, Frozen Keep = Cryo Labs,
+Darkmere Crypt = Hydroponics Bay, Chaos Arena = Combat Sim, Steel/Fire Key = blue/red keycard, lever = switch,
+portcullis = force field, Heresiarch = Overmind.
+
 1. In Winnowing Hall, grab the class weapon piece in the north-east room.
 2. Pull the lever on the great hall's south wall. The portcullis opens to the courtyard.
 3. Step on blue portal **1** to reach the Frozen Keep and grab its weapon piece (middle room).
@@ -183,7 +205,8 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   mouse wheel all work. Select a slot and press `Enter`, then press the new key (`Esc` cancels). `Backspace`
   clears a slot, `Left`/`Right` switch between slots, and **Reset to defaults** restores everything.
   Binding a key that's already in use moves it off the other action and tells you which.
-- **Mouse sensitivity**, **Invert mouse**, **Field of view** and **Show FPS**: change with `Left`/`Right` or `Enter`.
+- **Mouse sensitivity**, **Invert mouse**, **Field of view**, **Show FPS** and **Visual style** (sci-fi or fantasy):
+  change with `Left`/`Right` or `Enter`.
 - `Esc`, `Enter` and the arrow keys always work in menus, and `Esc` can't be bound, so a bad binding can
   never lock you out.
 
@@ -212,6 +235,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
 | `edit`, `playmap <name>` | open the level editor / play a saved custom map |
+| `artstyle <scifi\|fantasy>` | switch the visual style |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -244,7 +268,9 @@ dotnet run -c Release -- --shots shots    # renders scripted screenshots headles
 | `src/DevConsole.cs` | `~` console, tweakable settings, cheat codes |
 | `src/Entities.cs` | Things: monsters (and their stats), projectiles, pickups, decorations |
 | `src/Renderer.cs` | Software raycaster, sprites, HUD, automap, menus |
-| `src/Art.cs` | Procedural textures, sprites and first-person weapons |
+| `src/Art.cs` | Procedural textures, sprites and first-person weapons (fantasy style), style switching |
+| `src/SciFiArt.cs` | The sci-fi style: station textures, space skies, robots and aliens, gear and guns |
+| `src/Words.cs` | Names and messages in the current style (e.g. Heresiarch → Overmind) |
 | `src/Audio.cs` | Procedural sound effects |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer |
 | `src/Headless.cs` | `--selftest` and `--shots` |

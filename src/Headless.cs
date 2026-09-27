@@ -75,6 +75,9 @@ public static class Headless
         Console.WriteLine("Stairs and floors:");
         StairChecks(Check);
 
+        Console.WriteLine("Visual styles:");
+        StyleChecks(Check);
+
         Console.WriteLine("Audio synthesis:");
         bool audioOk = true;
         for (int i = 0; i < (int)Sfx.Count; i++) audioOk &= Audio.Synth((Sfx)i).Length > 1000;
@@ -1071,6 +1074,58 @@ public static class Headless
         check(eg.P.FloorZ == 1f && eg.P.X >= 8.5f, "and you can walk up the painted staircase");
     }
 
+    static void StyleChecks(Action<bool, string> check)
+    {
+        check(Art.Style == ArtStyle.SciFi, "sci-fi is the default look");
+        var g = new Game { FixedSeed = 1 };
+        g.NewGame(PClass.Fighter);
+        var r = new Renderer();
+        check(g.P.Def.Name == "Marine" && g.Level.Name == "Hab Ring" && g.P.Def.Weapons[0].Name == "Power Fist", "sci-fi names: Marine, Hab Ring, Power Fist");
+        var stone = g.Level.Things.OfType<LoreStone>().First();
+        string scifiLore = stone.Text;
+        var vial = g.Level.Things.OfType<Pickup>().First(p => p.Kind == PickupKind.Vial);
+        var sciStone = Art.Stone; var sciVial = vial.Sprite(0);
+        check(g.Level.Theme.Walls['#'] == Art.Stone, "the level uses the sci-fi wall texture");
+
+        // switch mid-game: art, names, themes and lore all follow
+        g.SetArtStyle(ArtStyle.Fantasy);
+        check(Art.Style == ArtStyle.Fantasy && Art.Stone != sciStone && vial.Sprite(0) != sciVial, "switching rebuilds the art, and existing items pick it up");
+        check(g.Level.Theme.Walls['#'] == Art.Stone, "the current level's walls switch too");
+        check(g.P.Def.Name == "Fighter" && g.Level.Name == "Winnowing Hall" && g.P.Def.Weapons[1].Name == "Timon's Axe", "fantasy names come back: Fighter, Winnowing Hall, Timon's Axe");
+        check(stone.Text != scifiLore && stone.Text.Length > 20, "lore text follows the style");
+        bool renders = true;
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            g.SetArtStyle(style);
+            foreach (var lv in g.Hub)
+            {
+                g.Level = lv;
+                var (ax, ay) = lv.ArrivalCell();
+                g.P.X = ax + 0.5f; g.P.Y = ay + 0.5f;
+                try { r.Render(g); } catch { renders = false; }
+            }
+        }
+        check(renders, "every map renders in both styles");
+        g.Level = g.Hub[0];
+
+        // the Options menu toggles it, and it's saved with your settings
+        g.Menu.Show(MenuPage.Options);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "Visual style");
+        check(g.Menu.Value(g.Menu.Cursor) == "SCI-FI", "Options shows the visual style");
+        g.Update(new Input { Right = true }, 1f / 35f);
+        check(Art.Style == ArtStyle.Fantasy, "Options > Visual style switches to fantasy");
+        string path = Path.Combine(Path.GetTempPath(), $"hexensharp-style-{Environment.ProcessId}.cfg");
+        g.ConfigPath = path;
+        g.SaveSettings();
+        g.SetArtStyle(ArtStyle.SciFi);
+        var g2 = new Game { ConfigPath = path };
+        g2.LoadSettings();
+        check(Art.Style == ArtStyle.Fantasy, "the chosen style is restored from settings");
+        File.Delete(path);
+        g2.Con.Execute("artstyle scifi");
+        check(Art.Style == ArtStyle.SciFi, "console 'artstyle scifi'");
+    }
+
     static void ChestChecks(Action<bool, string> check)
     {
         var g = new Game { FixedSeed = 99 };
@@ -1468,6 +1523,16 @@ public static class Headless
         Shot("40_editor_floors");
         g.Editor.Mode = Editor.Layer.Tiles;
         g.GoToTitle();
+
+        // the original fantasy look, kept as an option
+        g.SetArtStyle(ArtStyle.Fantasy);
+        g.FixedSeed = 1;
+        g.NewGame(PClass.Fighter);
+        Tick(default, 5);
+        Shot("41_fantasy_style");
+        g.GoToTitle();
+        Shot("42_fantasy_title");
+        g.SetArtStyle(ArtStyle.SciFi);
 
         // victory screen
         g.Mode = GameMode.Victory;

@@ -5,7 +5,10 @@ public enum GameStyle { Classic, Relaxed }
 /// <summary>A carved tablet you can read with Use. Found in both modes.</summary>
 public sealed class LoreStone : Thing
 {
-    public string Text = "The carving has worn away.";
+    /// <summary>Which map and which stone (in reading order) this is; the text follows the visual style.</summary>
+    public string Map;
+    public int Index = -1;
+    public string Text => Discovery.LoreText(Map, Index);
     public bool Read;
     public LoreStone() { Solid = true; Radius = 0.25f; SpriteW = 0.5f; SpriteH = 0.62f; }
     public override Tex Sprite(float time) => Read ? Art.LoreStoneRead : Art.LoreStone;
@@ -14,7 +17,55 @@ public sealed class LoreStone : Thing
 /// <summary>Relics, lore text and exploration tracking for the relaxed "discovery" mode.</summary>
 public static class Discovery
 {
-    public static readonly string[] RelicNames =
+    public static string[] RelicNames => Art.Style == ArtStyle.SciFi ? SciFiRelicNames : FantasyRelicNames;
+
+    static readonly string[] SciFiRelicNames =
+    {
+        "Xeno Idol", "Quantum Core", "Ancient Probe", "Star Chart Crystal", "Void Compass", "Captain's Log",
+        "Alien Skull", "Gravity Pearl", "Plasma Lily", "Signal Beacon", "Cryo Seed", "Founders' Badge",
+        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal",
+    };
+
+    public static string LoreText(string map, int index)
+    {
+        var table = Art.Style == ArtStyle.SciFi ? SciFiLore : Lore;
+        if (map != null && table.TryGetValue(map, out var texts) && index >= 0 && index < texts.Length) return texts[index];
+        return Art.Style == ArtStyle.SciFi ? "The data is corrupted beyond recovery." : "The carving has worn away.";
+    }
+
+    /// <summary>Station logs for the sci-fi style, in the same order as the fantasy lore.</summary>
+    public static readonly Dictionary<string, string[]> SciFiLore = new()
+    {
+        ["Winnowing Hall"] = new[]
+        {
+            "Hab Ring log: crew quarters were evacuated after the Overmind came online. Life support still hums for no one.",
+            "Engineering note: the gate switch in this hall drops the force field to the observation deck.",
+            "Maintenance crawlspace. Someone scratched the names of the whole construction crew into the plating.",
+            "Three teleporters were installed by the Overmind itself. None of them are on the station schematics.",
+        },
+        ["Frozen Keep"] = new[]
+        {
+            "Cryo Labs, day 212: the samples stay frozen. We do not. The heaters failed a week ago.",
+            "Security: the vault field switch is behind a red-keycard door. The red card was taken to Hydroponics.",
+            "The blue keycard was cut from the lab director's own badge. She never came back for it.",
+            "A heated nook behind a panel. Someone slept here, and taped a star map to the wall.",
+        },
+        ["Darkmere Crypt"] = new[]
+        {
+            "Hydroponics was meant to feed the station. The psi wraiths drift between the vats now, humming.",
+            "Two switches and two pressure pads: the vault door only trusts a patient technician.",
+            "Past the vault field: the red keycard, locked away by crew who feared what waits in the Cryo Labs.",
+            "Condensation has pooled in this forgotten service bay for years. It tastes of rust and coolant.",
+        },
+        ["Chaos Arena"] = new[]
+        {
+            "The combat simulator trained the station's marines. The spawn pads still remember every drill.",
+            "Step on the central pad to restart the simulation. Management accepts no responsibility.",
+            "Behind the scoreboard: a quiet room where the champions rested between rounds.",
+        },
+    };
+
+    static readonly string[] FantasyRelicNames =
     {
         "Chalice of Ages", "Crown of Winnowing", "Orb of Dusk", "Codex of Silence", "Serpent Idol", "Bell of the Keep",
         "Marsh Lantern", "Bishop's Mitre", "Star Map", "Ember Heart", "Frost Circlet", "Champion's Laurel",
@@ -99,8 +150,8 @@ public static class Discovery
 
     public static Pickup MakeRelic(float x, float y, Level lv, string name)
     {
-        int variant = Math.Abs(name.GetHashCode(StringComparison.Ordinal)) % Art.Relics.Length;
-        return new Pickup(PickupKind.Relic, Art.Relics[variant], 0.42f) { X = x, Y = y, Level = lv, Name = name };
+        int variant = name.Sum(ch => ch) % Art.Relics.Length;
+        return new Pickup(PickupKind.Relic, 0.42f, variant) { X = x, Y = y, Level = lv, Name = name };
     }
 
     /// <summary>Share of each map's walkable floor you've laid eyes on (0..1), across the whole hub.</summary>

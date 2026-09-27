@@ -511,7 +511,7 @@ public sealed class Editor
         {
             int pi = PaletteAt(inp.MouseX, inp.MouseY, Mode != Layer.Tiles ? LayerPalette.Length : Palette.Length);
             if (pi >= 0 && Mode != Layer.Tiles) { LayerIndex = pi; Say(LayerLabel(CurrentLayer)); return; }
-            if (pi >= 0) { BrushIndex = pi; Say(Current.Label); return; }
+            if (pi >= 0) { BrushIndex = pi; Say(Words.T(Current.Label)); return; }
         }
 
         // ---- painting
