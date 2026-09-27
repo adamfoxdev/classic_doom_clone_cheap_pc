@@ -104,6 +104,13 @@ public sealed class Player
     /// <summary>Camera lag when stepping up, so stairs feel smooth rather than jerky.</summary>
     public float StepLag;
     public float Z, VZ;                                   // height above the floor while jumping
+    /// <summary>Horizontal velocity, for Quake movement (classic movement goes straight where your keys say).</summary>
+    public float VX, VY;
+    /// <summary>A jump pressed just before landing still counts (Quake movement), and how long Jump has been held.</summary>
+    public float JumpBuffer, JumpHold;
+    /// <summary>Time not yet stepped by the fixed-rate Quake movement physics.</summary>
+    public float MoveClock;
+    public float HSpeed => MathF.Sqrt(VX * VX + VY * VY);
     public float SlideTime, SlideCd, SlideDX, SlideDY, SlideLow;
     public const float SlideLength = 0.55f, Height = 0.55f;
     /// <summary>Jetpack (Wings of Wrath in the fantasy style): fuel in seconds of hovering; it recharges on the ground.</summary>
@@ -426,6 +433,78 @@ public sealed class Game
         }
     }
 
+    /// <summary>Your full running speed, in map units a second.</summary>
+    public float RunSpeed => 3.6f * P.Def.Speed * Vars.Speed * Profile.SpeedMult;
+
+    const float JumpBufferTime = 0.15f, JetHoldTime = 0.12f;
+    /// <summary>Quake's stop speed and air-control cap, as fractions of your run speed (100 and 30 of its 320).</summary>
+    const float StopSpeed = 0.31f, AirCap = 0.094f;
+    const float MoveStep = 1f / 72f;
+
+    /// <summary>
+    /// Quake movement. On the ground, friction slows you and you accelerate toward where your keys point, topping out
+    /// at your run speed. In the air there's no friction, and acceleration only adds speed along your wish direction
+    /// up to a small cap: pushing straight ahead gains nothing, but strafing sideways while you turn keeps adding a
+    /// little. So strafe-jumping in a smooth arc builds speed, and jumping again the instant you land (bunny hopping)
+    /// skips the ground friction and keeps it. On the jetpack you steer directly, as in classic movement, so you can
+    /// set down on a narrow ledge.
+    /// Returns this frame's displacement.
+    /// </summary>
+    (float dx, float dy) QuakeMove(Player p, float move, float strafe, float angle0, float wishSpeed, float runSpeed, bool jumping, float dt)
+    {
+        float wx = 0, wy = 0;
+        void Wish(float angle)
+        {
+            float ca = MathF.Cos(angle), sa = MathF.Sin(angle);
+            float mx = ca * move - sa * strafe, my = sa * move + ca * strafe, len = MathF.Sqrt(mx * mx + my * my);
+            (wx, wy) = len > 0 ? (mx / len, my / len) : (0f, 0f);
+        }
+        Wish(p.Angle);
+        if (p.Flying)
+        {
+            // the jetpack steers exactly where you point, so you can set down on a narrow ledge
+            p.VX = wx * wishSpeed; p.VY = wy * wishSpeed;
+        }
+        else
+        {
+            // stepped at a fixed 72 Hz, as Quake's server was, each step steering by where you were looking at that
+            // moment (this frame's turn is spread across its steps, as if the mouse moved smoothly), so strafing builds
+            // speed the same at 35 frames a second as at 120
+            float carried = p.MoveClock, turn = p.Angle - angle0;
+            p.MoveClock = MathF.Min(p.MoveClock + dt, 0.25f);
+            for (int k = 1; p.MoveClock >= MoveStep; k++)
+            {
+                p.MoveClock -= MoveStep;
+                Wish(angle0 + turn * Math.Clamp((k * MoveStep - carried) / dt, 0f, 1f));
+                if (p.OnGround && !jumping)
+                {
+                    float sp = p.HSpeed;
+                    if (sp > 0)
+                    {
+                        float control = MathF.Max(sp, StopSpeed * runSpeed);
+                        float keep = MathF.Max(0, sp - control * Vars.Friction * MoveStep) / sp;
+                        p.VX *= keep; p.VY *= keep;
+                    }
+                    Accelerate(p, wx, wy, wishSpeed, wishSpeed, Vars.Accel, MoveStep);
+                }
+                else Accelerate(p, wx, wy, MathF.Min(wishSpeed, AirCap * runSpeed), wishSpeed, Vars.AirAccel, MoveStep);
+            }
+        }
+
+        float max = runSpeed * Vars.MaxHop, now = p.HSpeed;
+        if (now > max) { p.VX *= max / now; p.VY *= max / now; }
+        return (p.VX * dt, p.VY * dt);
+    }
+
+    /// <summary>Quake's accelerate: add speed along (wx, wy) until your speed in that direction reaches `cap`.</summary>
+    static void Accelerate(Player p, float wx, float wy, float cap, float wishSpeed, float accel, float dt)
+    {
+        float add = cap - (p.VX * wx + p.VY * wy);
+        if (add <= 0) return;
+        float a = MathF.Min(accel * wishSpeed * dt, add);
+        p.VX += a * wx; p.VY += a * wy;
+    }
+
     void UpdatePlayer(Input inp, float dt)
     {
         var p = P;
@@ -437,25 +516,32 @@ public sealed class Game
         if (Level.Flight) { UpdateFlight(inp, dt); return; }
 
         // look
+        float angle0 = p.Angle;
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
         p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), -70f, 70f);
 
         // move
-        float speed = 3.6f * p.Def.Speed * Vars.Speed * Profile.SpeedMult * (inp.Walk ? 0.5f : 1f);
+        float speed = RunSpeed * (inp.Walk ? 0.5f : 1f);
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
         float mx = (ca * inp.Move - sa * inp.Strafe), my = (sa * inp.Move + ca * inp.Strafe);
         float len = MathF.Sqrt(mx * mx + my * my);
         if (len > 1) { mx /= len; my /= len; }
-        float dx = mx * speed * dt, dy = my * speed * dt;
+        p.JumpHold = inp.JumpHeld ? p.JumpHold + dt : 0;
+        p.JumpBuffer = inp.Jump ? JumpBufferTime : MathF.Max(0, p.JumpBuffer - dt);
+        bool jump = (inp.Jump || (Vars.QuakeMove && p.JumpBuffer > 0)) && p.OnGround && p.SlideTime <= 0 && Vars.JumpPower > 0;
+        float dx, dy;
+        if (Vars.QuakeMove) (dx, dy) = QuakeMove(p, inp.Move, inp.Strafe, angle0, MathF.Min(1, len) * speed, RunSpeed, jump, dt);
+        else { dx = mx * speed * dt; dy = my * speed * dt; }
 
         // jumping (Space): simple ballistic hop, Hexen-style
-        if (inp.Jump && p.OnGround && p.SlideTime <= 0 && Vars.JumpPower > 0)
+        if (jump)
         {
+            p.JumpBuffer = 0;
             p.VZ = Vars.JumpPower;
             PlaySound(Sfx.Jump, 0.8f);
         }
         // jetpack: hold Jump in the air to fly. Keep holding to climb, hold Slide to sink, let go of both to hover.
-        if (!p.Flying && p.HasJetpack && !p.OnGround && inp.JumpHeld && p.VZ < 0.6f && (p.Fuel > 0.25f || Vars.InfiniteFuel))
+        if (!p.Flying && p.HasJetpack && !p.OnGround && inp.JumpHeld && p.JumpHold >= JetHoldTime && p.VZ < 0.6f && (p.Fuel > 0.25f || Vars.InfiniteFuel))
         {
             p.Flying = true; p.JetSfx = 0;
             PlaySound(Sfx.JetStart, 0.9f);
@@ -508,8 +594,15 @@ public sealed class Game
         }
         else
         {
-            if (!Blocked(p.X + dx, p.Y, p.Radius, null)) p.X += dx;
-            if (!Blocked(p.X, p.Y + dy, p.Radius, null)) p.Y += dy;
+            int steps = Math.Max(1, (int)MathF.Ceiling(MathF.Max(MathF.Abs(dx), MathF.Abs(dy)) / 0.2f));
+            float sx = dx / steps, sy = dy / steps;
+            for (int i = 0; i < steps; i++)
+            {
+                if (sx != 0 && !Blocked(p.X + sx, p.Y, p.Radius, null)) p.X += sx;
+                else if (sx != 0) { sx = 0; p.VX = 0; }
+                if (sy != 0 && !Blocked(p.X, p.Y + sy, p.Radius, null)) p.Y += sy;
+                else if (sy != 0) { sy = 0; p.VY = 0; }
+            }
         }
 
         // stairs and ledges: step up smoothly, fall off edges
@@ -763,7 +856,7 @@ public sealed class Game
     {
         var p = P;
         p.X = x; p.Y = y; p.Angle = angle;
-        p.FloorZ = Level.FloorUnder(x, y, p.Radius); p.Z = 0; p.VZ = 0; p.Flying = false;
+        p.FloorZ = Level.FloorUnder(x, y, p.Radius); p.Z = 0; p.VZ = 0; p.VX = p.VY = 0; p.Flying = false;
         p.StepLag = 0; p.SlideTime = 0; p.SlideLow = 0;
         p.TeleportFlash = 1;
     }
@@ -1215,7 +1308,7 @@ public sealed class Game
             if (dest == null) continue;
             Level = lv;
             P.X = dest.Value.x; P.Y = dest.Value.y;
-            P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0; P.Flying = false;
+            P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0; P.VX = P.VY = 0; P.Flying = false;
             P.PortalLock = true;
             P.TeleportFlash = 1;
             // drop any in-flight projectiles from the level we left
@@ -1884,7 +1977,7 @@ public sealed class Game
         {
             p.Health = 0;
             p.Dead = true;
-            p.Z = 0; p.VZ = 0; p.SlideTime = 0; p.SlideLow = 0;
+            p.Z = 0; p.VZ = 0; p.VX = p.VY = 0; p.SlideTime = 0; p.SlideLow = 0;
             Mode = GameMode.Dead;
             SaveProfile();
             PlaySound(Sfx.PlayerDeath, 1);
@@ -1926,7 +2019,7 @@ public sealed class Game
         foreach (var t in Level.Things) if (t is Projectile or Puff) t.Removed = true;
         Level = lv;
         P.X = x; P.Y = y;
-        P.FloorZ = lv.FloorUnder(x, y, P.Radius); P.Z = 0; P.VZ = 0;
+        P.FloorZ = lv.FloorUnder(x, y, P.Radius); P.Z = 0; P.VZ = 0; P.VX = P.VY = 0;
         P.PortalLock = true;
         P.TeleportFlash = 1;
         PlaySound(Sfx.Teleport, 1);

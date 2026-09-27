@@ -852,12 +852,25 @@ public sealed class Renderer
                 Text(19, y + 4, $"x{p.Blocks}", Col.Rgb(230, 220, 200));
             }
         }
+        DrawSpeed(g);
         switch (style)
         {
             case HudStyle.Full: DrawStatusBar(g, label); break;
             case HudStyle.Compact: DrawCompactHud(g, bottom); break;
             case HudStyle.Minimal: DrawMinimalHud(g, bottom); break;
         }
+    }
+
+    /// <summary>With Quake movement, how fast you're going against your run speed, while strafe jumping takes you past it.</summary>
+    void DrawSpeed(Game g)
+    {
+        var p = g.P;
+        if (!g.Vars.QuakeMove || g.Vars.Hud == HudStyle.Off || g.Level.Flight || p.Flying) return;
+        int pct = (int)MathF.Round(p.HSpeed / g.RunSpeed * 100);
+        if (pct < 110) return;
+        string s = $"SPEED {pct}%";
+        uint c = pct >= 200 ? Col.Rgb(255, 120, 60) : pct >= 150 ? Col.Rgb(255, 220, 90) : Col.Rgb(200, 230, 255);
+        CenterText(s, ViewH / 2 + 20, c);
     }
 
     /// <summary>The classic status bar along the bottom of the screen.</summary>

@@ -204,7 +204,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | Left click / `Ctrl` | Attack |
 | `E` | Use (doors, levers, chests, lore stones, secret walls); push a stone block; pry at rubble (above and below you too, in the Bedrock Depths) |
 | `Shift+E` | Pull a stone block toward you |
-| `Space` | Jump; hold in mid-air to fly with the jetpack |
+| `Space` | Jump (tap it as you land to bunny hop); hold in mid-air to fly with the jetpack |
 | `C` | Slide (while moving); hold while flying to sink |
 | `1` `2` `3` / mouse wheel | Select weapon |
 | `F` | Use a healing item (Quartz Flask, else Mystic Urn) |
@@ -216,6 +216,22 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `H` | Cycle the HUD style: full, compact, minimal, off |
 | `F12` | Save a screenshot |
 | `~` | Developer console |
+
+### Quake movement
+
+Movement has momentum, like Quake. On the ground you speed up to your run speed and slide briefly to a stop when you
+let go. In the air there's no friction, and pushing forward adds nothing, but **strafing while you turn** does:
+
+1. Run forward and jump.
+2. In the air, let go of forward, hold a strafe key (`A` or `D`) and turn the mouse the same way, smoothly, so you
+   curve round in an arc.
+3. Tap jump again the moment you land (a press just before you touch down counts too). Staying in the air skips
+   the ground friction, so the speed carries over and builds with every hop.
+
+A **SPEED** readout under your aim shows how fast you're going once you pass 110% of a run. It builds up to three
+times your run speed. Land and stop hopping, and friction brings you back to a run. The jetpack still steers
+directly, so you can set down on a narrow ledge; a quick tap of jump never lights it, only holding jump does.
+Switch to the old direct movement with **Options → Movement** or `quakemove 0`.
 
 ## Walkthrough (spoilers)
 
@@ -363,7 +379,8 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   clears a slot, `Left`/`Right` switch between slots, and **Reset to defaults** restores everything.
   Binding a key that's already in use moves it off the other action and tells you which.
 - **Mouse sensitivity**, **Invert mouse**, **Field of view**, **Show FPS**, **Visual style** (sci-fi or fantasy),
-  **Rendered art** (the Blender art pack over the sci-fi style), **HUD style** and **Crosshair**: change with `Left`/`Right` or `Enter`.
+  **Rendered art** (the Blender art pack over the sci-fi style), **HUD style**, **Crosshair** and **Movement** (Quake or
+  classic, see [Quake movement](#quake-movement)): change with `Left`/`Right` or `Enter`.
 - **HUD style** (also `H` in game, or `hud 0-3` in the console):
   - **Full**: the classic status bar along the bottom.
   - **Compact**: no status bar, so the view fills the screen. Health, armor and healing items sit in the bottom-left
@@ -412,7 +429,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
-`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off), `crosshair` (0 off, 1 dot, 2 cross, 3 circle).
+`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off), `crosshair` (0 off, 1 dot, 2 cross, 3 circle),
+`quakemove` (1 Quake movement, 0 classic) and its tuning: `accel`, `airaccel`, `friction`, `maxhop` (top speed as a multiple of your run speed).
 
 Hexen's cheat codes work when typed during play (or in the console):
 `satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys), `icarus` (jetpack),
