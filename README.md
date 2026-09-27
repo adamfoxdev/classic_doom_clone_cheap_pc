@@ -159,7 +159,8 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   climbing, and recharges whenever you're on the ground. Run dry in mid-air and you'll drop, and it won't
   relight until you let go of `Q` and press it again.
 - **Strafe-jumping practice** (**Practice** on the title menu): the Velocity Hangar, a timed course of platforms
-  over gaps that widen from 2 cells to 6. See [Quake movement](#quake-movement).
+  over gaps that widen from 2 cells to 6, with a leaderboard of the ten fastest runs for each class. See
+  [Quake movement](#quake-movement).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
 - **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
@@ -246,10 +247,15 @@ of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells:
 - A torch in each corner of every platform marks where the gaps are.
 - Fall in and the lift pad on the gap floor carries you back up to the last platform you reached.
 - The run is timed from the moment you set off; the clock sits in the top-right corner, with your best for that
-  class under it. Step into the exit at the far end to finish: it tells you your time, keeps your best (saved with
-  your profile) and puts you back at the start for another go.
+  class under it. Step into the exit at the far end to finish: it tells you your time and where it placed on the
+  leaderboard, and puts you back at the start for another go.
+- The **leaderboard** (on the title menu, and on the pause menu while you're on the course) keeps the ten fastest
+  runs for each class, since they run at different speeds: time, name and date, the best in gold and your latest
+  in green. `Left`/`Right` switch class. Runs go under your computer's user name; set another with `name <name>` in
+  the console, so people sharing a machine can tell their times apart. The board is saved with your profile.
 
 ![Strafe jumping over the Velocity Hangar's 5-wide gap](docs/velocity_hangar.png)
+![The practice course leaderboard](docs/leaderboard.png)
 
 ## Walkthrough (spoilers)
 
@@ -444,6 +450,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `renderedart [0\|1]` | use the Blender-rendered sci-fi art pack (off by default) |
 | `xp <amount>`, `skill <name>` | give yourself experience / spend a skill point |
 | `profile [reset]` | show your level, skills and totals, or start your progress over |
+| `name [name]` | show or set the name your practice course times go on the leaderboard under |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,

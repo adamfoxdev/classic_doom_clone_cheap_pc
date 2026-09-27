@@ -32,8 +32,38 @@ public sealed class Profile
     public int TotalXp { get; set; }
     public int TotalKills { get; set; }
     public int Wins { get; set; }
-    /// <summary>Best strafe-jumping practice course times in seconds, by class.</summary>
+    /// <summary>Best practice course times by class, from before the leaderboard; folded into CourseRuns when read.</summary>
     public Dictionary<string, float> CourseBest { get; set; } = new();
+    /// <summary>The practice course leaderboard: the fastest runs by class, quickest first.</summary>
+    public Dictionary<string, List<CourseRun>> CourseRuns { get; set; } = new();
+    public const int BoardSize = 10;
+
+    /// <summary>A class's leaderboard, quickest first (a best time saved before the leaderboard existed joins it).</summary>
+    public List<CourseRun> Board(string cls)
+    {
+        if (!CourseRuns.TryGetValue(cls, out var runs)) CourseRuns[cls] = runs = new List<CourseRun>();
+        if (CourseBest.Remove(cls, out float old) && old > 0 && !runs.Any(r => r.Time == old))
+        {
+            runs.Add(new CourseRun { Time = old, Name = "-" });
+            runs.Sort((a, b) => a.Time.CompareTo(b.Time));
+            if (runs.Count > BoardSize) runs.RemoveRange(BoardSize, runs.Count - BoardSize);
+        }
+        return runs;
+    }
+
+    /// <summary>Your best time on the course as `cls`, or 0 if you haven't finished it.</summary>
+    public float CourseBestTime(string cls) => Board(cls) is { Count: > 0 } b ? b[0].Time : 0f;
+
+    /// <summary>Puts a finished run on its class's leaderboard: its place (1 is the best), or 0 if it's outside the top ten.</summary>
+    public int AddCourseRun(string cls, float time, string name, DateTime when)
+    {
+        var runs = Board(cls);
+        int place = runs.Count(r => r.Time <= time);
+        if (place >= BoardSize) return 0;
+        runs.Insert(place, new CourseRun { Time = time, Name = name, When = when });
+        if (runs.Count > BoardSize) runs.RemoveAt(runs.Count - 1);
+        return place + 1;
+    }
 
     /// <summary>Experience needed to go from `level` to the next: 100, 282, 519, 800...</summary>
     public static int XpToNext(int level) => (int)(100 * Math.Pow(level, 1.5));
@@ -145,4 +175,12 @@ public sealed class Profile
         }
         catch (Exception) { /* progress is kept in memory; the next save tries again */ }
     }
+}
+
+/// <summary>One finished run of the practice course.</summary>
+public sealed class CourseRun
+{
+    public float Time { get; set; }
+    public string Name { get; set; } = "";
+    public DateTime When { get; set; }
 }
