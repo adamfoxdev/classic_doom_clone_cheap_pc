@@ -62,7 +62,7 @@ public sealed class MenuSystem
     {
         MenuPage.Main => new[] { "New game", "Practice", "Leaderboard", "Character", "Options", "Quit" },
         MenuPage.Pause => _g.Practicing
-            ? new[] { "Resume", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
+            ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Courses => Courses.All.Select(c => c.Name).Append("Back").ToArray(),
@@ -234,6 +234,8 @@ public sealed class MenuSystem
                 switch (items[Cursor])
                 {
                     case "Resume": Close(); _g.Paused = false; break;
+                    case "Watch demo": Close(); _g.Paused = false; _g.StartDemo(); break;
+                    case "Stop demo": Close(); _g.Paused = false; _g.EndDemo(); break;
                     case "Character": Show(MenuPage.Character); break;
                     case "Leaderboard": Show(MenuPage.Leaderboard); break;
                     case "Options": Show(MenuPage.Options); break;

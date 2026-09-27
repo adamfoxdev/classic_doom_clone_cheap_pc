@@ -102,6 +102,8 @@ public static class Headless
         CourseChecks(Check);
         Console.WriteLine("Medals:");
         MedalChecks(Check);
+        Console.WriteLine("Practice demo:");
+        DemoChecks(Check);
         Console.WriteLine("Strafe helper:");
         StrafeHelperChecks(Check);
         Console.WriteLine("HUD styles:");
@@ -1086,7 +1088,7 @@ public static class Headless
 
         // the menus fit: every Options item and the practice pause menu sit above their footers
         int opts = g.Menu.Items(MenuPage.Options).Length, pause = g.Menu.Items(MenuPage.Pause).Length;
-        check(g.Practicing && pause == 7 && Renderer.PauseTop + (pause - 1) * Renderer.PauseRow + 9 < Renderer.PauseFooter,
+        check(g.Practicing && pause == 8 && Renderer.PauseTop + (pause - 1) * Renderer.PauseRow + 9 < Renderer.PauseFooter,
               "the pause menu's items all fit above its footer");
         check(Renderer.OptionsTop + (opts - 1) * Renderer.OptionsRow + 9 < Renderer.OptionsFooter && Renderer.OptionsFooter + 8 <= Renderer.H,
               $"so do all {opts} Options items");
@@ -1216,6 +1218,137 @@ public static class Headless
         g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
         g.Menu.Update(new Input { Pause = true }, 1f / 35f);
         check(g.Menu.Page == MenuPage.Main, "Esc from the course list goes back to the title");
+    }
+
+    static void DemoChecks(Action<bool, string> check)
+    {
+        // it finishes every timed course as every class, never falling in, at silver pace or better
+        bool finished = true, clean = true, fast = true;
+        var times = new List<string>();
+        foreach (var course in Courses.Timed)
+            foreach (var cls in Enum.GetValues<PClass>())
+            {
+                var g = new Game { FixedSeed = 1 };
+                g.StartPractice(cls, course);
+                g.StartDemo();
+                for (int f = 0; f < 60 * 60 && g.Demo; f++)
+                {
+                    g.Update(default, 1f / 60f);
+                    if (course.Platforms != null && g.P.OnGround && g.P.FloorZ == 0) clean = false;
+                }
+                finished &= !g.Demo && g.DemoTime > 0;
+                var medal = course.MedalFor(cls, g.DemoTime);
+                fast &= medal >= Medal.Silver;
+                times.Add($"{course.Id[0]}{cls.ToString()[0]} {g.DemoTime:0.0} {Medals.Name(medal)[0]}");
+            }
+        check(finished, "the demo finishes every timed course as every class");
+        check(clean, "without once falling into a gap");
+        check(fast, $"at silver pace or better: {string.Join(", ", times)}");
+
+        // the same run however fast the frames come: it plays on a fixed 72-tick clock
+        float At(float fps)
+        {
+            var g = new Game { FixedSeed = 1 };
+            g.StartPractice(PClass.Cleric, Courses.Hangar);
+            g.StartDemo();
+            for (int f = 0; f < fps * 60 && g.Demo; f++) g.Update(default, 1f / fps);
+            return g.DemoTime;
+        }
+        float t35 = At(35), t144 = At(144);
+        check(t35 > 0 && MathF.Abs(t35 - t144) < 0.001f, $"it plays exactly the same at 35 and 144 frames a second ({t35:0.000}s, {t144:0.000}s)");
+
+        var d = new Game { FixedSeed = 1 };
+        void Tick(Input i, int n = 1) { for (int k = 0; k < n; k++) d.Update(i, 1f / 60f); }
+        d.StartPractice(PClass.Fighter, Courses.Hangar);
+        check(d.Menu.Items(MenuPage.Pause).Contains("Watch demo"), "the practice pause menu has Watch demo");
+        d.Paused = true; d.Menu.Show(MenuPage.Pause);
+        d.Menu.Cursor = Array.IndexOf(d.Menu.Items(MenuPage.Pause), "Watch demo");
+        d.Menu.Update(new Input { Confirm = true }, 1f / 60f);
+        check(d.Demo && !d.Paused && d.Pilot != null, "which starts it");
+
+        // it shows what it's doing, and the strafe helper lights the keys it holds
+        var captions = new HashSet<string>();
+        bool keysLit = false;
+        for (int f = 0; f < 60 * 60 && d.Demo; f++)
+        {
+            Tick(default);
+            if (d.Pilot != null) captions.Add(d.Pilot.Step);
+            keysLit |= d.StrafeAdvice() is { Air: true, HeldOk: true };
+        }
+        check(captions.IsSupersetOf(new[] { "RUN", "JUMP", "STRAFE", "SWITCH" }) && captions.Overlaps(new[] { "GO", "LINE UP", "WIND UP" }), $"it names each step as it goes ({string.Join(", ", captions)})");
+        check(keysLit, "and the strafe helper lights the keys it's holding");
+
+        // slower: 2 for half speed, 3 for a quarter
+        d.Con.Execute("demo");
+        float x0 = d.P.X;
+        Tick(default, 60);
+        float full = d.P.X - x0;
+        d.Con.Execute("demo");
+        Tick(new Input { Slot = 3 });
+        x0 = d.P.X;
+        Tick(default, 60);
+        float quarter = d.P.X - x0;
+        check(d.PracticeSpeed == 0.25f && quarter < full * 0.4f && quarter > 0, $"3 plays it at a quarter speed ({quarter:0.00} units a second against {full:0.00})");
+        Tick(new Input { Slot = 1 });
+
+        // step by step: E, then it stops before each new step until Enter
+        d.Con.Execute("demo");
+        Tick(new Input { Use = true });
+        check(d.DemoSteps, "E turns on step by step");
+        int stops = 0;
+        var seen = new List<string>();
+        for (int f = 0; f < 60 * 20 && d.Demo && stops < 6; f++)
+        {
+            Tick(default);
+            if (d.DemoPaused)
+            {
+                stops++;
+                seen.Add(d.Pilot.Step);
+                float px = d.P.X;
+                Tick(default, 30);
+                check(stops > 1 || (d.DemoPaused && d.P.X == px), "on a step it waits, frozen");
+                Tick(new Input { Confirm = true });
+            }
+        }
+        check(stops == 6 && seen.Distinct().Count() > 2, $"and Enter goes on to the next ({string.Join(" > ", seen)})");
+
+        // moving takes over, back at the start line
+        Tick(new Input { Move = 1 });
+        check(!d.Demo && MathF.Abs(d.P.X - d.Level.StartX) < 0.01f && d.Messages.Any(m => m.text.StartsWith("Your turn")), "moving takes over, from the start line");
+
+        // a finished demo: nothing on the leaderboard or saved as your ghost, but you race its ghost next
+        d.Con.Execute("demo");
+        d.PracticeSpeed = 1;
+        for (int f = 0; f < 60 * 60 && d.Demo; f++) Tick(default);
+        check(!d.Demo && d.DemoTrack != null && d.Profile.Board("Fighter").Count == 0 && !d.Profile.Ghosts.ContainsKey("Fighter"),
+              "a finished demo doesn't go on the leaderboard or become your saved ghost");
+        check(d.Ghost != null && d.Ghost.Track == d.DemoTrack && d.Messages.Any(m => m.text.Contains("race its ghost")), "but you race its ghost on your next go");
+
+        // your own slow-motion runs don't count
+        Tick(new Input { Slot = 2 });
+        Tick(new Input { Move = 1 }, 40);
+        d.Level.CheckpointsReached.UnionWith(Enumerable.Range(0, d.Level.Checkpoints.Count));
+        var exit = d.Level.FindMark('E').Value;
+        d.P.X = exit.x - 1; d.P.Y = exit.y; d.P.FloorZ = Maps.CoursePlatforms[^1].floor; d.P.Angle = 0;
+        for (int f = 0; f < 60 && d.RunStarted; f++) Tick(new Input { Move = 1 });
+        check(!d.RunStarted && d.Profile.Board("Fighter").Count == 0 && d.Messages.Any(m => m.text.Contains("at 50% speed")), "your own runs in slow motion don't count");
+        Tick(new Input { Slot = 1 });
+        check(d.PracticeSpeed == 1, "and 1 is back to full speed");
+
+        // stopping from the pause menu
+        d.Con.Execute("demo");
+        d.Paused = true; d.Menu.Show(MenuPage.Pause);
+        d.Menu.Cursor = Array.IndexOf(d.Menu.Items(MenuPage.Pause), "Stop demo");
+        d.Menu.Update(new Input { Confirm = true }, 1f / 60f);
+        check(!d.Demo, "Stop demo on the pause menu ends it");
+
+        // Free Roam: it just strafes round, getting faster
+        var fr = new Game { FixedSeed = 1 };
+        fr.StartPractice(PClass.Fighter, Courses.FreeRoam);
+        fr.StartDemo();
+        float top = 0;
+        for (int f = 0; f < 60 * 20; f++) { fr.Update(default, 1f / 60f); top = MathF.Max(top, fr.P.HSpeed / fr.RunSpeed); }
+        check(fr.Demo && top > 2f, $"in Free Roam it strafes round the field, up to {top * 100:0}%");
     }
 
     static void MedalChecks(Action<bool, string> check)
@@ -3525,6 +3658,24 @@ public static class Headless
         g.Paused = true; g.Menu.Show(MenuPage.Pause);
         Shot("87_practice_pause");
         g.Menu.Close(); g.Paused = false; g.Vars.Freeze = false;
+
+        // the demo: strafing across the first gap, then stopped at a step, at half speed
+        g.Profile.Ghosts.Remove("Fighter");
+        g.StartPractice(PClass.Fighter);
+        g.StartDemo();
+        for (int f = 0; f < 35 * 6 && g.Demo && g.Pilot?.Step != "STRAFE"; f++) Tick(default);
+        Tick(default, 8);
+        g.Messages.Clear();
+        Shot("94_demo");
+        g.StartPractice(PClass.Fighter);
+        g.StartDemo();
+        Tick(new Input { Slot = 2 });
+        Tick(new Input { Use = true });
+        for (int f = 0; f < 35 * 20 && g.Demo && !(g.DemoPaused && g.Pilot?.Step == "SWITCH"); f++)
+            Tick(g.DemoPaused ? new Input { Confirm = true } : default);
+        g.Messages.Clear();
+        Shot("95_demo_step");
+        g.EndDemo();
         g.GoToTitle();
         g.Vars.Freeze = false;
 

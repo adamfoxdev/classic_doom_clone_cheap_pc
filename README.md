@@ -159,7 +159,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   climbing, and recharges whenever you're on the ground. Run dry in mid-air and you'll drop, and it won't
   relight until you let go of `Q` and press it again.
 - **Strafe-jumping practice** (**Practice** on the title menu): three timed courses (the Velocity Hangar, Descent
-  and the Circuit), each with a leaderboard and a ghost of your best run, and Free Roam, an empty field to move
+  and the Circuit), each with a leaderboard, medals, a ghost of your best run and a demo run to watch, and Free Roam, an empty field to move
   around in. See [Quake movement](#quake-movement).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
@@ -252,12 +252,11 @@ On the timed courses:
 - **Velocity Hangar speeds:** its first gap takes a plain running jump. The rest need speed, and each platform tells you how much for the
   next gap, worked out from your class's run speed. As the Marine it's about 160%, 205% and 205% (the last
   platform sits half a unit lower, which buys a little hang time); the slower Engineer and Psion need more. Descent's
-  platforms tell you the same. The rest need speed, and each platform tells you how much for the
-  next gap, worked out from your class's run speed. As the Marine it's about 160%, 205% and 205% (the last
-  platform sits half a unit lower, which buys a little hang time); the slower Engineer and Psion need more.
+  platforms tell you the same.
 - A torch in each corner of every platform marks where the gaps are.
 - Fall in and the lift pad on the gap floor carries you back up to the last platform you reached (on the practice
-  courses that's always the newest one, even when it's lower, as on Descent).
+  courses that's always the newest one, even when it's lower, as on Descent). Only standing on the pad itself
+  lifts you, so clipping a platform's lip on the way down doesn't.
 - The exit only finishes a run that's been through every checkpoint, so you can't cut the Circuit short.
 - The run is timed from the moment you set off; the clock sits in the top-right corner, with your best for that
   class under it. Step into the exit at the far end to finish: it tells you your time and where it placed on the
@@ -302,7 +301,32 @@ On the timed courses:
   It's on for the practice course by default. **Options → Strafe helper** (or `strafehelp 0|1|2`) switches between
   off, the practice course only, and everywhere.
 
+- **Watch the demo** (**Watch demo** on the practice pause menu, or `demo` in the console) to see the technique
+  done well. A demo pilot plays the course while you watch, with the strafe helper lighting the keys it holds and
+  a caption naming each step:
+  - **RUN:** build a running start.
+  - **JUMP:** leave the ground at full run.
+  - **STRAFE / SWITCH:** hold A or D and turn the same way, then switch sides on the next hop to curve back onto
+    the line.
+  - **LINE UP / GO:** zig-zag down the platform to build speed, then hop straight across once the jump will clear.
+  - **WIND UP:** on a short platform, circle-strafe to build speed for the next gap.
+
+  While it plays:
+  - **Speed:** `1`, `2` and `3` play it at full, half and quarter speed. It runs on its own fixed clock, so it plays
+    the same run at any frame rate.
+  - **Step by step:** `E` pauses it at the start of each new step with the caption up; `Enter` goes on to the next.
+    `E` again goes back to playing through.
+  - **Take over:** move, look or fire and it hands you the controls where it is.
+  - **Race it:** when it finishes it tells you its time and puts you back at the start, with the demo as your
+    ghost for the next run. Demo runs never go on the leaderboard or replace your saved ghost.
+  - **Its times:** it makes silver or better as every class on every course, e.g. 12.2 s on the Velocity Hangar,
+    12.6 s on Descent and 12.1 s on the Circuit as the Marine.
+- **Slow motion for yourself:** `1`, `2` and `3` work on your own runs too. At half or quarter speed you can practise
+  the timing, but slow runs don't count: no leaderboard, no medals, no ghost.
+
 ![Racing the ghost of your best run](docs/practice_ghost.png)
+![The demo strafing across the first gap](docs/practice_demo.png)
+![Step by step at half speed: waiting for Enter](docs/practice_demo_step.png)
 ![The strafe helper: hold D, keep turning right](docs/strafe_helper.png)
 ![Strafe jumping over the Velocity Hangar's 5-wide gap](docs/velocity_hangar.png)
 ![The practice courses](docs/practice_courses.png)
@@ -505,6 +529,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `xp <amount>`, `skill <name>` | give yourself experience / spend a skill point |
 | `profile [reset]` | show your level, skills and totals, or start your progress over |
 | `name [name]` | show or set the name your practice course times go on the leaderboard under |
+| `demo` | on a practice course, start the demo run from the beginning |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
