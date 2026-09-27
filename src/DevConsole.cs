@@ -147,6 +147,21 @@ public sealed class DevConsole
             _g.NewGame(_g.P?.Class ?? PClass.Fighter);
             Print($"new {style.ToLowerInvariant()} game");
         });
+        Add("edit", "", "open the level editor", _ => { _g.OpenEditor(); Open = false; });
+        Add("playmap", "<name>", "play a saved custom map", a =>
+        {
+            if (a.Length < 2 || _g.MapsDir == null) { Print("usage: playmap <name>  (maps are saved from the editor)"); return; }
+            string path = Path.Combine(_g.MapsDir, Editor.FileName(string.Join(' ', a.Skip(1))));
+            if (!File.Exists(path)) { Print($"no map file {Path.GetFileName(path)}"); return; }
+            try
+            {
+                var doc = MapDoc.Parse(File.ReadAllText(path));
+                if (!doc.Cells.Contains('@')) { Print("that map has no player start"); return; }
+                _g.StartTest(doc.ToDef(), _g.P?.Class ?? PClass.Fighter);
+                Open = false;
+            }
+            catch (Exception e) { Print("can't load map: " + e.Message); }
+        });
         Add("restart", "", "restart with the current class", _ =>
         {
             _g.NewGame(_g.P?.Class ?? PClass.Fighter);

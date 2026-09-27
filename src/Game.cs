@@ -1,7 +1,7 @@
 namespace HexenSharp;
 
 public enum PClass { Fighter, Cleric, Mage }
-public enum GameMode { Title, ClassSelect, Playing, Dead, Victory }
+public enum GameMode { Title, ClassSelect, Playing, Dead, Victory, Editor }
 
 /// <summary>One frame of player input. Held controls are continuous; the rest are "pressed this frame".</summary>
 public struct Input
@@ -11,6 +11,7 @@ public struct Input
     public bool Fire, Walk;               // held
     public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
+    public float MouseX, MouseY;          // mouse position in framebuffer pixels (-1 when unknown)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
     public bool ConsoleToggle, Backspace, Tab, PageUp, PageDown, Jump, Slide;
@@ -124,6 +125,7 @@ public sealed class Game
     {
         Con = new DevConsole(this);
         Menu = new MenuSystem(this);
+        Editor = new Editor(this);
         Menu.Show(MenuPage.Main);
     }
 
@@ -137,8 +139,42 @@ public sealed class Game
         if (ConfigPath != null) Settings.Load(this, ConfigPath);
     }
 
+    /// <summary>Raw key state (the editor reads keys directly rather than through bindings).</summary>
+    public IKeySource Keys;
+    /// <summary>Folder for custom maps; null means the editor can't save.</summary>
+    public string MapsDir;
+    public readonly Editor Editor;
+    /// <summary>Where new games get their maps: the built-in hub, or a single map being play-tested.</summary>
+    public Func<Level[]> HubSource = Maps.BuildHub;
+    public bool TestingMap;
+
+    public void OpenEditor()
+    {
+        Menu.Close();
+        Paused = false;
+        Mode = GameMode.Editor;
+    }
+
+    /// <summary>Plays a single custom map; Esc > Back to editor (or winning) returns to the editor.</summary>
+    public void StartTest(MapDef map, PClass cls)
+    {
+        HubSource = () => new[] { map.Build() };
+        TestingMap = true;
+        NewGame(cls);
+        Say($"Play-testing '{map.Name}'. Esc > Back to editor to return.");
+    }
+
+    public void ReturnToEditor()
+    {
+        TestingMap = false;
+        HubSource = Maps.BuildHub;
+        ReadingLore = null;
+        OpenEditor();
+    }
+
     public void GoToTitle()
     {
+        if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
         Mode = GameMode.Title;
         Paused = false;
         Menu.Close();
@@ -173,7 +209,7 @@ public sealed class Game
 
     public void NewGame(PClass cls)
     {
-        Hub = Maps.BuildHub();
+        Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
         ChestsTotal = 0;
         var names = Discovery.RelicNames.OrderBy(_ => _loot.Next()).ToList();
@@ -213,7 +249,7 @@ public sealed class Game
         {
             Say($"Relaxed mode: the creatures here are peaceful. Find the {RelicsTotal} relics to awaken the exit.");
         }
-        else Say($"You are the {P.Def.Name}. Find a way through the hub.");
+        else if (!TestingMap) Say($"You are the {P.Def.Name}. Find a way through the hub.");
     }
 
     static Thing Place(Thing t, Thing at, Level lv)
@@ -270,7 +306,10 @@ public sealed class Game
                 if (inp.Pause) GoToTitle();
                 return;
             case GameMode.Victory:
-                if (inp.Confirm) GoToTitle();
+                if (inp.Confirm) { if (TestingMap) ReturnToEditor(); else GoToTitle(); }
+                return;
+            case GameMode.Editor:
+                Editor.Update(inp, dt);
                 return;
         }
 
