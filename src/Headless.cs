@@ -138,7 +138,17 @@ public static class Headless
         var urn = lv.Things.OfType<Pickup>().First(p => p.Kind == PickupKind.Urn);
         check(walk[(int)urn.Y * lv.W + (int)urn.X] && lv.Cells[Array.IndexOf(lv.Cells, 'P')] == 'P', "the vault at the foot of the tower sits behind a gate");
         check(lv.Things.Any(t => t is Pickup { Kind: PickupKind.Jetpack } && walk[(int)t.Y * lv.W + (int)t.X]), "a spare jetpack waits by the arrival portal");
-        check(hub[0].FindMark('4') != null && lv.FindMark('4') != null, "portal 4 links Winnowing Hall and the Windspire");
+        var keep = hub[1];
+        var k4 = keep.FindMark('4');
+        check(k4 != null && lv.FindMark('4') != null && hub[0].FindMark('4') == null, "portal 4 links the Frozen Keep's vault and the Windspire");
+        int keepGate = Array.IndexOf(keep.Cells, 'P'), k4i = (int)k4.Value.y * keep.W + (int)k4.Value.x;
+        var (kx, ky) = keep.ArrivalCell();
+        check(!keep.Reachable(kx, ky, new HashSet<int> { keepGate })[k4i] && keep.Reachable(kx, ky)[k4i], "the Windspire portal sits behind the Keep's vault gate");
+        var keyMaps = hub.Where(l => l.Things.Any(t => t is Pickup { Kind: PickupKind.SteelKey })).ToList();
+        check(keyMaps.Count == 1 && keyMaps[0] == lv, "the Steel Key is kept in the Windspire, and nowhere else");
+        var steelKey = lv.Things.OfType<Pickup>().First(t => t.Kind == PickupKind.SteelKey);
+        int ski = (int)steelKey.Y * lv.W + (int)steelKey.X;
+        check(!lv.Reachable(ax, ay, new HashSet<int> { Array.IndexOf(lv.Cells, 'P') }, Level.Move.Fly)[ski], "the Steel Key is locked in the vault until the beacon lever is pulled");
         check(Level.HeightFromGlyph('k', 1) == 10f && Level.HeightFromGlyph('a', 1) == 5f && Level.GlyphFromHeight(10f) == 'k' && Level.GlyphFromHeight(3f) == '6'
               && Level.FloorFromGlyph('a') == 2.5f && Level.FloorFromGlyph('y') == 8.5f && Level.FloorFromGlyph('9') == 2.25f,
               "tall glyphs: ceilings 'a'-'k' = 5-10, floors 'a'-'z' = 2.5-8.75");
@@ -205,6 +215,8 @@ public static class Headless
         check(p.FloorZ == 0f && p.OnGround && p.Health == 100, "stepping off the summit drops you safely to the ground");
         WalkTo(10.5f, 13.5f); WalkTo(9.9f, 16.5f); WalkTo(13.5f, 18.5f); WalkTo(15.5f, 18.5f); WalkTo(16.5f, 17.5f);
         check(p.Urns == 1, "the vault's Nano canister is yours");
+        WalkTo(18.5f, 18.5f);
+        check(p.SteelKey, "and so is the blue keycard");
     }
 
     static void VerticalAimChecks(Action<bool, string> check)
@@ -396,8 +408,9 @@ public static class Headless
 
         // pickups
         g.NewGame(PClass.Mage);
-        var key = g.Hub[1].Things.OfType<Pickup>().First(p => p.Kind == PickupKind.SteelKey);
-        g.Level = g.Hub[1]; g.P.X = key.X; g.P.Y = key.Y;
+        var spire = g.Hub.First(l => l.RawName == "Windspire");
+        var key = spire.Things.OfType<Pickup>().First(p => p.Kind == PickupKind.SteelKey);
+        g.Level = spire; g.P.X = key.X; g.P.Y = key.Y;
         Tick(default);
         check(g.P.SteelKey, "steel key picked up");
 
@@ -501,6 +514,20 @@ public static class Headless
         g.P.X = fx + 0.5f; g.P.Y = fy - 0.6f; g.P.Angle = MathF.PI / 2;
         Tick(new Input { Use = true }); Tick(default, 35);
         check(g.Level.DoorOpen[fire] >= 1f, "Fire Key opens the fire door");
+
+        // the east room's lever raises the vault gate; portal 4 inside leads up to the Windspire and back
+        var keepLv = g.Level;
+        keepLv.Things.RemoveAll(t => t is Monster);
+        int kgate = Array.IndexOf(keepLv.Cells, 'P');
+        g.P.X = 30.5f; g.P.Y = 9.5f; g.P.Angle = 0;
+        Tick(new Input { Use = true }); Tick(default, 35 * 2);
+        check(keepLv.LeverPulled && keepLv.DoorOpen[kgate] >= 1f, "the Keep's lever raises the vault gate");
+        var p4 = keepLv.FindMark('4').Value;
+        g.P.X = p4.x; g.P.Y = p4.y; g.P.PortalLock = false; Tick(default);
+        check(g.Level.RawName == "Windspire", "portal 4 in the Keep's vault leads to the Windspire");
+        g.P.X += 1.2f; Tick(default);
+        g.P.X -= 1.2f; Tick(default);
+        check(g.Level == keepLv, "and brings you back to the vault");
 
         // portal 3 in the courtyard reaches the arena
         g.Warp(0);

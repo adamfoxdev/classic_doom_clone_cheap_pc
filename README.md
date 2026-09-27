@@ -63,8 +63,8 @@ There are no asset files.
   | Cleric | Mace of Contrition | Serpent Staff | Firestorm |
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
-- **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt* and the optional
-  *Chaos Arena* and *Windspire*. Each map keeps its state (dead monsters, opened doors, pulled levers) when you leave and come back.
+- **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt*, the *Windspire* and
+  the optional *Chaos Arena*. Each map keeps its state (dead monsters, opened doors, pulled levers) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
@@ -81,12 +81,12 @@ There are no asset files.
   screen tallies how many you opened.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
-- **The Windspire** (the **Comms Spire** in sci-fi): an optional vertical level through portal **4** in
-  Winnowing Hall's north-east room. It's an open-topped tower ten units tall with eight ledges and pillars
+- **The Windspire** (the **Comms Spire** in sci-fi): a vertical level on the main route, through portal **4** in
+  the Frozen Keep's vault. It's an open-topped tower ten units tall with eight ledges and pillars
   spiralling up its walls, each at least a unit higher than the last, so none can be walked or jumped onto. You
   have to fly ledge to ledge with the jetpack (a spare waits beside the arrival portal), resting on each to
   refuel, while Afrits and a Dark Bishop harry you. At the top, 8.5 units up, the beacon lever opens the vault
-  at the foot of the tower. A secret wall off a high ledge hides a nook that only a flyer can reach.
+  at the foot of the tower, which holds the **Steel Key** you need to reach the Heresiarch. A secret wall off a high ledge hides a nook that only a flyer can reach.
 - **Vertical aiming.** Shots climb or dive to meet a monster above or below you, or follow your view when you
   look well up or down or fire from the air. Monsters aim their missiles up at you when you're on a ledge or
   flying.
@@ -164,19 +164,26 @@ portcullis = force field, Heresiarch = Overmind, relic = artifact, lore stone = 
 4. Take portal **2** (the Keep's west room) to Darkmere Crypt. Pull *both* levers (north-east and south-west rooms)
    and push the two stone blocks in the south-east room onto its two pressure plates to raise the gate to the
    **Fire Key**. (Push each block north twice, then out to the plate on its side.)
-5. Back in the Keep, open the fire door, pull the lever on the east wall, and take the **Steel Key** from the vault.
-6. Return to Winnowing Hall and open the steel door off the courtyard. Kill the Heresiarch, then step on the red
-   exit rune.
+5. Back in the Keep, open the fire door and pull the lever on the east wall. The vault gate rises.
+6. Step on portal **4** in the vault to reach the Windspire. Bring the jetpack from Winnowing Hall's start room;
+   there's a spare by the arrival portal too. Go through the opening into the tower and fly clockwise from the
+   lowest ledge:
+   - south-east ledge (1.5)
+   - east pillar (2.5)
+   - north-east ledge (3.5)
+   - north pillar (4.5)
+   - north-west ledge (5.5)
+   - west pillar (6.5)
+   - south-west ledge (7.5)
+   - then across to the summit (8.5) in the middle
+
+   Land on each ledge to let the tank recharge. Pull the beacon lever and step off the summit (there's no fall
+   damage). Then take the **Steel Key** from the vault at the foot of the tower, along with a Mystic Urn, armor and
+   mana. The secret wall is at the east end of the north-east ledge.
+7. Take portal 4 back to the Keep, then portal 1 to Winnowing Hall, and open the steel door off the courtyard.
+   Kill the Heresiarch, then step on the red exit rune.
 
 Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival (Dark Bishops join from wave 4).
-
-Optional: portal **4** in Winnowing Hall's north-east room leads to the Windspire. Grab the jetpack (in the hall's
-start room, or the spare by the arrival portal) and go through the opening into the tower. Then fly clockwise from
-the lowest ledge: south-east ledge (1.5), east pillar (2.5), north-east ledge (3.5), north pillar (4.5),
-north-west ledge (5.5), west pillar (6.5) and south-west ledge (7.5), then across to the summit (8.5) in the
-middle. Land on each ledge to let the tank recharge. Pull the beacon lever, step off the summit (there's no
-fall damage), and collect the vault's Mystic Urn, armor and mana. The secret wall is at the east end of the
-north-east ledge.
 
 **Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 15 relics, which
 are spread over all five maps (including the arena and the Windspire, where some sit on high ledges) before the

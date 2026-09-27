@@ -524,7 +524,7 @@ public static class Maps
         Elevate(Raise(new("Winnowing Hall", "Winnowing Hall", "hall", new[]
         {
             "################################",
-            "#....&.#............&.#.......4#",
+            "#....&.#............&.#........#",
             "#.@....#..p.......p...#..b..e..#",
             "#...J..D..............D........#",
             "#..h...#......e.......#....w...#",
@@ -551,7 +551,8 @@ public static class Maps
             (1, 1, 6, 5, '3'), (8, 1, 21, 10, '6'), (23, 1, 30, 5, '3'), (1, 7, 6, 10, '3'), (23, 7, 30, 10, '3'), (9, 14, 30, 22, '5'), (1, 14, 7, 22, '7')),
             (10, 1, 20, 2, '3'), (10, 3, 20, 3, '2'), (10, 4, 20, 4, '1'), (3, 16, 5, 20, '1'), (4, 17, 4, 19, '2'), (4, 18, 4, 18, '3')),
         // Frozen Keep: fog-bound ice fortress. Portal 2 leads to Darkmere Crypt; its Fire Key opens the fire door
-        // to the east room, whose lever raises the gate to the steel key vault.
+        // to the east room, whose lever raises the gate to the vault. Portal 4 in the vault leads to the Windspire,
+        // where the Steel Key waits.
         Elevate(Raise(new("Frozen Keep", "The Frozen Keep", "ice", new[]
         {
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
@@ -567,7 +568,7 @@ public static class Maps
             "I....q......I......I...a.......I",
             "IIIIZIIIIIIIIIIPIIIIIIIIIIIIIIII",
             "II.....III...........&IIIIIIIIII",
-            "II.....III.C...k...C..IIIIIIIIII",
+            "II.....III.C...4...C..IIIIIIIIII",
             "II%...&III............IIIIIIIIII",
             "IIIIIIIIII..u....g....IIIIIIIIII",
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
@@ -620,9 +621,9 @@ public static class Maps
             "OOOOOOOOOOOOOOOOOOOOOOOOOO",
         }),
             (1, 1, 5, 7, '3'), (7, 1, 24, 13, '7')),
-        // Windspire: an open-topped tower whose ledges climb far beyond any jump. Portal 4 in Winnowing Hall's
-        // north-east room leads here. Fly ledge to ledge with the jetpack (a spare waits by the portal) up to the
-        // beacon at the top; its lever opens the vault at the foot of the tower. A secret wall off the north-east
+        // Windspire: an open-topped tower whose ledges climb far beyond any jump. Portal 4 in the Frozen Keep's vault
+        // leads here. Fly ledge to ledge with the jetpack (a spare waits by the portal) up to the beacon at the top;
+        // its lever opens the vault at the foot of the tower, which holds the Steel Key. A secret wall off the north-east
         // ledge hides a nook that only a flyer can reach.
         Elevate(Raise(new("Windspire", "The Windspire. Only the winged may reach the beacon at its crown.", "spire", new[]
         {
@@ -644,7 +645,7 @@ public static class Maps
             "OOOOOOOOO..OOOOOOOOOOOOOO",
             "O.....&.......O......OOOO",
             "O.............O.u..r.OOOO",
-            "O..4..........P......OOOO",
+            "O..4..........P...k..OOOO",
             "O......J......O.g..b.OOOO",
             "O.............O......OOOO",
             "OOOOOOOOOOOOOOOOOOOOOOOOO",
