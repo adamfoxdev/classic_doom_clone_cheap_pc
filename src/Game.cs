@@ -87,6 +87,8 @@ public sealed class Player
     public float X, Y, Angle, Pitch;
     public float Radius = 0.25f;
     public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills, ChestsOpened, Relics, LoreRead, Secrets;
+    /// <summary>The ship's forward speed on a flight map.</summary>
+    public float ShipSpeed;
     /// <summary>Ore you're carrying, by Level.OreGlyphs index (iron, crystal, fuel).</summary>
     public readonly int[] Ore = new int[Level.OreGlyphs.Length];
     public bool[] HasWeapon = { true, false, false };
@@ -406,7 +408,7 @@ public sealed class Game
         PlayTime += dt;
         UpdatePlayer(inp, dt);
         UpdateWorld(dt);
-        DigTarget = Mode == GameMode.Playing ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
+        DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
 
         if (Mode == GameMode.Dead)
         {
@@ -426,6 +428,7 @@ public sealed class Game
         p.PickupFlash = MathF.Max(0, p.PickupFlash - dt * 3);
         p.TeleportFlash = MathF.Max(0, p.TeleportFlash - dt * 1.5f);
         if (Mode == GameMode.Dead) { p.Flying = false; p.Z = MathF.Max(0, p.Z - dt * 4f); return; }
+        if (Level.Flight) { UpdateFlight(inp, dt); return; }
 
         // look
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
@@ -770,6 +773,7 @@ public sealed class Game
         Messages.Clear();
         PlaySound(Sfx.Teleport, 1);
         Say("Back at your checkpoint.");
+        if (Level.Flight) { p.Z = FlightStartZ; p.ShipSpeed = FlightCruise; p.Health = 100; }
     }
 
     void UseLine(bool pull)
@@ -889,12 +893,13 @@ public sealed class Game
         return true;
     }
 
-    /// <summary>Take off in the repaired ship: back through the map's portal link, patched up for the trip.</summary>
+    /// <summary>Take off in the repaired ship: out into the flight lane if the hub has one, else home through the portal link.</summary>
     void Launch()
     {
-        char home = Level.Marks.FirstOrDefault(char.IsDigit);
         P.Health = Math.Max(P.Health, 100);
-        Teleport(home);
+        int lane = Array.FindIndex(Hub, l => l.Flight);
+        if (lane >= 0) { Warp(lane); return; }
+        Teleport(Level.Marks.FirstOrDefault(char.IsDigit));
         Messages.Clear();
         Say(Words.T("Lift-off! You leave the barren world behind and make it home."));
     }
@@ -1126,8 +1131,123 @@ public sealed class Game
             foreach (var t in Hub.SelectMany(l => l.Things)) if (t is Projectile or Puff) t.Removed = true;
             PlaySound(Sfx.Teleport, 1);
             Say(lv.EntryMessage);
+            if (lv.Flight) EnterFlight();
             return;
         }
+    }
+
+    // ================================================================ flight
+
+    public const float FlightSlow = 3f, FlightCruise = 5f, FlightFast = 8f, FlightTop = 3.4f, FlightStartZ = 1.3f;
+    const float ShipHalfHeight = 0.28f;
+
+    /// <summary>
+    /// Arriving on a flight map: into the pilot's seat at the start of the lane, which is also where you come back
+    /// if the hull gives out. Pickups float up into the lanes and flyers take to the air around you.
+    /// </summary>
+    void EnterFlight()
+    {
+        var lv = Level;
+        MoveTo(lv.StartX, lv.StartY, 0);
+        P.Z = FlightStartZ; P.Flying = true; P.ShipSpeed = FlightCruise; P.Pitch = 0; P.PortalLock = true;
+        P.Health = Math.Max(P.Health, 100);
+        Checkpoint = new Checkpoint { Level = lv, X = lv.StartX, Y = lv.StartY, Floor = 0, Angle = 0, Health = 100, Armor = P.Armor };
+        foreach (var t in lv.Things)
+        {
+            float h = (MathF.Sin(t.X * 1.7f + t.Y * 3.1f) + 1) * 0.5f;
+            if (t is Pickup && t.Z < 0.01f) t.Z = 0.5f + h * 1.8f;
+            if (t is Monster { Def.FlyZ: > 0 } m && m.Z < 0.5f) m.Z = 0.6f + h * 2.0f;
+        }
+    }
+
+    /// <summary>
+    /// Piloting: the ship cruises east on its own. Forward/back speed it up or slow it down, strafe (and a little yaw
+    /// from the mouse or turn keys) slides it across the lane, Jump climbs and Slide dives, Fire shoots twin lasers.
+    /// </summary>
+    void UpdateFlight(Input inp, float dt)
+    {
+        var p = P;
+        p.Flying = true;
+        p.Angle = Math.Clamp(p.Angle + inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 1.4f * dt, -0.45f, 0.45f);
+        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), -70f, 70f);
+        float target = inp.Move > 0.1f ? FlightFast : inp.Move < -0.1f ? FlightSlow : FlightCruise;
+        p.ShipSpeed += (target - p.ShipSpeed) * MathF.Min(1, dt * 2.5f);
+        float side = inp.Strafe * 4.5f + MathF.Sin(p.Angle) * p.ShipSpeed;
+        float dx = p.ShipSpeed * dt, dy = side * dt;
+        float climb = inp.JumpHeld ? 2.6f : inp.SlideHeld ? -2.6f : 0f;
+        p.VZ += (climb - p.VZ) * MathF.Min(1, dt * 6);
+        p.Z = Math.Clamp(p.Z + p.VZ * dt, 0.1f, FlightTop);
+        if (!Level.BlocksCircle(p.X + dx, p.Y, p.Radius)) p.X += dx;
+        if (!Level.BlocksCircle(p.X, p.Y + dy, p.Radius)) p.Y += dy;
+        else if (MathF.Abs(side) > 1f) { p.DamageFlash = MathF.Max(p.DamageFlash, 0.2f); }   // scraping the edge of the lane
+        p.FloorZ = 0;
+        p.JetSfx -= dt;
+        if (p.JetSfx <= 0) { PlaySound(Sfx.Jet, 0.2f + 0.05f * p.ShipSpeed); p.JetSfx = 0.12f; }
+
+        // collisions: rocks and flyers in 3D, around the middle of the ship
+        float sz = p.Z + ShipHalfHeight;
+        foreach (var t in Level.Things.ToList())
+        {
+            if (t.Removed) continue;
+            if (t is Asteroid a && Dist(a.X, a.Y, p.X, p.Y) < a.Radius + p.Radius && MathF.Abs(a.MidZ - sz) < a.SpriteH * 0.45f + ShipHalfHeight)
+            {
+                Shatter(a);
+                DamagePlayer(18);
+                p.ShipSpeed = FlightSlow;
+                Say(Words.T("Hull breach! Watch the rocks."));
+            }
+            else if (t is Monster { Alive: true } m && Dist(m.X, m.Y, p.X, p.Y) < m.Radius + p.Radius
+                     && MathF.Abs(m.Z + m.SpriteH * 0.5f - sz) < m.SpriteH * 0.5f + ShipHalfHeight)
+            {
+                DamageMonster(m, 80);
+                DamagePlayer(12);
+                p.ShipSpeed = FlightSlow;
+            }
+            else if (t is Pickup pk && Dist(pk.X, pk.Y, p.X, p.Y) < 0.6f && MathF.Abs(pk.Z + pk.SpriteH * 0.5f - sz) < 0.7f)
+                TryPickup(pk);
+        }
+        if (Mode != GameMode.Playing) return;
+
+        // the far end of the lane
+        char mark = Level.MarkAt(p.X, p.Y);
+        if (char.IsDigit(mark)) { if (!p.PortalLock) { Teleport(mark); return; } }
+        else p.PortalLock = false;
+
+        p.Cooldown -= dt;
+        p.FireAnim = MathF.Max(0, p.FireAnim - dt);
+        if (inp.Fire && !Relaxed && p.Cooldown <= 0) FireShipGuns();
+    }
+
+    /// <summary>Twin lasers from the wingtips, straight along your view.</summary>
+    void FireShipGuns()
+    {
+        var p = P;
+        p.Cooldown = 0.22f;
+        p.FireAnim = 0.12f;
+        PlaySound(Sfx.Shoot, 0.7f);
+        float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f), speed = 22f + p.ShipSpeed;
+        float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle), z = p.Z + ShipHalfHeight;
+        foreach (float wing in new[] { -0.22f, 0.22f })
+            Level.Things.Add(new Projectile
+            {
+                Kind = ProjKind.Bolt, FromPlayer = true, DmgMin = 14, DmgMax = 22, Level = Level, Life = 1.2f,
+                X = p.X + ca * 0.4f - sa * wing, Y = p.Y + sa * 0.4f + ca * wing, Z = z,
+                VX = ca * speed, VY = sa * speed, VZ = speed * p.Pitch / proj, Aimed = true,
+            });
+    }
+
+    /// <summary>An asteroid bursts into drifting rubble.</summary>
+    void Shatter(Asteroid a)
+    {
+        a.Removed = true;
+        Sound(Sfx.Break, a.X, a.Y);
+        SpawnPuff(Art.Fireball[1], a.X, a.Y, a.MidZ, a.SpriteW * 0.8f);
+        for (int k = 0; k < 6; k++)
+            Level.Things.Add(new Puff(Art.RubbleChunk, 0.1f + RandF() * 0.12f, 0.5f + RandF() * 0.4f, 0f)
+            {
+                X = a.X + (RandF() - 0.5f) * a.SpriteW, Y = a.Y + (RandF() - 0.5f) * a.SpriteW, Z = a.MidZ + (RandF() - 0.5f) * a.SpriteH,
+                Level = Level, FullBright = false, VZ = (RandF() - 0.5f) * 1.5f, Gravity = 0.3f,
+            });
     }
 
     // ================================================================ world
@@ -1149,6 +1269,7 @@ public sealed class Game
                     break;
                 case Projectile pr: UpdateProjectile(pr, dt); break;
                 case Puff pf: pf.Tick(dt); break;
+                case Asteroid a: a.Z = MathF.Max(0.05f, a.BaseZ + MathF.Sin(PlayTime * a.Bob + a.Phase) * 0.5f); break;
             }
         }
         lv.Things.RemoveAll(t => t.Removed);
@@ -1436,6 +1557,14 @@ public sealed class Game
             if (pr.FromPlayer)
             {
                 foreach (var t in Level.Things)
+                    if (t is Asteroid a && !a.Removed && Dist(a.X, a.Y, pr.X, pr.Y) < a.Radius + pr.Radius && MathF.Abs(a.MidZ - pr.Z) < a.SpriteH * 0.5f)
+                    {
+                        a.Health -= Rand(pr.DmgMin, pr.DmgMax);
+                        if (a.Health <= 0) Shatter(a); else Sound(Sfx.Hit, a.X, a.Y);
+                        Explode(pr, null);
+                        return;
+                    }
+                foreach (var t in Level.Things)
                     if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
                     {
                         DamageMonster(m, Rand(pr.DmgMin, pr.DmgMax));
@@ -1645,6 +1774,7 @@ public sealed class Game
         P.TeleportFlash = 1;
         PlaySound(Sfx.Teleport, 1);
         Say(lv.EntryMessage);
+        if (lv.Flight) EnterFlight();
     }
 
     /// <summary>Spawns an already-awake monster with a teleport flash (used by arena waves).</summary>

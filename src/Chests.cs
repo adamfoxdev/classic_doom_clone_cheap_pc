@@ -22,6 +22,7 @@ public static class Chests
     public static int Scatter(Level lv, Random rng, float perCells)
     {
         var (sx, sy) = lv.ArrivalCell();
+        if (lv.Flight) return 0; // nothing to open in open space
         var reach = lv.Reachable(sx, sy);
         int open = reach.Count(r => r);
         int want = perCells <= 0 ? 0 : Math.Clamp((int)MathF.Round(perCells * open / 200f), 1, 12);

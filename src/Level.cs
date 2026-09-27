@@ -88,6 +88,8 @@ public sealed class Level
     public enum Face { Wall, Floor, Ceiling }
     /// <summary>Dig maps are solid rock you can also dig down into and up through, a DigStep at a time.</summary>
     public bool Dig;
+    /// <summary>Flight maps are flown in your ship: it cruises forward (east) and you steer, climb, dive and shoot.</summary>
+    public bool Flight;
     public const float DigStep = 0.5f;
     /// <summary>Hit points left in the block under each cell's floor and over its ceiling (dig maps).</summary>
     public readonly int[] FloorHp, CeilHp;
@@ -549,15 +551,15 @@ public sealed class Level
 
 /// <summary>The hub's maps. Legend: see README.</summary>
 /// <summary>A map's source: its name, arrival message, theme and ASCII rows. The level editor reads and writes these.</summary>
-public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null, bool Dig = false)
+public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null, bool Dig = false, bool Flight = false)
 {
-    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId, Dig = Dig };
+    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId, Dig = Dig, Flight = Flight };
 }
 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
 public static class Maps
 {
-    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire", "barren" };
+    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire", "barren", "void", "meadow" };
 
     public static Theme ThemeById(string id)
     {
@@ -572,6 +574,8 @@ public static class Maps
                 "arena" => (Col.Rgb(30, 6, 12), 18f, 256),
                 "spire" => (Col.Rgb(8, 10, 26), 24f, 256),
                 "barren" => (Col.Rgb(96, 52, 34), 18f, 256),
+                "void" => (Col.Rgb(2, 2, 8), 22f, 256),
+                "meadow" => (Col.Rgb(40, 70, 60), 18f, 256),
                 _ => (Col.Rgb(4, 8, 16), 15f, 256),
             };
         }
@@ -638,6 +642,30 @@ public static class Maps
                 t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
                 return t;
             }
+            case "meadow":
+            {
+                // a green world: lush turf under open sky, and an old outpost overgrown with moss
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorWood, CeilIn = Art.CeilWood, FloorOut = Art.Meadow, Sky = Art.SkyNight,
+                    FogColor = Col.Rgb(50, 80, 64), FogDist = 18f, Light = 256,
+                };
+                t.Walls['#'] = Art.Moss; t.Walls['M'] = Art.Moss; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick;
+                t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
+            case "void":
+            {
+                // open space: stars below, beside and above, and the next world hanging in the sky ahead
+                var t = new Theme
+                {
+                    FloorIn = Art.Starfield, CeilIn = Art.Starfield, FloorOut = Art.Starfield, Sky = Art.SkyVoid,
+                    FogColor = Col.Rgb(4, 4, 12), FogDist = 22f, Light = 256,
+                };
+                t.Walls['#'] = Art.Starfield; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick; t.Walls['M'] = Art.Moss;
+                t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
             case "barren":
             {
                 // a dead world under open sky: dust, cliffs and rock outcrops veined with ore
@@ -681,7 +709,7 @@ public static class Maps
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,3,,,#",
             "#OE.H...S,,,,,,,,,,1,,,,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
-            "#O.....O#,,,,T,,,,,,,,T,,,,g,,,#",
+            "#O.....O#,,,,T,,,9,,,,T,,,,g,,,#",
             "#O..u..O#,,e,,,,,,,5,,,,,,,e,,,#",
             "#OOOOOOO#,,,,,,b,,,,,,,h,,,,,,,#",
             "################################",
@@ -848,9 +876,64 @@ public static class Maps
             "#,,,,,,,####,,,,,,,,,,,####,,,,#",
             "################################",
         }, Height: 2.5f),
+        // Void Crossing: flown, not walked. Launching the repaired ship from the Barren World puts you at the start ('@');
+        // dodge (or shoot) the drifting asteroids ('A') and the flyers that come at you, all the way east to portal 8.
+        AsteroidBelt("Void Crossing", "The Void Crossing. Steer the skyship through the drifting rocks to the green moon ahead. Jump climbs, Slide dives, Fire shoots.", 110, 13, '8'),
+        // Verdant Moon: where the crossing ends. A meadow with an old outpost; portal 9 leads home to Winnowing Hall,
+        // and the landing pad (portal 8) takes off into the crossing again.
+        new("Verdant Moon", "The Verdant Moon. You made it across! Portal 9 in the meadow leads home.", "meadow", new[]
+        {
+            "##########################",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "#,,T,,,,,,,,,,,,,,,T,,,,,#",
+            "#,,,,,,,,####D####,,,,,,,#",
+            "#,,,,,,,,#.......#,,,e,,,#",
+            "#,,8,,,,,#...&...#,,,,,,,#",
+            "#,,,,,,,,#..q....#,,,,T,,#",
+            "#,,,,T,,,#########,,,,,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "#,,,,,,,,,,,c,,,,,,,,,,,,#",
+            "#,,T,,,,,,,,,,,,,,,,,,T,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "#,,,,,a,,,,,,,,,,,,9,,,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "#,,,T,,,,,,,,,,,,,T,,,,,,#",
+            "#,,,,,,,,,,b,,,,g,,,,,,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "##########################",
+        }, Height: 2f),
     };
 
     public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
+
+    /// <summary>
+    /// A flight lane: open space between two walls of stars, the ship's start ('@') at the west end and a column of
+    /// `portal` at the east end. Asteroids thicken along the way, with flyers (drones, then wraiths) and repair vials.
+    /// </summary>
+    static MapDef AsteroidBelt(string name, string entry, int w, int h, char portal)
+    {
+        static float Hash(int x, int y) => (uint)((x * 73856093) ^ (y * 19349663) ^ 0x5bd1e995) % 1000 / 1000f;
+        var rows = new char[h][];
+        for (int y = 0; y < h; y++)
+        {
+            rows[y] = new char[w];
+            for (int x = 0; x < w; x++)
+            {
+                char c = x == 0 || y == 0 || x == w - 1 || y == h - 1 ? '#' : ',';
+                if (c == ',' && x >= w - 4) c = portal;
+                else if (c == ',' && x >= 7 && x < w - 6)
+                {
+                    float along = (x - 7f) / (w - 13f), roll = Hash(x, y);
+                    if (roll < 0.05f + 0.13f * along) c = 'A';
+                    else if (y == 1 + (x * 7) % (h - 2) && x % 11 == 5) c = x > w / 2 && x % 22 == 5 ? 'd' : 'a';
+                    else if (x % 19 == 9 && y == h / 2) c = 'h';
+                }
+                rows[y][x] = c;
+            }
+        }
+        rows[h / 2][2] = '@';
+        return new MapDef(name, entry, "void", rows.Select(r => new string(r)).ToArray(), Height: 4.5f, Flight: true);
+    }
 
     /// <summary>A dig map: a walled square of rubble, all of it 4 units above the bedrock and 6 below the roof,
     /// with a single open cell in the middle holding the arrival portal.</summary>

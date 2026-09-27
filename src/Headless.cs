@@ -171,6 +171,84 @@ public static class Headless
         g.SetArtStyle(ArtStyle.SciFi);
         DigChecks(check);
         PlanetChecks(check);
+        FlightChecks(check);
+    }
+
+    static void FlightChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int fi = Array.FindIndex(hub, l => l.Flight), mi = Array.FindIndex(hub, l => l.RawName == "Verdant Moon");
+        var lane = hub[fi];
+        check(fi == 8 && mi == 9 && hub.Count(l => l.Flight) == 1, "the Void Crossing is flown, and the Verdant Moon lies beyond it");
+        check(hub.Count(l => l.FindMark('8') != null) == 2 && lane.FindMark('8') != null && hub[mi].FindMark('8') != null, "portal 8 at the end of the crossing lands on the moon");
+        check(hub.Count(l => l.FindMark('9') != null) == 2 && hub[0].FindMark('9') != null && hub[mi].FindMark('9') != null, "portal 9 on the moon leads home to Winnowing Hall");
+        var rocks = lane.Things.OfType<Asteroid>().ToList();
+        int firstHalf = rocks.Count(a => a.X < lane.W / 2f);
+        check(rocks.Count > 60 && firstHalf < rocks.Count - firstHalf, $"asteroids thicken along the crossing ({firstHalf} then {rocks.Count - firstHalf})");
+        check(lane.Things.OfType<Monster>().Count() >= 6 && lane.Things.OfType<Monster>().All(m => m.Def.FlyZ > 0), "only flyers come at you out there");
+
+        var g = new Game { FixedSeed = 12 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Warp(fi);
+        var f = g.Level;
+        var p = g.P;
+        check(f.Flight && p.Z > 1f && p.ShipSpeed == Game.FlightCruise && g.CanRespawn, "into the pilot's seat, with a checkpoint at the start");
+        f.Things.RemoveAll(t => t is Monster or Asteroid or Pickup);
+        float x0 = p.X;
+        Tick(default, 35);
+        check(p.X > x0 + Game.FlightCruise * 0.8f, "the ship cruises forward by itself");
+        float cruise = p.X;
+        Tick(new Input { Move = 1 }, 35);
+        check(p.X - cruise > Game.FlightCruise * 1.1f && p.ShipSpeed > Game.FlightCruise, "forward speeds it up");
+        float z0 = p.Z;
+        Tick(new Input { JumpHeld = true }, 20);
+        check(p.Z > z0 + 0.5f, "Jump climbs");
+        Tick(new Input { SlideHeld = true }, 100);
+        check(p.Z <= 0.11f, "Slide dives, down to just above the stars");
+        float y0 = p.Y;
+        Tick(new Input { Strafe = 1 }, 20);
+        check(p.Y > y0 + 0.8f, "strafing slides the ship across the lane");
+        Tick(new Input { Strafe = 1 }, 200);
+        check(p.Y < f.H - 1 - p.Radius + 0.01f, "the edge of the lane holds you in");
+
+        // a rock dead ahead: ram it and the hull takes the blow
+        p.Y = f.H / 2 + 0.5f; p.Z = 1.2f; p.Angle = 0; p.Pitch = 0;
+        var rock = new Asteroid(0.9f, 1.0f, 0f) { X = p.X + 1.2f, Y = p.Y, Level = f, Bob = 0 };
+        f.Things.Add(rock);
+        int hp = p.Health;
+        Tick(default, 20);
+        check(rock.Removed && p.Health < hp, "ramming an asteroid shatters it and dents the hull");
+        // or shoot it first
+        var rock2 = new Asteroid(0.9f, p.Z + 0.28f - 0.45f, 0f) { X = p.X + 5f, Y = p.Y, Level = f, Bob = 0 };
+        rock2.BaseZ = rock2.Z;
+        f.Things.Add(rock2);
+        hp = p.Health;
+        for (int k = 0; k < 20 && !rock2.Removed; k++) Tick(new Input { Fire = true, Move = -1 });
+        check(rock2.Removed && p.Health == hp, "the lasers blast asteroids out of your way");
+
+        // lose the hull and you're back at the start of the lane
+        g.Vars.Freeze = true;
+        p.Health = 1;
+        var rock3 = new Asteroid(0.9f, p.Z + 0.28f - 0.45f, 0f) { X = p.X + 0.3f, Y = p.Y, Level = f, Bob = 0 };
+        rock3.BaseZ = rock3.Z;
+        f.Things.Add(rock3);
+        Tick(default, 2);
+        check(g.Mode == GameMode.Dead, "the hull gives out");
+        g.RespawnAtCheckpoint();
+        check(g.Mode == GameMode.Playing && g.Level == f && MathF.Abs(p.X - f.StartX) < 0.01f && p.Z > 1f && p.Health == 100, "and you start the crossing again");
+        g.Vars.Freeze = false;
+
+        // fly to the end and you land on the moon
+        var end = f.FindMark('8').Value;
+        p.X = end.x - 0.6f; p.Y = end.y;
+        Tick(default, 10);
+        check(g.Level == g.Hub[mi] && !g.Level.Flight, "reach the end of the crossing to land on the Verdant Moon");
+        // and taking off again from the moon's pad starts the crossing over
+        var pad = g.Level.FindMark('8').Value;
+        p.X = pad.x + 1f; p.Y = pad.y; Tick(default, 2);
+        p.X = pad.x; Tick(default, 2);
+        check(g.Level == f && MathF.Abs(p.X - f.StartX) < 0.2f, "the moon's landing pad launches you back into the crossing");
     }
 
     static void PlanetChecks(Action<bool, string> check)
@@ -178,7 +256,7 @@ public static class Headless
         var hub = Maps.BuildHub();
         int bi = Array.FindIndex(hub, l => l.RawName == "Barren World");
         var lv = hub[bi];
-        check(bi == hub.Length - 1 && lv.Ship != null && lv.Ship.Stage == 0 && lv.ThemeId == "barren", "the Barren World has a wrecked ship");
+        check(bi == 7 && lv.Ship != null && lv.Ship.Stage == 0 && lv.ThemeId == "barren", "the Barren World has a wrecked ship");
         check(hub[0].FindMark('7') != null && lv.FindMark('7') != null && hub.Count(l => l.FindMark('7') != null) == 2, "portal 7 in Winnowing Hall's courtyard leads to the Barren World");
         for (int k = 0; k < Ship.Need.Length; k++)
         {
@@ -218,7 +296,8 @@ public static class Headless
         Tick(default); Tick(new Input { Use = true });
         check(s.Built && s.Stage == 2 && p.Ore[0] == 2 && p.Ore[1] == 1 && p.Ore[2] == 1, "the ship takes only what it needs, and is repaired");
         Tick(default); Tick(new Input { Use = true });
-        check(g.Level == g.Hub[0], "the repaired ship flies you home");
+        check(g.Level.Flight && MathF.Abs(p.X - g.Level.StartX) < 0.01f && p.Z > 1f, "the repaired ship takes off into the Void Crossing");
+        g.Warp(0);
 
         // with the ship fixed, the portal works both ways
         var home = g.Hub[0].FindMark('7').Value;
@@ -1298,7 +1377,7 @@ public static class Headless
         // secrets and lore exist in both modes
         var classic = new Game { FixedSeed = 4 };
         classic.NewGame(PClass.Fighter);
-        check(classic.SecretsTotal == 6 && classic.LoreTotal == 23, $"6 secrets and 23 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.SecretsTotal == 6 && classic.LoreTotal == 24, $"6 secrets and 24 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
         check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
@@ -1870,7 +1949,7 @@ public static class Headless
         foreach (var lv in g.Hub)
         {
             var chests = lv.Things.OfType<Chest>().ToList();
-            check(chests.Count >= 1, $"{lv.Name}: {chests.Count} chest(s) placed");
+            check(chests.Count >= 1 || lv.Flight, $"{lv.Name}: {chests.Count} chest(s) placed");
             var (sx, sy) = lv.ArrivalCell();
             var cells = chests.Select(c => (int)c.Y * lv.W + (int)c.X).ToHashSet();
             var open = lv.Reachable(sx, sy);
@@ -2511,6 +2590,35 @@ public static class Headless
         g.SetArtStyle(ArtStyle.Fantasy);
         BarrenShot("70_barren_fantasy", 10.5f, 13.5f, -0.64f, 0);
         g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+
+        // Void Crossing: in the cockpit at the start, then deep in the rocks, then landing on the Verdant Moon
+        int crossing = Array.FindIndex(g.Hub, l => l.Flight);
+        g.Warp(crossing);
+        var cl = g.Level;
+        g.Vars.Freeze = true;
+        void FlyShot(string name, float x, float y, float z, float angle, float pitch)
+        {
+            g.P.X = x; g.P.Y = y; g.P.Z = z; g.P.Angle = angle; g.P.Pitch = pitch; g.P.TeleportFlash = 0; g.P.DamageFlash = 0;
+            Tick(default, 1);
+            g.P.X = x; g.P.Y = y; g.P.Z = z; g.P.Angle = angle; g.P.Pitch = pitch;
+            g.Messages.Clear();
+            Shot(name);
+        }
+        FlyShot("71_crossing_start", cl.StartX, cl.StartY, 1.3f, 0, 0);
+        FlyShot("72_crossing_rocks", 70.5f, 6.5f, 1.6f, 0.1f, -6);
+        g.SetArtStyle(ArtStyle.Fantasy);
+        FlyShot("73_crossing_fantasy", 70.5f, 6.5f, 1.6f, 0.1f, -6);
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+        int moon = Array.FindIndex(g.Hub, l => l.RawName == "Verdant Moon");
+        g.Warp(moon);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.Vars.Freeze = true;
+        PlaceCam(4.5f, 8.5f, 0, 0, -0.5f, 0);
+        Tick(default, 1); PlaceCam(4.5f, 8.5f, 0, 0, -0.5f, 0);
+        g.Messages.Clear();
+        Shot("74_verdant_moon");
         g.Vars.Freeze = false;
 
         // the original fantasy look, kept as an option

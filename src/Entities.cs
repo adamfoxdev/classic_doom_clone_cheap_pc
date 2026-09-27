@@ -196,6 +196,24 @@ public sealed class Ship : Thing
     public override Tex Sprite(float time) => Art.Ship[Stage];
 }
 
+/// <summary>
+/// A drifting, spinning asteroid on a flight map. It bobs up and down across your path; ram it and your hull takes
+/// the blow, shoot it enough and it shatters. Z is its lowest point above the (starfield) floor.
+/// </summary>
+public sealed class Asteroid : Thing
+{
+    public int Health = 40;
+    public float Phase, Bob, Spin;
+    public float BaseZ;
+    public Asteroid(float size, float z, float phase)
+    {
+        SpriteW = SpriteH = size; Radius = size * 0.42f; BaseZ = Z = z; Phase = phase; Bob = 0.35f + phase % 0.4f; Spin = 3f + phase % 3f;
+    }
+    /// <summary>Height of its middle, for 3D hits.</summary>
+    public float MidZ => Z + SpriteH * 0.5f;
+    public override Tex Sprite(float time) => Art.Asteroid[(int)(time * Spin + Phase * 10) % Art.Asteroid.Length];
+}
+
 /// <summary>Short-lived visual effect (hit sparks, explosions, teleport flashes).</summary>
 public sealed class Puff : Thing
 {
@@ -227,6 +245,14 @@ public sealed class Puff : Thing
 
 public static class ThingFactory
 {
+    /// <summary>Asteroid size, height and spin all follow from where it sits, so a map always looks the same.</summary>
+    static Asteroid MakeAsteroid(float x, float y)
+    {
+        uint h = (uint)((int)(x * 92821) ^ (int)(y * 68917)) * 2654435761u;
+        float a = (h & 0xFFFF) / 65535f, b = (h >> 16) / 65535f;
+        return new Asteroid(0.55f + a * 0.8f, 0.2f + b * 2.4f, a * 6.28f);
+    }
+
     public static Thing Create(char c, float x, float y)
     {
         Thing t = c switch
@@ -255,6 +281,7 @@ public static class ThingFactory
             '%' => new Pickup(PickupKind.Relic, 0.42f),
             'J' => new Pickup(PickupKind.Jetpack, 0.5f),
             'V' => new Ship(),
+            'A' => MakeAsteroid(x, y),
             _ => null,
         };
         if (t == null) return null;

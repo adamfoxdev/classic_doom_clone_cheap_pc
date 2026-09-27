@@ -203,7 +203,7 @@
 "use strict";
 // ============================================================ the game's map format (mirrors src/Editor.cs and src/Level.cs)
 
-const THEMES = ["hall", "ice", "crypt", "arena", "spire", "barren"];
+const THEMES = ["hall", "ice", "crypt", "arena", "spire", "barren", "void", "meadow"];
 const WALLS = "#BWMIODSFPLXZKNQU";      // Level.WallGlyphs: these cells are solid...
 const DOORS = "DSFPZ";                  // ...except doors, gates and secret walls, which open
 const RUBBLE = "KNQU";                  // ...and rubble and ore, which you can smash through
@@ -230,7 +230,8 @@ const PIECES = [
   ["1", "Portal 1", "Teleporter 1", "Markers"], ["2", "Portal 2", "Teleporter 2", "Markers"],
   ["3", "Portal 3", "Teleporter 3", "Markers"], ["4", "Portal 4", "Teleporter 4", "Markers"],
   ["5", "Portal 5", "Teleporter 5", "Markers"], ["6", "Portal 6", "Teleporter 6", "Markers"],
-  ["7", "Portal 7", "Teleporter 7", "Markers"],
+  ["7", "Portal 7", "Teleporter 7", "Markers"], ["8", "Portal 8", "Teleporter 8", "Markers"],
+  ["9", "Portal 9", "Teleporter 9", "Markers"],
   ["*", "Arena spawn rune", "Arena spawn pad", "Markers"], ["!", "Arena altar", "Arena start pad", "Markers"],
   ["+", "Checkpoint pad", "Checkpoint pad", "Markers"], ["=", "Lift pad (to checkpoint)", "Lift pad (to checkpoint)", "Markers"],
   ["e", "Ettin", "Brute mech", "Monsters"], ["a", "Afrit", "Drone", "Monsters"], ["c", "Centaur", "Strider", "Monsters"],
@@ -242,7 +243,7 @@ const PIECES = [
   ["w", "Weapon piece 2", "Weapon crate 2", "Items"], ["x", "Weapon piece 3", "Weapon crate 3", "Items"],
   ["$", "Chest", "Supply crate", "Items"], ["%", "Secret treasure", "Secret cache", "Items"],
   ["&", "Lore stone", "Data terminal", "Items"], ["J", "Wings of Wrath", "Jetpack", "Items"],
-  ["V", "Wrecked ship", "Wrecked shuttle", "Items"],
+  ["V", "Wrecked ship", "Wrecked shuttle", "Items"], ["A", "Asteroid", "Asteroid", "Items"],
   ["t", "Torch", "Light pylon", "Decor"], ["p", "Pillar", "Pillar", "Decor"], ["T", "Tree", "Tree", "Decor"],
 ];
 const KNOWN = new Set(PIECES.map(p => p[0]));
@@ -537,7 +538,7 @@ function drawGlyph(g, c, x, y, s, under) {
     c.fillRect(cx - s * .15, cy - s * .3, s * .3, s * .6); letter(g, "#111");
   } else {
     // items: diamonds
-    const color = { k: "#6fa8ff", f: "#ff7050", J: "#8fe3ff", "&": "#62e0c0", $: "#c89b52", "%": "#ffe070", u: "#e8c050", V: "#e0e4ec" }[g] || THING_COLOR.I;
+    const color = { k: "#6fa8ff", f: "#ff7050", J: "#8fe3ff", "&": "#62e0c0", $: "#c89b52", "%": "#ffe070", u: "#e8c050", V: "#e0e4ec", A: "#8a7e70" }[g] || THING_COLOR.I;
     c.fillStyle = color; c.beginPath();
     c.moveTo(cx, cy - r); c.lineTo(cx + r, cy); c.lineTo(cx, cy + r); c.lineTo(cx - r, cy); c.closePath(); c.fill();
     letter(g, "#1a1a1a");

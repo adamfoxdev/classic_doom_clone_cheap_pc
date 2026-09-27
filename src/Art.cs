@@ -22,6 +22,11 @@ public static class Art
     public static Tex[] Ship;
     /// <summary>The barren planet: dusty ground, layered cliffs and its sky.</summary>
     public static Tex Dust, Cliff, SkyBarren;
+    /// <summary>Open space for flight maps: a tiling starfield, the sky with the next world ahead, and asteroid spin frames.</summary>
+    public static Tex Starfield, SkyVoid;
+    /// <summary>The green moon's turf.</summary>
+    public static Tex Meadow;
+    public static Tex[] Asteroid;
     // Flats
     public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor,
         CheckpointFloor, CheckpointFloorOff, LiftFloor;
@@ -61,6 +66,7 @@ public static class Art
         OreCracked = Ores.Select(CrackStages).ToArray();
         Ship = Enumerable.Range(0, 3).Select(s => BuildShip(s, style == ArtStyle.SciFi)).ToArray();
         BuildBarren(style == ArtStyle.SciFi);
+        BuildVoid(style == ArtStyle.SciFi);
         PillarFrames = new[] { Pillar };
         TreeFrames = new[] { Tree };
         Version++;
@@ -267,6 +273,84 @@ public static class Art
         SkyBarren = scifi
             ? SciFiArt.Space(2207, (18, 6, 4), (196, 96, 52), (74, 32, 22), Col.Rgb(236, 206, 160), false)
             : BuildSky(207, (72, 42, 30), (214, 136, 72), (62, 38, 28), false);
+    }
+
+    /// <summary>Open space: stars everywhere, a nebula wash, the green moon on the horizon, and tumbling asteroids.</summary>
+    static void BuildVoid(bool scifi)
+    {
+        {
+            var r = new Rng(1401); var c = new Canvas(TS, TS);
+            c.Clear(Col.Rgb(4, 4, 12));
+            for (int i = 0; i < 70; i++)
+            {
+                int v = r.Range(60, 255), x = r.Int(TS), y = r.Int(TS);
+                c.T.Set(x, y, Col.Rgb(v, v, Math.Min(255, v + r.Range(0, 40))));
+                if (v > 220) { c.T.Set(x + 1, y, Col.Rgb(v / 3, v / 3, v / 2)); c.T.Set(x, y + 1, Col.Rgb(v / 3, v / 3, v / 2)); }
+            }
+            Starfield = c.T;
+        }
+        {
+            var r = new Rng(1402);
+            var t = new Tex(256, 128);
+            var neb = scifi ? (r: 60, g: 20, b: 90) : (r: 30, g: 40, b: 90);
+            for (int y = 0; y < 128; y++)
+                for (int x = 0; x < 256; x++)
+                {
+                    float n = MathF.Sin(x * 0.05f + MathF.Sin(y * 0.09f) * 2) * MathF.Sin(y * 0.07f + x * 0.013f);
+                    int k = (int)(Math.Max(0, n) * 60);
+                    t.Px[y * 256 + x] = Col.Rgb(4 + neb.r * k / 60, 4 + neb.g * k / 60, 12 + neb.b * k / 60);
+                }
+            var c = new Canvas(t);
+            for (int i = 0; i < 320; i++) { int v = r.Range(90, 255); c.T.Set(r.Int(256), r.Int(128), Col.Rgb(v, v, Math.Min(255, v + 25))); }
+            // the green moon dead ahead: rays heading east land on the sky's left edge, so draw it across the seam
+            foreach (int ox in new[] { 0, 256 })
+            {
+                c.Circle(ox + 2, 92, 22, Col.Rgb(40, 90, 50));
+                c.Circle(ox - 2, 88, 18, Col.Rgb(70, 150, 80));
+                c.Ellipse(ox + 6, 84, 7, 4, Col.Rgb(110, 190, 120));
+                c.Ellipse(ox - 10, 98, 6, 3, Col.Rgb(50, 110, 150));
+            }
+            SkyVoid = t;
+        }
+        Asteroid = Enumerable.Range(0, 6).Select(f => AsteroidFrame(f * MathF.Tau / 6)).ToArray();
+        {
+            // lush turf: blades of green, with flowers (or, in sci-fi, glowing spore caps)
+            var r = new Rng(1403); var c = new Canvas(TS, TS);
+            for (int i = 0; i < TS * TS; i++) { int v = r.Range(-18, 18); c.T.Px[i] = Col.Rgb(46 + v / 2, 118 + v, 52 + v / 2); }
+            for (int i = 0; i < 140; i++) { int x = r.Int(64), y = r.Int(64); c.Rect(x, y, 1, 2, Col.Rgb(90 + r.Int(40), 170 + r.Int(50), 80)); }
+            uint bloom = scifi ? Col.Rgb(120, 255, 230) : Col.Rgb(250, 230, 120);
+            for (int i = 0; i < 9; i++) { float x = r.Range(2f, 62f), y = r.Range(2f, 62f); c.Circle(x, y, 1.2f, bloom); }
+            Meadow = c.T;
+        }
+    }
+
+    /// <summary>One frame of a tumbling asteroid: a lumpy disc lit from the top left, pocked with craters, turned by `rot`.</summary>
+    static Tex AsteroidFrame(float rot)
+    {
+        const int S = 48;
+        float R = S * 0.44f;
+        var t = new Tex(S, S);
+        (float a, float d, float r)[] craters = { (0.4f, 0.45f, 3.5f), (2.2f, 0.55f, 2.6f), (3.9f, 0.3f, 4.2f), (5.1f, 0.6f, 2.2f) };
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float dx = x + 0.5f - S / 2f, dy = y + 0.5f - S / 2f, d = MathF.Sqrt(dx * dx + dy * dy);
+                float th = MathF.Atan2(dy, dx) - rot;
+                float edge = R * (1 + 0.14f * MathF.Sin(3 * th + 0.7f) + 0.08f * MathF.Sin(5 * th + 2.1f) + 0.05f * MathF.Sin(9 * th));
+                if (d > edge) continue;
+                float round = 1 - (d / edge) * (d / edge);
+                int s = 150 + (int)(round * 110) - (int)((dx + dy) / R * 45);
+                foreach (var (ca, cd, cr) in craters)
+                {
+                    float cx = MathF.Cos(ca + rot) * cd * R, cy = MathF.Sin(ca + rot) * cd * R;
+                    float q = MathF.Sqrt((dx - cx) * (dx - cx) + (dy - cy) * (dy - cy));
+                    if (q < cr) s = s * 150 / 256;
+                    else if (q < cr + 1.2f && dx + dy > cx + cy) s = s * 290 / 256;
+                }
+                t.Px[y * S + x] = Col.Shade(Col.Rgb(122, 110, 98), Math.Clamp(s, 40, 330));
+            }
+        new Canvas(t).Outline(Dark);
+        return t;
     }
 
     /// <summary>A small rough chip of a texture, for flying debris.</summary>

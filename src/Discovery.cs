@@ -23,7 +23,7 @@ public static class Discovery
     {
         "Xeno Idol", "Quantum Core", "Ancient Probe", "Star Chart Crystal", "Void Compass", "Captain's Log",
         "Alien Skull", "Gravity Pearl", "Plasma Lily", "Signal Beacon", "Cryo Seed", "Founders' Badge",
-        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal", "Ore Heart", "Miner's Lamp", "Core Sample", "Drill Bit Zero", "Flight Recorder", "Dust Rose",
+        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal", "Ore Heart", "Miner's Lamp", "Core Sample", "Drill Bit Zero", "Flight Recorder", "Dust Rose", "Comet Shard", "Nav Beacon", "Moon Orchid", "Colony Charter",
     };
 
     public static string LoreText(string map, int index)
@@ -80,13 +80,17 @@ public static class Discovery
         {
             "Shuttle repair checklist: 6 titanium for the hull, 4 power crystals for the drive, 3 fuel ore for the tanks. The rocks here are full of it.",
         },
+        ["Verdant Moon"] = new[]
+        {
+            "Colony outpost 1. We crossed the belt with half the fleet. The soil grows anything; the teleporter by the ridge links back to the station.",
+        },
     };
 
     static readonly string[] FantasyRelicNames =
     {
         "Chalice of Ages", "Crown of Winnowing", "Orb of Dusk", "Codex of Silence", "Serpent Idol", "Bell of the Keep",
         "Marsh Lantern", "Bishop's Mitre", "Star Map", "Ember Heart", "Frost Circlet", "Champion's Laurel",
-        "Mirror of Tides", "Obsidian Quill", "Hourglass of Ash", "Seal of the Hub", "Quarryman's Pick", "Geode of Echoes", "Bedrock Crown", "Delver's Candle", "Skyship Compass", "Ashen Bloom",
+        "Mirror of Tides", "Obsidian Quill", "Hourglass of Ash", "Seal of the Hub", "Quarryman's Pick", "Geode of Echoes", "Bedrock Crown", "Delver's Candle", "Skyship Compass", "Ashen Bloom", "Star-Iron Nail", "Voidglass Lens", "Moonpetal", "Settler's Bell",
     };
 
     /// <summary>Lore for each map, in the order its stones ('&') appear reading the map row by row.</summary>
@@ -135,6 +139,10 @@ public static class Discovery
         ["Barren World"] = new[]
         {
             "A shipwright's note, scratched on the hull: six of iron for the keel, four moonstones for the lift, three of brimstone for the burners. The rocks here hold all of it.",
+        },
+        ["Verdant Moon"] = new[]
+        {
+            "The first settlers sailed here across the void between the stars. They left a portal in the meadow, so the way home would never be lost.",
         },
     };
 

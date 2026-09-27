@@ -531,9 +531,48 @@ public sealed class Renderer
         }
     }
 
+    /// <summary>Flying: the canopy frame and dashboard, a gunsight, and readouts for speed, altitude and how far you've come.</summary>
+    void DrawCockpit(Game g)
+    {
+        var p = g.P;
+        var lv = g.Level;
+        bool scifi = Art.Style == ArtStyle.SciFi;
+        uint frame = scifi ? Col.Rgb(60, 66, 78) : Col.Rgb(92, 60, 32), lip = scifi ? Col.Rgb(130, 140, 156) : Col.Rgb(200, 160, 70);
+        uint glow = scifi ? Col.Rgb(90, 220, 255) : Col.Rgb(255, 200, 110);
+        // canopy struts from the dashboard corners up to the top of the view
+        for (int y = 0; y < ViewH; y++)
+        {
+            int inset = 6 + y * 22 / ViewH;
+            for (int k = 0; k < 5; k++) { Put(inset + k - 6, y, frame); Put(W - inset - k + 5, y, frame); }
+            Put(inset - 1, y, lip); Put(W - inset, y, lip);
+        }
+        Rect(0, 0, W, 4, frame);
+        Rect(0, 4, W, 1, lip);
+        // dashboard
+        int dy = ViewH - 26;
+        for (int y = dy; y < ViewH; y++)
+        {
+            int curve = (int)(18 * MathF.Pow((y - dy) / 26f, 0.5f));
+            for (int x = 40 - curve; x < W - 40 + curve; x++) Put(x, y, y == dy ? lip : Col.Shade(frame, 200 + (y - dy) * 3));
+        }
+        int bx = (int)(MathF.Sin(g.Time * 11) * p.FireAnim * 20);
+        Text(56, dy + 5, $"SPD {p.ShipSpeed * 20:0}", glow);
+        Text(56, dy + 15, $"ALT {p.Z * 100:0}", glow);
+        // progress along the lane, west to east
+        float along = Math.Clamp((p.X - lv.StartX) / Math.Max(1f, lv.W - 4 - lv.StartX), 0f, 1f);
+        int px0 = 140, pw = 110;
+        Rect(px0, dy + 8, pw, 5, Col.Rgb(20, 22, 28));
+        Rect(px0, dy + 8, (int)(pw * along), 5, glow);
+        Text(px0, dy + 16, Words.T("TO THE MOON"), Col.Shade(glow, 180));
+        // gunsight
+        int cx = W / 2 + bx, cy = (int)(ViewH / 2f + p.Pitch);
+        for (int k = 3; k <= 7; k++) { Put(cx - k, cy, glow); Put(cx + k, cy, glow); Put(cx, cy - k, glow); Put(cx, cy + k, glow); }
+    }
+
     void DrawWeapon(Game g)
     {
         var p = g.P;
+        if (g.Level.Flight) { DrawCockpit(g); return; }
         if (g.Mode == GameMode.Dead || g.Relaxed) return; // relaxed mode: weapons stay sheathed
         int slot = p.Weapon;
         var frames = Art.Weapons[(int)p.Class * 3 + slot];

@@ -108,7 +108,7 @@ public sealed class Editor
         new('X', "Push block", "Puzzles"), new('^', "Pressure plate", "Puzzles"), new('K', "Rubble (breakable)", "Puzzles"),
         new('N', "Iron ore", "Puzzles"), new('Q', "Moonstone ore", "Puzzles"), new('U', "Brimstone ore", "Puzzles"),
         new('@', "Player start", "Markers"), new('E', "Exit", "Markers"), new('1', "Portal 1", "Markers"),
-        new('2', "Portal 2", "Markers"), new('3', "Portal 3", "Markers"), new('4', "Portal 4", "Markers"), new('5', "Portal 5", "Markers"), new('6', "Portal 6", "Markers"), new('7', "Portal 7", "Markers"),
+        new('2', "Portal 2", "Markers"), new('3', "Portal 3", "Markers"), new('4', "Portal 4", "Markers"), new('5', "Portal 5", "Markers"), new('6', "Portal 6", "Markers"), new('7', "Portal 7", "Markers"), new('8', "Portal 8", "Markers"), new('9', "Portal 9", "Markers"),
         new('*', "Arena spawn rune", "Markers"),
         new('!', "Arena altar", "Markers"), new('+', "Checkpoint pad", "Markers"), new('=', "Lift pad (to checkpoint)", "Markers"),
         new('e', "Ettin", "Monsters"), new('a', "Afrit", "Monsters"), new('c', "Centaur", "Monsters"),
@@ -117,7 +117,7 @@ public sealed class Editor
         new('b', "Blue mana", "Items"), new('g', "Green mana", "Items"), new('r', "Mesh armor", "Items"),
         new('k', "Steel key", "Items"), new('f', "Fire key", "Items"), new('w', "Weapon piece 2", "Items"),
         new('x', "Weapon piece 3", "Items"), new('$', "Chest", "Items"), new('%', "Secret treasure", "Items"),
-        new('&', "Lore stone", "Items"), new('J', "Jetpack / Wings of Wrath", "Items"), new('V', "Wrecked ship", "Items"),
+        new('&', "Lore stone", "Items"), new('J', "Jetpack / Wings of Wrath", "Items"), new('V', "Wrecked ship", "Items"), new('A', "Asteroid", "Items"),
         new('t', "Torch", "Decor"), new('p', "Pillar", "Decor"), new('T', "Tree", "Decor"),
     };
 
@@ -395,7 +395,7 @@ public sealed class Editor
         return i >= 0 && i < count ? i : -1;
     }
 
-    public const int PaletteX = 242, PaletteY = 12, PaletteCell = 13, PaletteCols = 6;
+    public const int PaletteX = 242, PaletteY = 12, PaletteCell = 11, PaletteCols = 7;
 
     public void Update(Input inp, float dt)
     {

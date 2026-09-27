@@ -66,7 +66,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt*, the *Windspire* and
-  the optional *Chaos Arena*, *Deepdelve Quarry*, *Bedrock Depths* and *Barren World*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
+  the optional *Chaos Arena*, *Deepdelve Quarry*, *Bedrock Depths*, *Barren World*, *Void Crossing* and *Verdant Moon*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
@@ -112,8 +112,25 @@ see [Rendered art pack](#rendered-art-pack-blender)).
 
   Each vein you break goes into your pack. Press `E` at the ship to hand over what it needs: 6 iron, 4 moonstone and
   3 brimstone. A panel in the top-right corner tracks what's delivered and what you're carrying. The ship looks
-  patched up once it's half done, then gets its engine lit and its fin back. Press `E` again to take off and fly
-  home; after that the portal works both ways.
+  patched up once it's half done, then gets its engine lit and its fin back. Press `E` again to take off into the
+  Void Crossing; after that the Barren World's portal works both ways.
+- **Flight: the Void Crossing** (the **Asteroid Belt** in sci-fi): a new way to play. You pilot the repaired ship down
+  a long lane of open space toward the green moon hanging ahead. The ship cruises forward on its own. The controls:
+
+  | Control | In the cockpit |
+  |---|---|
+  | Forward / back | Speed up / slow down |
+  | Strafe | Slide across the lane |
+  | Mouse or turn keys | A little yaw either side |
+  | Jump / Slide | Climb / dive |
+  | Attack | Twin lasers, aimed with the gunsight |
+
+  Tumbling **asteroids** thicken along the way, bobbing up and down across your path, and drones (later psi
+  wraiths) come at you; it's Afrits and Dark Bishops in fantasy. Ram a rock and your hull (your health) takes the
+  blow; shoot it and it shatters. Floating vials patch the hull, if you're at their altitude. The dashboard shows
+  speed, altitude and how far along the lane you are. If the hull gives out, you start the crossing again with a
+  full hull. Reach the end to land on the **Verdant Moon**, a meadow with an overgrown outpost; portal **9** there
+  leads home to Winnowing Hall, and the landing pad takes you back into the crossing.
 - **The Windspire** (the **Comms Spire** in sci-fi): a vertical level on the main route, through portal **4** in
   the Frozen Keep's vault. It's an open-topped tower ten units tall with eight ledges and pillars
   spiralling up its walls, each at least a unit higher than the last, so none can be walked or jumped onto. You
@@ -227,10 +244,11 @@ gallery, dig down through the rock field (the pockets hold loot, the middle cave
 to the strongroom's door, or south-east straight into the strongroom. Its secret wall is at the east end.
 Portal **6** in the strongroom leads down to the Bedrock Depths, where there's nothing but rock to dig.
 Portal **7**, in the courtyard between its two northern trees, strands you on the Barren World until you've mined
-enough ore to repair your ship.
+enough ore to repair your ship. Then fly it through the Void Crossing to the Verdant Moon, whose portal 9 brings you
+back to the courtyard.
 
-**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 22 relics, which
-are spread over all eight maps (including the arena and the Windspire, where some sit on high ledges, and the
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 26 relics, which
+are spread over all ten maps (including the arena and the Windspire, where some sit on high ledges, and the
 Bedrock Depths, where they're buried in the rock) before the
 exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
@@ -253,7 +271,7 @@ of everything you can place is on the right, drawn with the game's own textures 
 | `G` | Cycle layers: tiles → ceilings (1.0–10.0, or the map default) → floors (ground up to 8.5) |
 | `K` | Stair brush (floors layer): each cell you drag over is one step (0.25) higher than the last |
 | `-` / `=` | Zoom out / in |
-| `T` | Cycle theme (hall, ice, crypt, arena, spire, barren) |
+| `T` | Cycle theme (hall, ice, crypt, arena, spire, barren, void, meadow) |
 | `R` | Rename the map |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+S` | Save |
@@ -346,7 +364,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
-| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire, `map 6` = Deepdelve Quarry, `map 7` = Bedrock Depths, `map 8` = Barren World) |
+| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire, `map 6` = Deepdelve Quarry, `map 7` = Bedrock Depths, `map 8` = Barren World, `map 9` = Void Crossing, `map 10` = Verdant Moon) |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
@@ -422,7 +440,7 @@ lineups of every monster in both looks (`56_…`, `57_…`).
 |---|---|
 | `src/Program.cs` | Raylib window, input mapping, framebuffer upload |
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
-| `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's eight maps and the themes |
+| `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's ten maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
 | `src/Editor.cs` | Level editor: map document and file format, palette, tools, undo, validation, play-testing |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
@@ -460,7 +478,7 @@ Maps are ASCII grids in `src/Level.cs`:
 | `$` | treasure chest (hand-placed; most are scattered randomly) | `J` | jetpack / Wings of Wrath |
 | `X` | pushable stone block | `^` | pressure plate |
 | `K` | rubble (break it with attacks or Use) | `V` | wrecked ship (Use to repair with ore, then to fly home) |
-| `N` `Q` `U` | ore veins: iron, moonstone, brimstone (break like rubble; the ore goes in your pack) | | |
+| `N` `Q` `U` | ore veins: iron, moonstone, brimstone (break like rubble; the ore goes in your pack) | `A` | asteroid (flight maps) |
 | `Z` | secret wall (looks like its neighbours) | `&` | lore stone |
 | `%` | secret treasure (a relic in Relaxed, a Mystic Urn in Classic) | | |
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |
