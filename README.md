@@ -213,6 +213,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `Tab` / `M` | Automap |
 | `Esc` | Pause menu (Resume, Options, Restart, Quit) |
 | `K` | Character screen: spend skill points, see your weapons' levels |
+| `H` | Cycle the HUD style: full, compact, minimal, off |
 | `F12` | Save a screenshot |
 | `~` | Developer console |
 
@@ -361,8 +362,18 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   mouse wheel all work. Select a slot and press `Enter`, then press the new key (`Esc` cancels). `Backspace`
   clears a slot, `Left`/`Right` switch between slots, and **Reset to defaults** restores everything.
   Binding a key that's already in use moves it off the other action and tells you which.
-- **Mouse sensitivity**, **Invert mouse**, **Field of view**, **Show FPS**, **Visual style** (sci-fi or fantasy) and
-  **Rendered art** (the Blender art pack over the sci-fi style): change with `Left`/`Right` or `Enter`.
+- **Mouse sensitivity**, **Invert mouse**, **Field of view**, **Show FPS**, **Visual style** (sci-fi or fantasy),
+  **Rendered art** (the Blender art pack over the sci-fi style) and **HUD style**: change with `Left`/`Right` or `Enter`.
+- **HUD style** (also `H` in game, or `hud 0-3` in the console):
+  - **Full**: the classic status bar along the bottom.
+  - **Compact**: no status bar, so the view fills the screen. Health, armor and healing items sit in the bottom-left
+    corner, both kinds of ammo (the one your weapon uses lit up) and your keys in the bottom-right; the level bar,
+    jetpack gauge and block count move up to make room. In relaxed mode it lists relics, lore, secrets and how much
+    you've explored.
+  - **Minimal**: just your health and the ammo for the weapon in hand, small, in the bottom corners, plus any keys.
+  - **Off**: nothing but the view. Messages, menus and wave banners still show.
+
+  ![Compact HUD](docs/hud_compact.png)
 - `Esc`, `Enter` and the arrow keys always work in menus, and `Esc` can't be bound, so a bad binding can
   never lock you out.
 
@@ -398,7 +409,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
-`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`.
+`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off).
 
 Hexen's cheat codes work when typed during play (or in the console):
 `satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys), `icarus` (jetpack),
@@ -440,7 +451,10 @@ cover keeps its procedural look. It covers:
 - all nine first-person weapons, each with a resting and a firing frame: the Marine's power fists, vibro blade and
   grav launcher, the Engineer's shock baton, bio rifle and flamer, and the Psion's blaster, shard gun and arc rifle.
   They're rendered through a camera that matches the player's eye (the game's 74° field of view, cropped with a lens
-  shift to the 128×80 weapon frame), so the barrels point toward the crosshair; your sleeve is in your class colour
+  shift to the 128×80 weapon frame), so the barrels point toward the crosshair. Your armoured glove closes on
+  each gun's pistol grip (or a blade's hilt), with a back plate and sleeve in your class colour and knuckle lights in
+  its accent. The power fist's punch drives the right gauntlet out toward the crosshair and bursts off the knuckles
+  in a ring of energy while the left pulls back
 
 ![Rendered art sheet: procedural above, rendered below](docs/rendered_art_sheet.png)
 ![Rendered monsters: procedural above, rendered below](docs/rendered_art_monsters.png)
