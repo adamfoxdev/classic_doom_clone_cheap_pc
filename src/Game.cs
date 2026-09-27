@@ -214,6 +214,26 @@ public sealed class Game
         Say($"Play-testing '{map.Name}'. Esc > Back to editor to return.");
     }
 
+    /// <summary>
+    /// Restarts the play-test on a new version of the map (the HTML editor saved it again), keeping you where you
+    /// were if that spot is still open floor.
+    /// </summary>
+    public void ReloadTest(MapDef map)
+    {
+        var p = P;
+        (float x, float y, float angle, float pitch) = p != null ? (p.X, p.Y, p.Angle, p.Pitch) : (0f, 0f, 0f, 0f);
+        var cls = p?.Class ?? PClass.Fighter;
+        StartTest(map, cls);
+        int cx = (int)MathF.Floor(x), cy = (int)MathF.Floor(y);
+        if (p != null && Level.InBounds(cx, cy) && !Level.BlocksCircle(x, y, P.Radius))
+        {
+            P.X = x; P.Y = y; P.Angle = angle; P.Pitch = pitch;
+            P.FloorZ = Level.FloorUnder(x, y, P.Radius);
+        }
+        Messages.Clear();
+        Say($"Reloaded '{map.Name}'.");
+    }
+
     public void ReturnToEditor()
     {
         TestingMap = false;

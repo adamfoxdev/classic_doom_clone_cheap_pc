@@ -10,12 +10,34 @@ public static class Program
         Art.Init();
         if (args.Contains("--selftest")) return Headless.SelfTest();
         if (args.Contains("--shots")) return Headless.Screenshots(args.SkipWhile(a => a != "--shots").Skip(1).FirstOrDefault() ?? "shots");
-        if (args.Contains("--sounds")) return Headless.ExportSounds(args.SkipWhile(a => a != "--sounds").Skip(1).FirstOrDefault() ?? "sounds");
-        RunWindow();
+        if (args.Contains("--sounds")) return Headless.ExportSounds(Arg(args, "--sounds") ?? "sounds");
+        if (args.Contains("--check-map")) return Arg(args, "--check-map") is { } check ? MapFiles.Check(check) : Usage();
+        if (args.Contains("--export-maps")) return MapFiles.Export(Arg(args, "--export-maps") ?? "maps");
+        if (args.Contains("--export-editor-maps")) return MapFiles.ExportEditorMaps();
+
+        // --play map.hxm [--class fighter|cleric|mage] [--relaxed]: play-test a map file, reloading it on every save
+        string play = Arg(args, "--play");
+        if (args.Contains("--play") && play == null) return Usage();
+        var cls = (Arg(args, "--class") ?? "fighter").ToLowerInvariant() switch
+        {
+            "cleric" or "engineer" => PClass.Cleric,
+            "mage" or "psion" => PClass.Mage,
+            _ => PClass.Fighter,
+        };
+        RunWindow(play, cls, args.Contains("--relaxed"));
         return 0;
     }
 
-    static void RunWindow()
+    static string Arg(string[] args, string name) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault(a => !a.StartsWith("--"));
+
+    static int Usage()
+    {
+        Console.WriteLine("usage: HexenSharp [--play map.hxm [--class fighter|cleric|mage] [--relaxed]] | --check-map map.hxm |");
+        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --shots dir | --sounds dir");
+        return 2;
+    }
+
+    static void RunWindow(string play, PClass cls, bool relaxed)
     {
         const int W = Renderer.W, H = Renderer.H;
         Raylib.SetConfigFlags(ConfigFlags.ResizableWindow | ConfigFlags.VSyncHint);
@@ -45,6 +67,20 @@ public static class Program
         Raylib.UnloadImage(img);
         Raylib.SetTextureFilter(tex, TextureFilter.Point);
 
+        MapWatcher watcher = null;
+        if (play != null)
+        {
+            var doc = MapFiles.TryLoad(play, out var error);
+            if (doc == null) Console.WriteLine($"can't play {play}: {error}");
+            else
+            {
+                game.Style = relaxed ? GameStyle.Relaxed : GameStyle.Classic;
+                game.Editor.Doc = doc;
+                game.StartTest(doc.ToDef(), cls);
+                watcher = new MapWatcher(play);
+            }
+        }
+
         bool captured = false;
         int skipMouse = 0, shotIndex = 0;
 
@@ -67,6 +103,7 @@ public static class Program
             }
 
             game.Update(inp, Raylib.GetFrameTime());
+            watcher?.Poll(game, Raylib.GetFrameTime());
             renderer.Render(game);
             Raylib.UpdateTexture(tex, renderer.Fb);
 
