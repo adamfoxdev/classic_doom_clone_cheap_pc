@@ -84,6 +84,8 @@ public static class Headless
         JetpackChecks(Check);
         Console.WriteLine("Windspire:");
         SpireChecks(Check);
+        Console.WriteLine("Deepdelve Quarry and rubble:");
+        QuarryChecks(Check);
         VerticalAimChecks(Check);
         Console.WriteLine("Checkpoints:");
         CheckpointChecks(Check);
@@ -97,6 +99,76 @@ public static class Headless
 
         Console.WriteLine(failures == 0 ? "All checks passed." : $"{failures} check(s) failed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    static void QuarryChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int qi = Array.FindIndex(hub, l => l.RawName == "Deepdelve Quarry");
+        check(qi == hub.Length - 1 && hub.Count(l => l.FindMark('5') != null) == 2 && hub[0].FindMark('5') != null,
+              "portal 5 in Winnowing Hall's courtyard leads to Deepdelve Quarry");
+        var lv = hub[qi];
+        var (ax, ay) = lv.ArrivalCell();
+        var rubble = Enumerable.Range(0, lv.Cells.Length).Where(i => lv.Cells[i] == Level.Rubble).ToHashSet();
+        var walled = lv.Reachable(ax, ay, rubble);
+        var dug = lv.Reachable(ax, ay);
+        int gallery = 3 * lv.W + 14, vault = 16 * lv.W + 11;
+        check(rubble.Count > 150 && !walled[gallery] && dug[gallery] && dug[vault] && !walled[vault],
+              $"the gallery and the strongroom are sealed behind rubble ({rubble.Count} blocks)");
+        check(lv.WalkableFloor.Contains(9 * lv.W + 5), "rubble counts as floor to explore");
+        check(lv.BlockHp[2 * lv.W + 6] == Level.RubbleHp && lv.CrackStage(2 * lv.W + 6) == 0 && lv.Blocks(6, 2), "rubble starts whole and solid");
+
+        var g = new Game { FixedSeed = 5 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Warp(qi);
+        var q = g.Level;
+        q.Things.RemoveAll(t => t is Monster or Chest);
+        var p = g.P;
+        // punch through the plug east of the arrival room
+        p.X = 5.5f; p.Y = 2.5f; p.Angle = 0;
+        int plug = 2 * q.W + 6;
+        var stages = new HashSet<int>();
+        for (int k = 0; k < 35 * 10 && q.Cells[plug] == Level.Rubble; k++) { stages.Add(q.CrackStage(plug)); Tick(new Input { Fire = true }); }
+        check(q.Cells[plug] == '\0' && !q.Blocks(6, 2), "gauntlets smash a rubble block");
+        check(stages.Count >= 2, $"it cracks up as you hit it ({stages.Count} stages seen)");
+        check(q.Things.Any(t => t is Puff), "it bursts into debris");
+        // walk into the hole
+        Tick(new Input { Move = 1 }, 12);
+        check(p.X > 6.1f, "you can walk into the hole you made");
+
+        // prying by hand works too (it's the only way in relaxed mode)
+        p.X = 5.5f; p.Y = 3.5f; p.Angle = 0;
+        int pry = 3 * q.W + 6;
+        for (int k = 0; k < 35 * 6 && q.Cells[pry] == Level.Rubble; k++) Tick(new Input { Use = k % 2 == 0 });
+        check(q.Cells[pry] == '\0', "Use pries a rubble block loose");
+
+        // a splash weapon chips every block around the blast
+        var mg = new Game { FixedSeed = 5 };
+        mg.NewGame(PClass.Cleric);
+        mg.Warp(qi);
+        var mq = mg.Level;
+        mq.Things.RemoveAll(t => t is Monster or Chest);
+        mg.P.HasWeapon[2] = true; mg.P.GreenMana = 200; mg.P.Weapon = 2;
+        mg.P.X = 14.5f; mg.P.Y = 5.5f; mg.P.Angle = MathF.PI / 2;
+        for (int k = 0; k < 35 * 2; k++) mg.Update(new Input { Fire = k < 3 }, 1f / 35f);
+        int chipped = rubble.Count(i => mq.Cells[i] != Level.Rubble || mq.BlockHp[i] < Level.RubbleHp);
+        check(chipped >= 3, $"a firestorm blast chips several blocks ({chipped})");
+
+        // monsters' shots don't dig
+        q.Things.Add(new Projectile { Kind = ProjKind.Fireball, FromPlayer = false, DmgMin = 90, DmgMax = 90, X = 2.5f, Y = 5.9f, VX = 0, VY = 6f, Level = q });
+        Tick(default, 20);
+        check(q.Cells[6 * q.W + 2] == Level.Rubble && q.BlockHp[6 * q.W + 2] == Level.RubbleHp, "monster fire doesn't break rubble");
+
+        // each style has its own rubble, with distinct crack stages
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            g.SetArtStyle(style);
+            var s = Art.RubbleCracked;
+            check(s.Length == Level.RubbleStages && s[0] == Art.Rubble && Enumerable.Range(1, s.Length - 1).All(k => !s[k].Px.SequenceEqual(s[k - 1].Px)),
+                  $"{style} rubble has {Level.RubbleStages} crack stages");
+        }
+        g.SetArtStyle(ArtStyle.SciFi);
     }
 
     static void SoundChecks(Action<bool, string> check)
@@ -129,7 +201,7 @@ public static class Headless
     {
         var hub = Maps.BuildHub();
         int si = Array.FindIndex(hub, l => l.RawName == "Windspire");
-        check(si == hub.Length - 1 && si >= 4, "the Windspire joins the hub after the Chaos Arena");
+        check(si == 4, "the Windspire joins the hub after the Chaos Arena");
         var lv = hub[si];
         var (ax, ay) = lv.ArrivalCell();
         var walk = lv.Reachable(ax, ay);
@@ -318,7 +390,7 @@ public static class Headless
         check(back.W == 37 && back.H == 23 && back.Px.SequenceEqual(src), "PNG reader round-trips a saved image");
 
         var covered = RenderedArt.Covered.ToList();
-        check(RenderedArt.Available && covered.Count == 21, $"the pack covers 11 pickups, 4 textures and all 6 monsters ({covered.Count})");
+        check(RenderedArt.Available && covered.Count == 22, $"the pack covers 11 pickups, 5 textures and all 6 monsters ({covered.Count})");
         check(new[] { "afrit", "ettin", "centaur", "slaughtaur", "bishop", "heresiarch" }.All(m => covered.Contains("monsters/" + m)), "every monster has rendered frames");
         bool shapes = true;
         foreach (var (file, png) in RenderedArt.Files)
@@ -1058,7 +1130,7 @@ public static class Headless
         // secrets and lore exist in both modes
         var classic = new Game { FixedSeed = 4 };
         classic.NewGame(PClass.Fighter);
-        check(classic.SecretsTotal == 5 && classic.LoreTotal == 20, $"5 secrets and 20 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.SecretsTotal == 6 && classic.LoreTotal == 22, $"6 secrets and 22 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
         check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
@@ -1100,7 +1172,7 @@ public static class Headless
         }
         check(short_ == 0, $"60 random games all hide exactly {relicCount} relics");
         var g2 = new Game { FixedSeed = 8, Style = GameStyle.Relaxed }; g2.NewGame(PClass.Cleric);
-        string Where(Game gg) => string.Join(";", gg.Hub[0].Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).Select(p => $"{p.X},{p.Y}"));
+        string Where(Game gg) => string.Join(";", gg.Hub.SelectMany(l => l.Things.OfType<Pickup>()).Where(p => p.Kind == PickupKind.Relic).Select(p => $"{p.X},{p.Y}"));
         check(Where(g) != Where(g2), "relic spots change between games");
 
         // peaceful creatures: stand among them for 20 seconds
@@ -2176,6 +2248,35 @@ public static class Headless
         g.SetArtStyle(ArtStyle.Fantasy);
         PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
         Shot("50_windspire_fantasy");
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+
+        // Deepdelve Quarry: a rubble plug cracking under your fists, then the tunnel you dug into the gallery
+        g.NewGame(PClass.Fighter);
+        int quarry = Array.FindIndex(g.Hub, l => l.RawName == "Deepdelve Quarry");
+        g.Warp(quarry);
+        var ql = g.Level;
+        ql.Things.RemoveAll(t => t is Monster);
+        g.Messages.Clear();
+        g.HitBlock(6, 2, 25); g.HitBlock(6, 3, 45);
+        g.Vars.Freeze = true;
+        PlaceCam(3.2f, 2.9f, 0, 0, 0.1f, 0);
+        Tick(default, 1); PlaceCam(3.2f, 2.9f, 0, 0, 0.1f, 0);
+        Shot("58_quarry_rubble");
+        for (int x = 6; x <= 8; x++) g.HitBlock(x, 2, 999);
+        g.HitBlock(6, 3, 999);
+        g.Vars.Freeze = false;
+        Tick(default, 35);
+        g.Vars.Freeze = true;
+        PlaceCam(4.6f, 2.5f, 0, 0, 0.0f, 0);
+        Tick(default, 1); PlaceCam(4.6f, 2.5f, 0, 0, 0.0f, 0);
+        g.Messages.Clear();
+        Shot("59_quarry_tunnel");
+        g.SetRenderedArt(true);
+        Shot("61_quarry_rendered");
+        g.SetRenderedArt(false);
+        g.SetArtStyle(ArtStyle.Fantasy);
+        Shot("60_quarry_fantasy");
         g.SetArtStyle(ArtStyle.SciFi);
         g.Vars.Freeze = false;
 

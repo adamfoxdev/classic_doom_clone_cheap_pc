@@ -204,8 +204,9 @@
 // ============================================================ the game's map format (mirrors src/Editor.cs and src/Level.cs)
 
 const THEMES = ["hall", "ice", "crypt", "arena", "spire"];
-const WALLS = "#BWMIODSFPLXZ";          // Level.WallGlyphs: these cells are solid...
+const WALLS = "#BWMIODSFPLXZK";         // Level.WallGlyphs: these cells are solid...
 const DOORS = "DSFPZ";                  // ...except doors, gates and secret walls, which open
+const RUBBLE = "K";                     // ...and rubble, which you can smash through
 const MAX_STEP = 0.5, JUMP_RISE = 0.9;  // Level.Rise(Walk) and Rise(Jump)
 const MIN_H = 1, MAX_H = 10;
 const HEIGHT_PAL = ".23456789abcdefghijk".split("");     // Editor.HeightPalette
@@ -222,9 +223,11 @@ const PIECES = [
   ["F", "Fire key door", "Red keycard door", "Doors"], ["P", "Portcullis", "Force field", "Doors"],
   ["L", "Lever", "Switch", "Doors"], ["Z", "Secret wall", "Secret panel", "Doors"],
   ["X", "Push block", "Push crate", "Puzzles"], ["^", "Pressure plate", "Pressure pad", "Puzzles"],
+  ["K", "Rubble (breakable)", "Rubble (breakable)", "Puzzles"],
   ["@", "Player start", "Player start", "Markers"], ["E", "Exit", "Exit teleporter", "Markers"],
   ["1", "Portal 1", "Teleporter 1", "Markers"], ["2", "Portal 2", "Teleporter 2", "Markers"],
   ["3", "Portal 3", "Teleporter 3", "Markers"], ["4", "Portal 4", "Teleporter 4", "Markers"],
+  ["5", "Portal 5", "Teleporter 5", "Markers"],
   ["*", "Arena spawn rune", "Arena spawn pad", "Markers"], ["!", "Arena altar", "Arena start pad", "Markers"],
   ["+", "Checkpoint pad", "Checkpoint pad", "Markers"], ["=", "Lift pad (to checkpoint)", "Lift pad (to checkpoint)", "Markers"],
   ["e", "Ettin", "Brute mech", "Monsters"], ["a", "Afrit", "Drone", "Monsters"], ["c", "Centaur", "Strider", "Monsters"],
@@ -350,7 +353,7 @@ function reachable(d, from, rise) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= d.w || ny >= d.h) continue;
       const i = ny * d.w + nx;
-      if (seen[i] || isWall(d.cells[i])) continue;
+      if (seen[i] || (isWall(d.cells[i]) && !RUBBLE.includes(d.cells[i]))) continue;
       if (floorAt(d, i) > floorAt(d, c) + rise + 0.001) continue;
       seen[i] = 1; q.push(i);
     }
@@ -477,7 +480,7 @@ function resize(w, h) {
 
 const COLORS = {
   "#": "#6b707b", B: "#8b5140", W: "#7c5b37", M: "#4e6d3f", I: "#93c6da", O: "#cfccc4",
-  ".": "#2a2d35", ",": "#26392b", X: "#9b8e74", L: "#6b707b", Z: "#6b707b",
+  ".": "#2a2d35", ",": "#26392b", X: "#9b8e74", L: "#6b707b", Z: "#6b707b", K: "#786a5c",
   D: "#a3722f", S: "#4f79b4", F: "#c0472c", P: "#6d7280",
 };
 const THING_COLOR = { M: "#ff6b5a", I: "#f0c050", D: "#9fd08a" };
@@ -507,6 +510,7 @@ function drawGlyph(g, c, x, y, s, under) {
     if (g === "P") { c.fillStyle = "#2a2d35"; for (let k = 1; k < 4; k++) c.fillRect(x + k * s / 4 - 1, y, Math.max(1, s / 12), s); }
     if (g === "L") { c.strokeStyle = "#f0c050"; c.lineWidth = Math.max(1, s / 8); c.beginPath(); c.moveTo(x + s * .3, y + s * .8); c.lineTo(x + s * .7, y + s * .25); c.stroke(); }
     if (g === "X") { c.strokeStyle = "rgba(0,0,0,.45)"; c.lineWidth = Math.max(1, s / 10); c.strokeRect(x + s * .15, y + s * .15, s * .7, s * .7); c.beginPath(); c.moveTo(x + s * .15, y + s * .15); c.lineTo(x + s * .85, y + s * .85); c.moveTo(x + s * .85, y + s * .15); c.lineTo(x + s * .15, y + s * .85); c.stroke(); }
+    if (g === "K") { c.strokeStyle = "rgba(0,0,0,.5)"; c.lineWidth = Math.max(1, s / 12); c.beginPath(); c.moveTo(x + s * .2, y + s * .3); c.lineTo(x + s * .5, y + s * .5); c.lineTo(x + s * .4, y + s * .85); c.moveTo(x + s * .5, y + s * .5); c.lineTo(x + s * .85, y + s * .35); c.stroke(); }
     if (g === "Z") letter("?", "#ffe070");
     if (g === "S") letter("S", "#e8f0ff");
     if (g === "F") letter("F", "#fff0e0");

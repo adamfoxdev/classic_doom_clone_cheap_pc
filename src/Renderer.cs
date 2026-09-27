@@ -184,6 +184,7 @@ public sealed class Renderer
             case 'P': return Art.Portcullis;
             case 'L': return lv.PulledLevers.Contains(cell) ? Art.LeverOn : Art.LeverOff;
             case 'X': return Art.Block;
+            case Level.Rubble: return Art.RubbleCracked[lv.CrackStage(cell)];
             case 'Z': return lv.Theme.Walls.TryGetValue(lv.SecretLook[cell], out var look) ? look : Art.Stone;
         }
         return lv.Theme.Walls.TryGetValue(c, out var t) ? t : Art.Stone;
@@ -553,6 +554,7 @@ public sealed class Renderer
             case 'P': r = (Art.Portcullis, true); break;
             case 'L': r = (Art.LeverOff, false); break;
             case 'X': r = (Art.Block, false); break;
+            case Level.Rubble: r = (Art.Rubble, false); break;
             case 'Z': r = (Labelled(th.Walls.TryGetValue('#', out var st) ? st : Art.Stone, "?", Col.Rgb(255, 220, 60)), false); break;
             case '.': r = (th.FloorIn, false); break;
             case ',': r = (th.OutdoorFloor, false); break;
@@ -866,6 +868,7 @@ public sealed class Renderer
                     'S' => Col.Rgb(150, 170, 230),
                     'F' => Col.Rgb(240, 110, 40),
                     'X' => Col.Rgb(80, 220, 200),
+                    Level.Rubble => Col.Rgb(120, 104, 90),
                     'P' => Col.Rgb(140, 140, 140),
                     'L' => Col.Rgb(80, 220, 90),
                     _ => Col.Rgb(150, 110, 70),

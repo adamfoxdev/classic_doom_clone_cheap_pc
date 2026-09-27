@@ -60,7 +60,7 @@ public static class Chests
         foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
         {
             char c = lv.Cell(x + dx, y + dy);
-            if (Level.IsDoor(c) || c == 'L') return false;          // never block doors or levers
+            if (Level.IsDoor(c) || c == 'L' || c == Level.Rubble) return false; // never block doors, levers or rubble you'll dig through
             if (c != '\0') { walls++; if (dx != 0) horiz = true; else vert = true; }
         }
         // against one wall (or tucked in a corner); never in a corridor or out in the open

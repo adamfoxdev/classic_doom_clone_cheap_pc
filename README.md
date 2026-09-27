@@ -66,7 +66,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt*, the *Windspire* and
-  the optional *Chaos Arena*. Each map keeps its state (dead monsters, opened doors, pulled levers) when you leave and come back.
+  the optional *Chaos Arena* and *Deepdelve Quarry*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
@@ -83,6 +83,13 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   screen tallies how many you opened.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
+- **Deepdelve Quarry** (the **Asteroid Mine** in sci-fi): an optional dig-your-way-through level, through portal
+  **5** in Winnowing Hall's courtyard. Every tunnel is sealed with **rubble** blocks that you break
+  Minecraft-style. Hit a block and it cracks in stages, then bursts into falling debris. Melee is quickest, shots
+  work too, and splash weapons (the Hammer, Firestorm) chip every block around the blast. You can also pry a block
+  loose with Use, three pulls each, which is how you dig in Relaxed mode. Pockets in the rock field hide mana and
+  vials. A drone waits in a sealed cave, and the quarrymen's strongroom holds armor, a Mystic Urn and a secret nook.
+  Monsters can't dig, and their missiles don't break rubble.
 - **The Windspire** (the **Comms Spire** in sci-fi): a vertical level on the main route, through portal **4** in
   the Frozen Keep's vault. It's an open-topped tower ten units tall with eight ledges and pillars
   spiralling up its walls, each at least a unit higher than the last, so none can be walked or jumped onto. You
@@ -145,7 +152,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `W` `A` `S` `D` / arrow keys | Move / strafe / turn |
 | Mouse | Look (including up/down) |
 | Left click / `Ctrl` | Attack |
-| `E` | Use (doors, levers, chests, lore stones, secret walls); push a stone block |
+| `E` | Use (doors, levers, chests, lore stones, secret walls); push a stone block; pry at rubble |
 | `Shift+E` | Pull a stone block toward you |
 | `Space` | Jump; hold in mid-air to fly with the jetpack |
 | `C` | Slide (while moving); hold while flying to sink |
@@ -191,13 +198,16 @@ portcullis = force field, Heresiarch = Overmind, relic = artifact, lore stone = 
    Kill the Heresiarch, then step on the red exit rune.
 
 Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival (Dark Bishops join from wave 4).
+Portal **5**, near the courtyard's south wall, leads to Deepdelve Quarry. Smash east through the rubble into the
+gallery, dig down through the rock field (the pockets hold loot, the middle cave a drone), and keep digging south-west
+to the strongroom's door, or south-east straight into the strongroom. Its secret wall is at the east end.
 
-**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 15 relics, which
-are spread over all five maps (including the arena and the Windspire, where some sit on high ledges) before the
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 18 relics, which
+are spread over all six maps (including the arena and the Windspire, where some sit on high ledges) before the
 exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
-under the crypt's south-west room, under the arena's antechamber, and at the east end of the Windspire's
-north-east ledge.
+under the crypt's south-west room, under the arena's antechamber, at the east end of the Windspire's
+north-east ledge, and at the east end of the quarry's strongroom.
 
 ## Level editor
 
@@ -308,7 +318,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
-| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire) |
+| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire, `map 6` = Deepdelve Quarry) |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
@@ -355,7 +365,8 @@ cover keeps its procedural look. It covers:
   and a white-hot pain frame; the death frames are derived from them as usual. They're built bolder than the
   pickups, with brighter hulls, strong glows and a rim light, so they still read at a distance. The walkers are
   seen at a three-quarter angle to show their legs.
-- four textures: the main station wall panels, white hull plating, the pipe wall and the deck floor
+- five textures: the main station wall panels, white hull plating, the pipe wall, the deck floor and the mine's
+  rubble (faceted rocks with ore glints; its crack stages are drawn over it in game)
 
 ![Rendered art sheet: procedural above, rendered below](docs/rendered_art_sheet.png)
 ![Rendered monsters: procedural above, rendered below](docs/rendered_art_monsters.png)
@@ -383,7 +394,7 @@ lineups of every monster in both looks (`56_…`, `57_…`).
 |---|---|
 | `src/Program.cs` | Raylib window, input mapping, framebuffer upload |
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
-| `src/Level.cs` | Map parsing, doors, collision, line of sight; the hub's five maps and the themes |
+| `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's six maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
 | `src/Editor.cs` | Level editor: map document and file format, palette, tools, undo, validation, play-testing |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
@@ -420,6 +431,7 @@ Maps are ASCII grids in `src/Level.cs`:
 | `k` / `f` | Steel Key / Fire Key | `r` | Mesh Armor |
 | `$` | treasure chest (hand-placed; most are scattered randomly) | `J` | jetpack / Wings of Wrath |
 | `X` | pushable stone block | `^` | pressure plate |
+| `K` | rubble (break it with attacks or Use) | | |
 | `Z` | secret wall (looks like its neighbours) | `&` | lore stone |
 | `%` | secret treasure (a relic in Relaxed, a Mystic Urn in Classic) | | |
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |

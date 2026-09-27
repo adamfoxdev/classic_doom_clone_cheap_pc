@@ -3,7 +3,7 @@ namespace HexenSharp;
 public enum Sfx
 {
     Swing, Hit, Shoot, Magic, Explode, Sight, Death, Pickup, Item, Door, Lever,
-    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Secret, Lore, Relic, JetStart, Jet, JetOut, Count
+    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Secret, Lore, Relic, JetStart, Jet, JetOut, Break, Count
 }
 
 public abstract class Thing
@@ -187,6 +187,8 @@ public sealed class Puff : Thing
     readonly Tex _tex;
     public float Life, MaxLife;
     public float Grow;
+    /// <summary>Debris falls: upward speed, and how fast it drops (0 for puffs that just hang and fade).</summary>
+    public float VZ, Gravity;
     readonly float _baseW;
     public Puff(Tex tex, float size, float life, float grow)
     {
@@ -198,6 +200,11 @@ public sealed class Puff : Thing
         float s = _baseW * (1 + Grow * (1 - Life / MaxLife));
         Z -= (s - SpriteW) * 0.5f;
         SpriteW = SpriteH = s;
+        if (Gravity > 0)
+        {
+            VZ -= Gravity * dt;
+            Z = MathF.Max(Level?.FloorAt(X, Y) ?? 0f, Z + VZ * dt);
+        }
         if (Life <= 0) Removed = true;
     }
     public override Tex Sprite(float time) => _tex;

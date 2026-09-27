@@ -11,7 +11,10 @@ public static class Art
     public const int TS = 64; // wall/floor texture size
 
     // Walls
-    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble, Block, StepRiser;
+    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble, Block, StepRiser, Rubble;
+    /// <summary>Rubble at each crack stage (Level.RubbleStages), and a chip of it for the debris when it breaks.</summary>
+    public static Tex[] RubbleCracked;
+    public static Tex RubbleChunk;
     // Flats
     public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor,
         CheckpointFloor, CheckpointFloorOff, LiftFloor;
@@ -45,6 +48,8 @@ public static class Art
         BuildWeapons();
         if (style == ArtStyle.SciFi) SciFiArt.Apply();
         if (style == ArtStyle.SciFi && Rendered) RenderedArt.Apply();
+        RubbleCracked = CrackStages(Rubble);
+        RubbleChunk = Chunk(Rubble);
         PillarFrames = new[] { Pillar };
         TreeFrames = new[] { Tree };
         Version++;
@@ -70,6 +75,87 @@ public static class Art
 
     // ------------------------------------------------------------------ walls
 
+    /// <summary>Tileable cobblestone: rounded stones (a wrapped Voronoi pattern) lit from the top left, in dark grit.</summary>
+    internal static Tex Cobble(uint seed, (int r, int g, int b) baseCol, int varAmt, (int r, int g, int b) gap, int stones = 13)
+    {
+        var rng = new Rng(seed);
+        var pts = new (float x, float y, uint col)[stones];
+        for (int i = 0; i < stones; i++)
+        {
+            int v = rng.Range(-varAmt, varAmt), warm = rng.Range(-6, 6);
+            pts[i] = (rng.Range(0f, TS), rng.Range(0f, TS), Col.Rgb(baseCol.r + v + warm, baseCol.g + v, baseCol.b + v - warm));
+        }
+        static float Wrap(float d) => d > TS / 2f ? d - TS : d < -TS / 2f ? d + TS : d;
+        var c = new Canvas(TS, TS);
+        for (int y = 0; y < TS; y++)
+            for (int x = 0; x < TS; x++)
+            {
+                float d1 = float.MaxValue, d2 = float.MaxValue, ox = 0, oy = 0;
+                int best = 0;
+                for (int i = 0; i < stones; i++)
+                {
+                    float dx = Wrap(x + 0.5f - pts[i].x), dy = Wrap(y + 0.5f - pts[i].y);
+                    float d = MathF.Sqrt(dx * dx + dy * dy);
+                    if (d < d1) { d2 = d1; d1 = d; best = i; ox = dx; oy = dy; }
+                    else if (d < d2) d2 = d;
+                }
+                float edge = (d2 - d1) * 0.5f;
+                if (edge < 1.1f) { c.T.Set(x, y, Col.Rgb(gap.r, gap.g, gap.b)); continue; }
+                // rounded: brighter toward the top-left of each stone, darker toward its lower-right rim
+                int s = 256 - (int)Math.Clamp((ox + oy) * 3.2f, -70, 80);
+                if (edge < 2.4f) s = s * 200 / 256;
+                c.T.Set(x, y, Col.Shade(pts[best].col, s));
+            }
+        c.Noise(rng, 22);
+        return c.T;
+    }
+
+    /// <summary>A texture cracking up in stages: stage 0 is whole, each later stage adds to the last one's cracks.</summary>
+    static Tex[] CrackStages(Tex whole)
+    {
+        var stages = new Tex[Level.RubbleStages];
+        stages[0] = whole;
+        long r = 0, g = 0, b = 0;
+        foreach (uint px in whole.Px) { r += Col.R(px); g += Col.G(px); b += Col.B(px); }
+        int n = whole.Px.Length;
+        uint avg = Col.Rgb((int)(r / n), (int)(g / n), (int)(b / n));
+        uint dark = Col.Shade(avg, 50), lip = Col.Shade(avg, 360);
+        var rng = new Rng(97);
+        var t = whole;
+        for (int s = 1; s < stages.Length; s++)
+        {
+            t = t.Clone();
+            var c = new Canvas(t);
+            for (int k = 0; k < 1 + s * 2; k++)
+            {
+                float x = rng.Range(14f, 50f), y = rng.Range(14f, 50f), a = rng.Range(0f, MathF.Tau);
+                for (int seg = 0; seg < 3 + s; seg++)
+                {
+                    a += rng.Range(-0.9f, 0.9f);
+                    float len = rng.Range(4f, 8f), nx = x + MathF.Cos(a) * len, ny = y + MathF.Sin(a) * len;
+                    c.Line(x + 1, y + 1, nx + 1, ny + 1, 1, lip);
+                    c.Line(x, y, nx, ny, s == stages.Length - 1 ? 2 : 1, dark);
+                    x = nx; y = ny;
+                }
+            }
+            stages[s] = t;
+        }
+        return stages;
+    }
+
+    /// <summary>A small rough chip of a texture, for flying debris.</summary>
+    static Tex Chunk(Tex from)
+    {
+        var c = new Canvas(16, 16);
+        for (int y = 0; y < 16; y++)
+            for (int x = 0; x < 16; x++)
+            {
+                bool corner = (x < 3 || x > 12) && (y < 3 || y > 12);
+                if (!corner) c.T.Set(x, y, Col.Shade(from.Get(24 + x, 24 + y), y < 5 ? 300 : y > 11 ? 190 : 256));
+            }
+        c.Outline(Dark);
+        return c.T;
+    }
     static Tex Blocks(uint seed, int bw, int bh, (int r, int g, int b) baseCol, int varAmt, (int r, int g, int b) mortar)
     {
         var rng = new Rng(seed);
@@ -101,6 +187,7 @@ public static class Art
 
     static void BuildWalls()
     {
+        Rubble = Cobble(61, (118, 112, 104), 20, (30, 28, 26));
         Stone = Blocks(11, 32, 16, (104, 100, 96), 14, (40, 38, 36));
         Brick = Blocks(23, 16, 8, (120, 58, 44), 16, (50, 34, 28));
         Ice = Blocks(37, 32, 32, (150, 180, 210), 14, (70, 90, 120));

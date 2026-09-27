@@ -52,6 +52,9 @@ public static class Sounds
             Sfx.JetStart => Gen(0.32f, t => r.Range(-1f, 1f) * Env(t, 0.06f, 0.32f) * 0.9f, lowpass: 0.09f),
             Sfx.Jet => Gen(0.16f, t => r.Range(-1f, 1f) * Window(t, 0.16f) * (0.6f + 0.4f * MathF.Sin(Tau * 12 * t)) * 0.55f, lowpass: 0.08f),
             Sfx.JetOut => Gen(0.6f, t => MathF.Sin(Tau * (700 * t - 500 * t * t)) * 0.35f * Env(t, 0.01f, 0.6f)),
+            // rubble gives way: a thud, then stones clattering down
+            Sfx.Break => Gen(0.6f, t => MathF.Sin(Tau * (70 * t - 30 * t * t)) * 0.6f * Decay(t, 10)
+                                        + r.Range(-1f, 1f) * (0.4f + 0.6f * ((int)(t * 28) % 3 == 0 ? 1 : 0)) * 0.7f * Decay(t, 5), lowpass: 0.18f),
             _ => new short[1],
         };
     }
@@ -131,6 +134,9 @@ public static class Sounds
             Sfx.Jet => Gen(0.16f, t => (Noise() * 0.6f + Saw(t * 70) * 0.15f) * Window(t, 0.16f), lowpass: 0.18f),
             Sfx.JetOut => Gen(0.6f, t => Noise() * 0.5f * ((int)(t * 25) % 2 == 0 ? 1f : 0.1f) * Decay(t, 4)
                                          + MathF.Sin(Tau * Dive(t, 600, 150, 4)) * 0.2f * Env(t, 0.01f, 0.6f), lowpass: 0.25f),
+            // rock shatters: a low crunch with a spray of grit
+            Sfx.Break => Gen(0.7f, t => MathF.Sin(Tau * Dive(t, 140, 45, 6)) * 0.6f * Decay(t, 7) + Noise() * 0.5f * Decay(t, 6)
+                                        + (r.Float() > 0.94f ? 0.7f : 0f) * Decay(t, 4), lowpass: 0.3f),
             _ => new short[1],
         };
     }

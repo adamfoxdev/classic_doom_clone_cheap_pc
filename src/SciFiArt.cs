@@ -159,6 +159,19 @@ public static class SciFiArt
             c.Noise(new Rng(1110), 12);
             Art.Block = c.T;
         }
+        // 'K': cave-in rubble, chunks of asteroid rock with glinting ore
+        {
+            var t = Art.Cobble(1112, (100, 90, 84), 16, (20, 18, 22), 11);
+            var c = new Canvas(t);
+            var r = new Rng(1113);
+            for (int i = 0; i < 7; i++)
+            {
+                float x = r.Range(4f, 60f), y = r.Range(4f, 60f);
+                c.Tri(x - 2, y + 1, x + 2, y + 1, x, y - 3, C(70, 200, 230));
+                c.T.Set((int)x, (int)y - 1, C(200, 250, 255));
+            }
+            Art.Rubble = t;
+        }
         // stair step face: dark steel with a hazard lip
         {
             var c = Panel(1111, (70, 74, 80), 16, 32);

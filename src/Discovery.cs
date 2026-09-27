@@ -23,7 +23,7 @@ public static class Discovery
     {
         "Xeno Idol", "Quantum Core", "Ancient Probe", "Star Chart Crystal", "Void Compass", "Captain's Log",
         "Alien Skull", "Gravity Pearl", "Plasma Lily", "Signal Beacon", "Cryo Seed", "Founders' Badge",
-        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal",
+        "Ion Hourglass", "Dark Matter Shard", "Singing Monolith", "Station Seal", "Ore Heart", "Miner's Lamp",
     };
 
     public static string LoreText(string map, int index)
@@ -71,13 +71,18 @@ public static class Discovery
             "Step on the central pad to restart the simulation. Management accepts no responsibility.",
             "Behind the scoreboard: a quiet room where the champions rested between rounds.",
         },
+        ["Deepdelve Quarry"] = new[]
+        {
+            "Asteroid Mine, shaft 2. The crew collapsed every tunnel to slow the Overmind's drones. Loose rock breaks if you hit it hard enough.",
+            "Foreman's lockup. Last log entry: quotas met, and a sealed panel in the east wall that 'officially does not exist'.",
+        },
     };
 
     static readonly string[] FantasyRelicNames =
     {
         "Chalice of Ages", "Crown of Winnowing", "Orb of Dusk", "Codex of Silence", "Serpent Idol", "Bell of the Keep",
         "Marsh Lantern", "Bishop's Mitre", "Star Map", "Ember Heart", "Frost Circlet", "Champion's Laurel",
-        "Mirror of Tides", "Obsidian Quill", "Hourglass of Ash", "Seal of the Hub",
+        "Mirror of Tides", "Obsidian Quill", "Hourglass of Ash", "Seal of the Hub", "Quarryman's Pick", "Geode of Echoes",
     };
 
     /// <summary>Lore for each map, in the order its stones ('&') appear reading the map row by row.</summary>
@@ -118,6 +123,11 @@ public static class Discovery
             "In gentler days the altar only rang a bell. Step on it, if you dare to wake the old games.",
             "Behind the champions' wall lies a quiet room where victors rested and the defeated were mourned.",
         },
+        ["Deepdelve Quarry"] = new[]
+        {
+            "Deepdelve gave the hub its stone. When the Heresiarch came, the quarrymen brought the roof down behind them. Strike the rubble; it gives way.",
+            "The quarrymen's strongroom. The foreman's last tally: forty carts of marble, one of gold, and a hollow in the east wall nobody was to speak of.",
+        },
     };
 
     /// <summary>
@@ -137,7 +147,7 @@ public static class Discovery
             foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
             {
                 char c = lv.Cell(x + dx, y + dy);
-                if (Level.IsDoor(c) || c == 'L') nearDoor = true;
+                if (Level.IsDoor(c) || c == 'L' || c == Level.Rubble) nearDoor = true;
                 else if (c != '\0') walls++;
             }
             if (nearDoor) continue;

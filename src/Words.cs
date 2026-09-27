@@ -18,6 +18,8 @@ public static class Words
         ["Windspire"] = "Comms Spire",
         ["The Windspire. Only the winged may reach the beacon at its crown."] = "The Comms Spire. Only a jetpack will get you to the summit console.",
         ["The Chaos Arena - step on the altar to begin"] = "The Combat Sim - step on the pad to begin",
+        ["Deepdelve Quarry"] = "Asteroid Mine",
+        ["Deepdelve Quarry. The miners sealed every tunnel with rubble - smash your way through."] = "The Asteroid Mine. Cave-ins have sealed every tunnel - blast your way through.",
         // classes
         ["Fighter"] = "Marine",
         ["Cleric"] = "Engineer",

@@ -15,6 +15,7 @@ after "--" to rebuild only some assets, e.g. `... -P tools/blender/build_scifi_a
 
 import math
 import os
+import random
 import struct
 import sys
 import zlib
@@ -294,8 +295,12 @@ def texture(name, build):
     if not wanted(name):
         return
     reset(False)
+    bpy.context.scene.world.node_tree.nodes["Background"].inputs[1].default_value = 0.25
     build()
-    lights(key=3.5, fill=0.8, key_rot=(35, -25, 20))
+    lights(key=4.2, fill=0.6, key_rot=(40, -25, 20))
+    for o in bpy.context.scene.objects:
+        if o.type == "LIGHT":
+            o.data.angle = math.radians(6)   # soft contact shadows read as real metal, not CG
     bpy.ops.object.camera_add(location=(0.5, 0.5, 5))
     cam = bpy.context.object
     cam.data.type = "ORTHO"
@@ -571,76 +576,279 @@ def overmind(pose):
 
 
 # ---------------------------------------------------------------- wall and floor textures
+# Surfaces use a procedural weathering shader: colour and roughness variation, grime pooled in crevices
+# (ambient occlusion) and running down walls in streaks, worn bright edges (bevel normal vs true normal),
+# fine scratches and a micro bump. All noise is sampled on a 4D torus, so every texture still tiles.
+
+def _math(nt, op, a, b=None):
+    n = nt.nodes.new("ShaderNodeMath")
+    n.operation = op
+    for i, v in enumerate((a, b)):
+        if v is None:
+            continue
+        if isinstance(v, (int, float)):
+            n.inputs[i].default_value = v
+        else:
+            nt.links.new(v, n.inputs[i])
+    return n.outputs[0]
+
+
+def _range(nt, v, lo, hi, to_lo=0.0, to_hi=1.0):
+    n = nt.nodes.new("ShaderNodeMapRange")
+    n.clamp = True
+    nt.links.new(v, n.inputs["Value"])
+    n.inputs["From Min"].default_value, n.inputs["From Max"].default_value = lo, hi
+    n.inputs["To Min"].default_value, n.inputs["To Max"].default_value = to_lo, to_hi
+    return n.outputs["Result"]
+
+
+def _mix(nt, fac, a, b):
+    n = nt.nodes.new("ShaderNodeMix")
+    n.data_type = "RGBA"
+    n.clamp_factor = True
+    nt.links.new(fac, n.inputs[0])
+    ins = [s for s in n.inputs if s.type == "RGBA"]
+    for sock, v in zip(ins, (a, b)):
+        if isinstance(v, tuple):
+            sock.default_value = (*v, 1)
+        else:
+            nt.links.new(v, sock)
+    return [s for s in n.outputs if s.type == "RGBA"][0]
+
+
+def _torus(nt, rx, ry, seed):
+    """Tile position -> (vector, w) on a torus with radii rx, ry. A small ry stretches features vertically."""
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(geo.outputs["Position"], sep.inputs[0])
+    ax = _math(nt, "MULTIPLY", sep.outputs[0], 2 * math.pi)
+    ay = _math(nt, "MULTIPLY", sep.outputs[1], 2 * math.pi)
+    comb = nt.nodes.new("ShaderNodeCombineXYZ")
+    nt.links.new(_math(nt, "MULTIPLY", _math(nt, "COSINE", ax), rx), comb.inputs[0])
+    nt.links.new(_math(nt, "MULTIPLY", _math(nt, "SINE", ax), rx), comb.inputs[1])
+    nt.links.new(_math(nt, "ADD", _math(nt, "MULTIPLY", _math(nt, "COSINE", ay), ry), seed * 3.7), comb.inputs[2])
+    w = _math(nt, "ADD", _math(nt, "MULTIPLY", _math(nt, "SINE", ay), ry), seed * 5.3)
+    return comb.outputs[0], w
+
+
+def _noise(nt, coords, scale, detail=4.0, rough=0.55):
+    n = nt.nodes.new("ShaderNodeTexNoise")
+    n.noise_dimensions = "4D"
+    nt.links.new(coords[0], n.inputs["Vector"])
+    nt.links.new(coords[1], n.inputs["W"])
+    n.inputs["Scale"].default_value = scale
+    n.inputs["Detail"].default_value = detail
+    n.inputs["Roughness"].default_value = rough
+    return n.outputs["Fac"]
+
+
+def surf(rgb, metal=0.6, rough=0.5, dirt=0.5, wear=0.5, streak=0.0, scratch=0.3, bump=0.15,
+         bare=None, grime=(30, 26, 22)):
+    """A weathered, tileable surface. `bare` is what worn edges and scratches expose (default: brighter self)."""
+    key = ("surf", tuple(rgb), metal, rough, dirt, wear, streak, scratch, bump, bare, grime)
+    if key in _mats:
+        return _mats[key]
+    seed = len(_mats) + 1
+    m = bpy.data.materials.new("s%d" % len(_mats))
+    m.use_nodes = True
+    nt = m.node_tree
+    b = nt.nodes["Principled BSDF"]
+    L = nt.links
+    sq = _torus(nt, 1.0, 1.0, seed)
+
+    fine = _noise(nt, sq, 5.0, 4.0, 0.55)
+    blotch = _noise(nt, sq, 1.4, 3.0, 0.5)
+    breakup = _noise(nt, sq, 4.0, 5.0, 0.65)
+
+    # colour: gentle value variation
+    col = _mix(nt, _range(nt, fine, 0.3, 0.7), srgb(tuple(c * 0.9 for c in rgb)), srgb(tuple(min(255, c * 1.06) for c in rgb)))
+
+    # worn edges
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    bev = nt.nodes.new("ShaderNodeBevel")
+    bev.samples = 8
+    bev.inputs["Radius"].default_value = 0.012
+    dot = nt.nodes.new("ShaderNodeVectorMath")
+    dot.operation = "DOT_PRODUCT"
+    L.new(bev.outputs["Normal"], dot.inputs[0])
+    L.new(geo.outputs["Normal"], dot.inputs[1])
+    edge = _range(nt, dot.outputs["Value"], 0.985, 0.85)
+    worn = _math(nt, "MULTIPLY", _math(nt, "MULTIPLY", edge, _range(nt, breakup, 0.38, 0.6)), wear)
+
+    # scratches: thin cell edges of a stretched voronoi, broken up
+    vor = nt.nodes.new("ShaderNodeTexVoronoi")
+    vor.voronoi_dimensions = "4D"
+    vor.feature = "DISTANCE_TO_EDGE"
+    sc = _torus(nt, 1.0, 0.35, seed + 11)
+    L.new(sc[0], vor.inputs["Vector"])
+    L.new(sc[1], vor.inputs["W"])
+    vor.inputs["Scale"].default_value = 3.0
+    scr = _math(nt, "MULTIPLY", _math(nt, "MULTIPLY", _range(nt, vor.outputs["Distance"], 0.012, 0.0), _range(nt, blotch, 0.45, 0.65)), scratch)
+    exposed = _math(nt, "MAXIMUM", worn, scr)
+    bare_rgb = srgb(bare or tuple(min(255, c * 1.45 + 30) for c in rgb))
+    col = _mix(nt, exposed, col, bare_rgb)
+
+    # grime: blotches, crevices and (on walls) vertical run-off streaks
+    ao = nt.nodes.new("ShaderNodeAmbientOcclusion")
+    ao.samples = 8
+    ao.inputs["Distance"].default_value = 0.08
+    crev = _range(nt, ao.outputs["AO"], 0.97, 0.4)
+    dirty = _math(nt, "MAXIMUM", _range(nt, blotch, 0.44, 0.72), crev)
+    if streak:
+        st = _noise(nt, _torus(nt, 1.0, 0.12, seed + 23), 4.0, 2.0, 0.5)
+        dirty = _math(nt, "MAXIMUM", dirty, _math(nt, "MULTIPLY", _range(nt, st, 0.46, 0.64), streak))
+    dirty = _math(nt, "MULTIPLY", _math(nt, "MULTIPLY", dirty, dirt), _math(nt, "SUBTRACT", 1.0, exposed))
+    col = _mix(nt, dirty, col, srgb(grime))
+    L.new(col, b.inputs["Base Color"])
+
+    r = _math(nt, "ADD", _math(nt, "MULTIPLY", dirty, 0.35), rough)
+    r = _math(nt, "SUBTRACT", r, _math(nt, "MULTIPLY", exposed, 0.3))
+    r = _math(nt, "ADD", r, _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", fine, 0.5), 0.2))
+    L.new(_range(nt, r, 0.0, 1.0, 0.05, 1.0), b.inputs["Roughness"])
+    L.new(_math(nt, "MULTIPLY", _math(nt, "SUBTRACT", 1.0, _math(nt, "MULTIPLY", dirty, 0.7)), metal), b.inputs["Metallic"])
+
+    bn = nt.nodes.new("ShaderNodeBump")
+    bn.inputs["Strength"].default_value = bump
+    bn.inputs["Distance"].default_value = 0.004
+    L.new(_math(nt, "ADD", _noise(nt, sq, 8.0, 4.0, 0.6), _math(nt, "MULTIPLY", scr, -0.6)), bn.inputs["Height"])
+    L.new(bn.outputs["Normal"], b.inputs["Normal"])
+    _mats[key] = m
+    return m
+
 
 def base(rgb, metal=0.6, rough=0.5):
-    add("cube", (0.5, 0.5, -0.05), (1, 1, 0.1), m=mat(rgb, metal=metal, rough=rough))
+    add("cube", (0.5, 0.5, -0.05), (1, 1, 0.1), m=surf(rgb, metal=metal, rough=rough, dirt=0.8, wear=0.0, scratch=0.0))
 
 
 def panel(x0, y0, x1, y1, m, h=0.03, bevel=0.012):
     add("cube", ((x0 + x1) / 2, (y0 + y1) / 2, h / 2), (x1 - x0, y1 - y0, h), m=m, bevel=bevel)
 
 
-def bolt(x, y, m):
-    add("cyl", (x, y, 0.035), (0.014, 0.014, 0.012), m=m, vertices=10)
+def bolt(x, y, m, z=0.035):
+    add("cyl", (x, y, z), (0.016, 0.016, 0.014), m=m, vertices=12, bevel=0.004)
+
+
+RIVET = dict(metal=0.85, rough=0.35, dirt=0.6, wear=0.8, scratch=0.0)
+PAINT_CHIP = (150, 148, 145)   # steel under chipped paint
 
 
 def wall_panels():
     """Station wall: two tall plates, the lower one with a vent grille, a hazard stripe along the join."""
     base((20, 22, 26))
-    plate = mat((88, 92, 102), metal=0.75, rough=0.45)
-    rivet = mat((150, 154, 164), **STEEL)
-    panel(0.02, 0.52, 0.98, 0.98, plate)
+    plate = surf((88, 92, 102), metal=0.75, rough=0.45, dirt=0.75, wear=0.7, streak=0.8)
+    plate2 = surf((80, 84, 94), metal=0.75, rough=0.5, dirt=0.75, wear=0.7, streak=0.8)
+    rivet = surf((150, 154, 164), **RIVET)
+    panel(0.02, 0.52, 0.49, 0.98, plate)
+    panel(0.51, 0.52, 0.98, 0.98, plate2)
     panel(0.02, 0.02, 0.98, 0.42, plate)
-    for x in (0.07, 0.93):
-        for y in (0.07, 0.37, 0.57, 0.93):
+    panel(0.1, 0.6, 0.4, 0.9, plate2, h=0.045, bevel=0.01)          # inset access hatch
+    for x in (0.07, 0.44, 0.56, 0.93):
+        for y in (0.57, 0.93):
             bolt(x, y, rivet)
-    vent = mat((34, 36, 42), metal=0.5, rough=0.6)
+    for x in (0.07, 0.93):
+        for y in (0.07, 0.37):
+            bolt(x, y, rivet)
+    vent = surf((34, 36, 42), metal=0.5, rough=0.6, dirt=0.9, wear=0.4, scratch=0.0)
+    panel(0.27, 0.07, 0.73, 0.37, surf((18, 18, 22), metal=0.3, rough=0.8, dirt=0.3, wear=0.0, scratch=0.0), h=0.02, bevel=0.006)
     for i in range(6):
-        panel(0.3, 0.1 + i * 0.045, 0.7, 0.125 + i * 0.045, vent, h=0.045, bevel=0.004)
+        panel(0.3, 0.1 + i * 0.045, 0.7, 0.125 + i * 0.045, vent, h=0.045, bevel=0.006)
     stripe_y = 0.47
+    yellow = surf((220, 170, 36), metal=0.1, rough=0.55, dirt=0.5, wear=0.9, scratch=0.6, bare=PAINT_CHIP)
+    black = surf((30, 30, 34), metal=0.1, rough=0.55, dirt=0.3, wear=0.9, scratch=0.6, bare=PAINT_CHIP)
     for i in range(10):
-        m = mat((230, 180, 40), rough=0.5) if i % 2 == 0 else mat((30, 30, 34), rough=0.5)
-        panel(i * 0.1, stripe_y - 0.025, i * 0.1 + 0.1, stripe_y + 0.025, m, h=0.02, bevel=0.0)
+        panel(i * 0.1, stripe_y - 0.03, i * 0.1 + 0.1, stripe_y + 0.03, yellow if i % 2 == 0 else black, h=0.02, bevel=0.0)
 
 
 def wall_white():
-    """Clean white hull plating with an orange accent line and a small status light."""
+    """White hull plating with an orange accent line and a small status light, scuffed and grimy."""
     base((70, 72, 78))
-    plate = mat((200, 204, 210), metal=0.2, rough=0.4)
+    plate = surf((196, 200, 206), metal=0.15, rough=0.4, dirt=0.6, wear=0.8, streak=0.75, scratch=0.5, bare=(120, 124, 130),
+                 grime=(92, 84, 72))
     panel(0.015, 0.015, 0.49, 0.985, plate)
     panel(0.51, 0.015, 0.985, 0.985, plate)
-    panel(0.0, 0.68, 1.0, 0.72, mat((225, 120, 40), rough=0.4), h=0.04, bevel=0.0)
-    panel(0.08, 0.2, 0.42, 0.24, mat((160, 164, 172), metal=0.3, rough=0.5), h=0.035, bevel=0.004)
-    add("cyl", (0.75, 0.3, 0.04), (0.03, 0.03, 0.02), m=mat((80, 255, 140), emit=(80, 255, 140), strength=5))
+    orange = surf((225, 120, 40), metal=0.1, rough=0.45, dirt=0.4, wear=0.8, scratch=0.5, bare=PAINT_CHIP)
+    panel(0.0, 0.68, 1.0, 0.72, orange, h=0.04, bevel=0.004)
+    trim = surf((150, 154, 162), metal=0.6, rough=0.45, dirt=0.6, wear=0.5)
+    panel(0.08, 0.2, 0.42, 0.24, trim, h=0.035, bevel=0.006)
+    panel(0.66, 0.22, 0.84, 0.38, trim, h=0.035, bevel=0.006)                 # light housing
+    add("cyl", (0.75, 0.3, 0.05), (0.03, 0.03, 0.02), m=mat((80, 255, 140), emit=(80, 255, 140), strength=5))
+    rivet = surf((170, 174, 180), **RIVET)
+    for x in (0.05, 0.455, 0.545, 0.95):
+        for y in (0.06, 0.94):
+            bolt(x, y, rivet)
 
 
 def wall_pipes():
     """Service wall: vertical pipes held by brackets over a dark backing plate."""
     base((30, 32, 38))
-    panel(0.02, 0.02, 0.98, 0.98, mat((52, 56, 64), metal=0.6, rough=0.55), h=0.01)
-    pipe_mats = [mat((150, 120, 80), metal=0.9, rough=0.35), mat((120, 126, 138), **STEEL), mat((150, 120, 80), metal=0.9, rough=0.35)]
-    for i, x in enumerate((0.2, 0.5, 0.8)):
-        add("cyl", (x, 0.5, 0.07), (0.075, 0.075, 0.49), rot=(90, 0, 0), m=pipe_mats[i])
-    bracket = mat((60, 64, 72), metal=0.7, rough=0.5)
+    panel(0.02, 0.02, 0.98, 0.98, surf((52, 56, 64), metal=0.6, rough=0.55, dirt=0.75, wear=0.3, streak=0.8), h=0.01)
+    copper = surf((150, 110, 72), metal=0.9, rough=0.35, dirt=0.6, wear=0.7, streak=0.4, grime=(50, 70, 58))  # verdigris
+    steel = surf((120, 126, 138), metal=0.85, rough=0.3, dirt=0.55, wear=0.6, streak=0.4)
+    for m, x in ((copper, 0.2), (steel, 0.5), (copper, 0.8)):
+        add("cyl", (x, 0.5, 0.07), (0.075, 0.075, 0.49), rot=(90, 0, 0), m=m, vertices=32)
+    bracket = surf((60, 64, 72), metal=0.7, rough=0.5, dirt=0.6, wear=0.8)
+    rivet = surf((150, 154, 164), **RIVET)
     for y in (0.22, 0.78):
-        panel(0.05, y - 0.03, 0.95, y + 0.03, bracket, h=0.16, bevel=0.01)
+        panel(0.05, y - 0.03, 0.95, y + 0.03, bracket, h=0.16, bevel=0.012)
+        for x in (0.08, 0.92):
+            bolt(x, y, rivet, z=0.165)
     add("cyl", (0.5, 0.5, 0.15), (0.05, 0.05, 0.02), m=mat((255, 70, 50), emit=(255, 70, 50), strength=4))
 
 
 def deck_floor():
-    """Deck plating: four tread plates with raised studs, bolted at the corners."""
+    """Deck plating: four scuffed tread plates with raised diamond studs, bolted at the corners."""
     base((24, 26, 30))
-    plate = mat((128, 132, 142), metal=0.6, rough=0.5)
-    stud = mat((176, 180, 190), metal=0.6, rough=0.3)
-    for (x0, y0) in ((0, 0), (0.5, 0), (0, 0.5), (0.5, 0.5)):
-        panel(x0 + 0.015, y0 + 0.015, x0 + 0.485, y0 + 0.485, plate, h=0.025)
-        for i in range(4):
-            for j in range(4):
-                sx, sy = x0 + 0.09 + i * 0.105, y0 + 0.09 + j * 0.105
+    plates = [surf((124, 128, 138), metal=0.65, rough=0.5, dirt=0.75, wear=0.7, scratch=0.8, bump=0.2),
+              surf((114, 118, 128), metal=0.65, rough=0.55, dirt=0.75, wear=0.7, scratch=0.8, bump=0.2)]
+    stud = surf((170, 174, 184), metal=0.7, rough=0.25, dirt=0.3, wear=1.0, scratch=0.0)
+    rivet = surf((150, 154, 164), **RIVET)
+    for k, (x0, y0) in enumerate(((0, 0), (0.5, 0), (0, 0.5), (0.5, 0.5))):
+        panel(x0 + 0.015, y0 + 0.015, x0 + 0.485, y0 + 0.485, plates[k % 3 % 2], h=0.025)
+        for i in range(3):
+            for j in range(3):
+                sx, sy = x0 + 0.115 + i * 0.135, y0 + 0.115 + j * 0.135
                 rot = 45 if (i + j) % 2 == 0 else -45
-                add("cube", (sx, sy, 0.03), (0.05, 0.016, 0.012), rot=(0, 0, rot), m=stud)
-        for bx, by in ((0.04, 0.04), (0.46, 0.04), (0.04, 0.46), (0.46, 0.46)):
-            bolt(x0 + bx, y0 + by, mat((150, 154, 164), **STEEL))
+                add("cube", (sx, sy, 0.036), (0.085, 0.03, 0.022), rot=(0, 0, rot), m=stud, bevel=0.006)
+        for bx, by in ((0.045, 0.045), (0.455, 0.045), (0.045, 0.455), (0.455, 0.455)):
+            bolt(x0 + bx, y0 + by, rivet)
+
+
+def rubble():
+    """Cave-in rubble ('K'): faceted asteroid rocks packed in grit, with glinting ore. Rocks that cross the tile's
+    edge are repeated on the far side, so the tile still wraps."""
+    rng = random.Random(11)
+    base((20, 18, 22))
+    rocks = [surf(c, metal=0.05, rough=0.8, dirt=0.55, wear=0.5, scratch=0.15, bump=0.4, grime=(26, 22, 20))
+             for c in ((104, 94, 86), (90, 84, 82), (118, 108, 96))]
+    tex = bpy.data.textures.new("rock", "CLOUDS")
+    tex.noise_scale = 0.6
+    n = 3
+    for i in range(n):
+        for j in range(n):
+            cx = (i + 0.5 + (j % 2) * 0.5) / n + rng.uniform(-0.04, 0.04)
+            cy = (j + 0.5) / n + rng.uniform(-0.03, 0.03)
+            r = rng.uniform(0.175, 0.205)
+            sc = (r * rng.uniform(0.95, 1.15), r * rng.uniform(0.85, 1.0), r * 0.55)
+            rot = (rng.uniform(-20, 20), rng.uniform(-20, 20), rng.uniform(0, 360))
+            m = rocks[rng.randrange(len(rocks))]
+            for ox in (-1, 0, 1):
+                for oy in (-1, 0, 1):
+                    x, y = cx % 1.0 + ox, cy + oy
+                    if x + r < 0 or x - r > 1 or y + r < 0 or y - r > 1:
+                        continue
+                    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1, location=(x, y, 0.02),
+                                                          rotation=[math.radians(a) for a in rot])
+                    o = bpy.context.object
+                    o.scale = sc
+                    o.data.materials.append(m)
+                    d = o.modifiers.new("displace", "DISPLACE")
+                    d.texture = tex
+                    d.strength = 0.55
+    ore = mat((70, 200, 230), emit=(70, 200, 230), strength=3)
+    for _ in range(6):
+        x, y = rng.uniform(0.08, 0.92), rng.uniform(0.08, 0.92)
+        add("cone", (x, y, 0.07), (1, 1, 1), rot=(rng.uniform(-25, 25), rng.uniform(-25, 25), 0), m=ore,
+            radius1=0.018, radius2=0.0, depth=0.07, vertices=5)
 
 
 # ---------------------------------------------------------------- build everything
@@ -667,6 +875,7 @@ def main():
     texture("marble", wall_white)
     texture("brick", wall_pipes)
     texture("floor", deck_floor)
+    texture("rubble", rubble)
 
 
 main()

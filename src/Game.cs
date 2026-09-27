@@ -628,6 +628,12 @@ public sealed class Game
                 DamageMonster(best, dmg);
                 PlaySound(Sfx.Hit, 1);
             }
+            else
+            {
+                var (bx, by) = FacingRubble(w.Range + 0.3f);
+                int dmg = Rand(w.DmgMin, w.DmgMax);
+                if (bx >= 0) HitBlock(bx, by, powered ? dmg : dmg / 2);
+            }
             return;
         }
 
@@ -811,6 +817,10 @@ public sealed class Game
                     break;
                 case 'X':
                     MoveBlock(cx, cy, pull);
+                    break;
+                case Level.Rubble:
+                    // prying at it by hand works too, slowly (and it's the only way in relaxed mode)
+                    if (p.Cooldown <= 0) { HitBlock(cx, cy, Level.RubbleHp / 3 + 1); p.Cooldown = 0.45f; }
                     break;
             }
             return;
@@ -1361,7 +1371,14 @@ public sealed class Game
             pr.X += sx; pr.Y += sy;
             // walls, the face of a ledge, or a low ceiling
             if (Level.BlocksPoint(pr.X, pr.Y) || pr.Z < Level.FloorAt(pr.X, pr.Y) - 0.02f || pr.Z > Level.HeightAt(pr.X, pr.Y))
-            { pr.X -= sx; pr.Y -= sy; Explode(pr, null); return; }
+            {
+                int hx = (int)MathF.Floor(pr.X), hy = (int)MathF.Floor(pr.Y);
+                pr.X -= sx; pr.Y -= sy;
+                int direct = -1;
+                if (pr.FromPlayer && Level.Cell(hx, hy) == Level.Rubble) { direct = hy * Level.W + hx; HitBlock(hx, hy, Rand(pr.DmgMin, pr.DmgMax)); }
+                Explode(pr, null, direct);
+                return;
+            }
             if (pr.FromPlayer)
             {
                 foreach (var t in Level.Things)
@@ -1388,7 +1405,7 @@ public sealed class Game
         return z >= feet - 0.05f && z <= top;
     }
 
-    void Explode(Projectile pr, Monster direct)
+    void Explode(Projectile pr, Monster direct, int directCell = -1)
     {
         pr.Removed = true;
         SpawnPuff(pr.Frames[1], pr.X, pr.Y, pr.Z, pr.Splash > 0 ? 0.7f : 0.35f);
@@ -1400,6 +1417,49 @@ public sealed class Game
                 float d = Dist(m.X, m.Y, pr.X, pr.Y);
                 if (d < pr.Splash) DamageMonster(m, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)));
             }
+        if (!pr.FromPlayer) return;
+        // a blast chips the rubble around it (measured to the nearest point of each block)
+        int r = (int)MathF.Ceiling(pr.Splash);
+        for (int cy = (int)pr.Y - r; cy <= (int)pr.Y + r; cy++)
+            for (int cx = (int)pr.X - r; cx <= (int)pr.X + r; cx++)
+            {
+                if (Level.Cell(cx, cy) != Level.Rubble || cy * Level.W + cx == directCell) continue;
+                float d = Dist(Math.Clamp(pr.X, cx, cx + 1), Math.Clamp(pr.Y, cy, cy + 1), pr.X, pr.Y);
+                if (d < pr.Splash) HitBlock(cx, cy, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), quiet: true);
+            }
+    }
+
+    /// <summary>The rubble block straight ahead within reach, or (-1, -1) if a wall or nothing is in the way.</summary>
+    (int x, int y) FacingRubble(float reach)
+    {
+        float ca = MathF.Cos(P.Angle), sa = MathF.Sin(P.Angle);
+        for (float d = 0.1f; d < reach; d += 0.05f)
+        {
+            int cx = (int)MathF.Floor(P.X + ca * d), cy = (int)MathF.Floor(P.Y + sa * d);
+            if (!Level.Blocks(cx, cy)) continue;
+            return Level.Cell(cx, cy) == Level.Rubble ? (cx, cy) : (-1, -1);
+        }
+        return (-1, -1);
+    }
+
+    /// <summary>Chips a rubble block; when it gives way it bursts into debris.</summary>
+    public void HitBlock(int cx, int cy, int dmg, bool quiet = false)
+    {
+        if (Level.Cell(cx, cy) != Level.Rubble) return;
+        float x = cx + 0.5f, y = cy + 0.5f, z = Level.FloorAt(x, y);
+        int before = Level.CrackStage(cy * Level.W + cx);
+        if (!Level.DamageBlock(cx, cy, (int)MathF.Round(dmg * Vars.Damage)))
+        {
+            if (!quiet || Level.CrackStage(cy * Level.W + cx) != before) Sound(Sfx.Hit, x, y);
+            return;
+        }
+        Sound(Sfx.Break, x, y);
+        for (int k = 0; k < 5; k++)
+            Level.Things.Add(new Puff(Art.RubbleChunk, RandF() * 0.08f + 0.1f, 0.35f + RandF() * 0.25f, 0f)
+            {
+                X = x + (RandF() - 0.5f) * 0.7f, Y = y + (RandF() - 0.5f) * 0.7f, Z = z + 0.2f + RandF() * 0.6f, Level = Level,
+                FullBright = false, VZ = RandF() * 1.5f, Gravity = 9f,
+            });
     }
 
     void SpawnPuff(Tex tex, float x, float y, float z, float size)
