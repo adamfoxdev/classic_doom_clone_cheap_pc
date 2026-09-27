@@ -171,6 +171,19 @@ public sealed class Game
     public void SetArtStyle(ArtStyle style)
     {
         if (style == Art.Style) return;
+        RebuildArt(style);
+    }
+
+    /// <summary>Turns the Blender-rendered art pack (sci-fi style only) on or off.</summary>
+    public void SetRenderedArt(bool on)
+    {
+        if (on == Art.Rendered) return;
+        Art.Rendered = on;
+        RebuildArt(Art.Style);
+    }
+
+    void RebuildArt(ArtStyle style)
+    {
         Art.Init(style);
         if (Hub != null)
             foreach (var lv in Hub) lv.Theme = Maps.ThemeById(lv.ThemeId);

@@ -148,6 +148,15 @@ public sealed class DevConsole
             _g.NewGame(_g.P?.Class ?? PClass.Fighter);
             Print($"new {style.ToLowerInvariant()} game");
         });
+        Add("renderedart", "[0|1]", "use the Blender-rendered sci-fi art pack", a =>
+        {
+            if (a.Length < 2) { Print($"renderedart = {(Art.Rendered ? 1 : 0)} ({RenderedArt.Covered.Count()} rendered assets available)"); return; }
+            bool on = a[1] is "1" or "on" or "true";
+            if (on && !RenderedArt.Available) { Print("no rendered art pack in this build"); return; }
+            _g.SetRenderedArt(on);
+            Print($"renderedart = {(on ? 1 : 0)}");
+            _g.SaveSettings();
+        });
         Add("artstyle", "[scifi|fantasy]", "switch the visual style", a =>
         {
             if (a.Length < 2) { Print("artstyle = " + (Art.Style == ArtStyle.SciFi ? "scifi" : "fantasy")); return; }

@@ -3,4 +3,6 @@ obj/
 shots/
 *.png
 !docs/*.png
+!assets/**/*.png
 sounds/
+assets/scifi/.render_tmp.png

@@ -29,6 +29,8 @@ public static class Art
     public static ArtStyle Style = ArtStyle.SciFi;
     /// <summary>Bumped whenever the art is rebuilt, so caches (the editor's icons) know to refresh.</summary>
     public static int Version;
+    /// <summary>Use the Blender-rendered art pack over the sci-fi art where it has a replacement.</summary>
+    public static bool Rendered;
     public static Tex[] PillarFrames, TreeFrames;
 
     /// <summary>Builds every texture and sprite. The fantasy art is always built first; the sci-fi style then
@@ -42,6 +44,7 @@ public static class Art
         BuildSprites();
         BuildWeapons();
         if (style == ArtStyle.SciFi) SciFiArt.Apply();
+        if (style == ArtStyle.SciFi && Rendered) RenderedArt.Apply();
         PillarFrames = new[] { Pillar };
         TreeFrames = new[] { Tree };
         Version++;
@@ -654,15 +657,23 @@ public static class Art
     /// <summary>Monsters are drawn once per live pose; the death frames are derived by collapsing the pain frame.</summary>
     internal static Tex[] PoseSet(Action<Canvas, Pose> draw)
     {
-        var frames = new Tex[7];
+        var live = new Tex[(int)Pose.Pain + 1];
         for (int i = 0; i <= (int)Pose.Pain; i++)
         {
             var c = new Canvas(TS, TS);
             draw(c, (Pose)i);
             c.Noise(new Rng((uint)(i + 3)), 14);
             c.Outline(Dark);
-            frames[i] = c.T;
+            live[i] = c.T;
         }
+        return PoseSet(live);
+    }
+
+    /// <summary>The full set of frames from the live poses (walk, walk, attack, pain), in Pose order.</summary>
+    internal static Tex[] PoseSet(Tex[] live)
+    {
+        var frames = new Tex[7];
+        Array.Copy(live, frames, (int)Pose.Pain + 1);
         frames[(int)Pose.Die0] = Collapse(frames[(int)Pose.Pain], 0.7f, 90);
         frames[(int)Pose.Die1] = Collapse(frames[(int)Pose.Pain], 0.4f, 140);
         frames[(int)Pose.Dead] = Collapse(frames[(int)Pose.Pain], 0.2f, 180);

@@ -51,7 +51,7 @@ public sealed class MenuSystem
         MenuPage.Main => new[] { "New game", "Level editor", "Options", "Quit" },
         MenuPage.Pause => new[] { "Resume", "Options", "Restart", _g.TestingMap ? "Back to editor" : "Quit to title", "Quit game" },
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
-        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Back" },
+        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
     };
 
@@ -66,6 +66,7 @@ public sealed class MenuSystem
             3 => $"{v.Fov:0}",
             4 => v.ShowFps ? "ON" : "OFF",
             5 => Art.Style == ArtStyle.SciFi ? "SCI-FI" : "FANTASY",
+            6 => !RenderedArt.Available ? "N/A" : Art.Rendered ? (Art.Style == ArtStyle.SciFi ? "ON" : "ON (SCI-FI)") : "OFF",
             _ => "",
         };
     }
@@ -131,6 +132,11 @@ public sealed class MenuSystem
                 case 3: v.Fov = Math.Clamp(v.Fov + 5 * dir, 50f, 110f); break;
                 case 4: v.ShowFps = !v.ShowFps; break;
                 case 5: _g.SetArtStyle(Art.Style == ArtStyle.SciFi ? ArtStyle.Fantasy : ArtStyle.SciFi); break;
+                case 6:
+                    if (!RenderedArt.Available) { Say("No rendered art pack in this build."); return; }
+                    _g.SetRenderedArt(!Art.Rendered);
+                    Say(Art.Rendered ? "Blender-rendered art on (sci-fi style)." : "Procedural art.");
+                    break;
                 default: if (inp.Confirm) Back(); return;
             }
             _g.PlaySound(Sfx.Pickup, 0.6f);
@@ -169,6 +175,7 @@ public static class Settings
         yield return "fov " + g.Vars.Fov.ToString("0", inv);
         yield return "showfps " + (g.Vars.ShowFps ? 1 : 0);
         yield return "artstyle " + (Art.Style == ArtStyle.SciFi ? "scifi" : "fantasy");
+        yield return "renderedart " + (Art.Rendered ? 1 : 0);
     }
 
     public static void Save(Game g, string path)

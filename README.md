@@ -3,7 +3,8 @@
 A small Hexen-style first-person shooter written in C#, set on a derelict space station. The original
 dark-fantasy look is kept as an option (**Options → Visual style**). It's built to run on cheap PCs: everything is
 software-rendered into a 320×200 framebuffer, and all textures, sprites and sounds are generated in code.
-There are no asset files.
+There are no asset files, except for an optional pack of Blender-rendered sci-fi art (**Options → Rendered art**,
+see [Rendered art pack](#rendered-art-pack-blender)).
 
 ![Title](docs/scifi_title.png)
 ![Hab Ring](docs/scifi_start.png)
@@ -253,8 +254,8 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   mouse wheel all work. Select a slot and press `Enter`, then press the new key (`Esc` cancels). `Backspace`
   clears a slot, `Left`/`Right` switch between slots, and **Reset to defaults** restores everything.
   Binding a key that's already in use moves it off the other action and tells you which.
-- **Mouse sensitivity**, **Invert mouse**, **Field of view**, **Show FPS** and **Visual style** (sci-fi or fantasy):
-  change with `Left`/`Right` or `Enter`.
+- **Mouse sensitivity**, **Invert mouse**, **Field of view**, **Show FPS**, **Visual style** (sci-fi or fantasy) and
+  **Rendered art** (the Blender art pack over the sci-fi style): change with `Left`/`Right` or `Enter`.
 - `Esc`, `Enter` and the arrow keys always work in menus, and `Esc` can't be bound, so a bad binding can
   never lock you out.
 
@@ -284,6 +285,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `mode <classic\|relaxed>` | start a new game in a play style |
 | `edit`, `playmap <name>` | open the level editor / play a saved custom map |
 | `artstyle <scifi\|fantasy>` | switch the visual style |
+| `renderedart [0\|1]` | use the Blender-rendered sci-fi art pack (off by default) |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -300,6 +302,33 @@ dotnet run -c Release -- --selftest       # validates maps (reachability) and ru
 dotnet run -c Release -- --shots shots    # renders scripted screenshots headlessly into ./shots
 dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styles, as WAV files into ./sounds
 ```
+
+## Rendered art pack (Blender)
+
+A pilot of Blender-rendered sci-fi art sits on top of the procedural art as a toggle (**Options → Rendered art**,
+or `renderedart 1` in the console). It's off by default and only affects the sci-fi style; anything it doesn't
+cover keeps its procedural look. The pilot covers:
+
+- the 11 pickups: stim, medkit, nano canister, energy and plasma cells, both keycards, armor vest, jetpack and
+  both weapon crates
+- the drone monster: walk, attack and pain frames, with the death frames derived from them as usual
+- four textures: the main station wall panels, white hull plating, the pipe wall and the deck floor
+
+![Rendered art sheet: procedural above, rendered below](docs/rendered_art_sheet.png)
+![Hab Ring with rendered art](docs/rendered_art_hab_ring.png)
+
+Every asset is modelled in code in `tools/blender/build_scifi_assets.py`. It's built from primitives, rendered with
+Cycles at 4× size, then shrunk to 64×64 with a hard alpha edge, a slightly reduced colour depth and a dark outline,
+so it sits in the chunky 320×200 look. The PNGs are committed under `assets/scifi/` and embedded in the game, so
+players don't need Blender. To rebuild them (Blender 4.x, about a minute on 4 CPU cores):
+
+```sh
+blender -b --factory-startup -noaudio -P tools/blender/build_scifi_assets.py            # everything
+blender -b --factory-startup -noaudio -P tools/blender/build_scifi_assets.py -- afrit   # just matching names
+```
+
+`--shots` writes `52_rendered_sheet.png`, which puts the procedural art and the rendered pack side by side for
+review.
 
 ## Code layout
 
@@ -321,8 +350,10 @@ dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styl
 | `src/SciFiArt.cs` | The sci-fi style: station textures, space skies, robots and aliens, gear and guns |
 | `src/Words.cs` | Names and messages in the current style (e.g. Heresiarch → Overmind) |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
+| `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |
+| `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
-| `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer |
+| `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless.cs` | `--selftest`, `--shots` and `--sounds` |
 
 ### Map legend
