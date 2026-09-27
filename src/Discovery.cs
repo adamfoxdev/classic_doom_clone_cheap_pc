@@ -47,7 +47,7 @@ public static class Discovery
         {
             "Cryo Labs, day 212: the samples stay frozen. We do not. The heaters failed a week ago.",
             "Security: the vault field switch is behind a red-keycard door. The red card was taken to Hydroponics.",
-            "The blue keycard was cut from the lab director's own badge. She never came back for it.",
+            "The blue keycard was sent up the Comms Spire for safekeeping. This teleporter goes there. Bring a jetpack.",
             "A heated nook behind a panel. Someone slept here, and taped a star map to the wall.",
         },
         ["Darkmere Crypt"] = new[]
@@ -61,7 +61,7 @@ public static class Discovery
         {
             "Relay deck 3. Technicians used to jet between these decks every shift. The antenna array above still hums.",
             "Hidden storage locker. Whoever stashed this knew that nobody without a jetpack would ever find it.",
-            "Summit console: this switch unlocks the supply vault at the base of the spire. Authorised climbers only.",
+            "Summit console: this switch unlocks the vault at the base of the spire, where the blue keycard is stored.",
             "Maintenance ledge. Someone taped a note to the rail: 'Watch your fuel gauge. It's a long way down.'",
             "Comms Spire access. The decks rise far beyond any jump. Grab a jetpack and fly to the summit console.",
         },
@@ -94,7 +94,7 @@ public static class Discovery
         {
             "The Frozen Keep was a summer palace, before the Serpent Riders stole the sun from these hills.",
             "This lever raises the vault gate. Its keeper hid the key to his fire door far away, in the crypt below the marsh.",
-            "The Steel Key was cast from the Keep's last bell, melted down so no one could ring the alarm.",
+            "The Steel Key was cast from the Keep's last bell and carried up the Windspire, where only the winged could fetch it.",
             "A frost-rimed nook. Someone sheltered here through a long winter and scratched a map of the stars on the wall.",
         },
         ["Darkmere Crypt"] = new[]
@@ -108,7 +108,7 @@ public static class Discovery
         {
             "Halfway up, the wind is old. It remembers when the spire's keepers flew every dawn to light the beacon.",
             "A hidden eyrie. The spire's keepers hid their treasure where only the winged could ever steal it.",
-            "The beacon of the Windspire. Pull the lever, and the vault far below opens for whoever climbed this high.",
+            "The beacon of the Windspire. Pull the lever, and the vault far below yields the Steel Key to whoever climbed this high.",
             "Few reached this ledge without wings. Those who did carved their names here, and a warning: rest before you leap.",
             "The Windspire. Its ledges climb far beyond any leap; only the Wings of Wrath will carry you to the beacon.",
         },
