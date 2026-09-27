@@ -92,6 +92,8 @@ public static class Headless
         Console.WriteLine("Character progression:");
         RpgChecks(Check);
 
+        Console.WriteLine("Quake movement:");
+        QuakeMoveChecks(Check);
         Console.WriteLine("HUD styles:");
         HudChecks(Check);
         Console.WriteLine("Rendered art pack:");
@@ -683,6 +685,111 @@ public static class Headless
             check(code == 0 && sw.ToString().Trim() == "ok", $"--check-map passes a good map ({sw.ToString().Trim()})");
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    static void QuakeMoveChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.Vars.NoClip = true; // open space to run circles in
+        var p = g.P;
+        float fps = 35;
+        void Tick(Input i, int n = 1) { for (int k = 0; k < n; k++) g.Update(i, 1f / fps); }
+        float run = g.RunSpeed;
+        check(g.Vars.QuakeMove, "Quake movement is on by default");
+
+        // on the ground you top out at your run speed, and coast a little when you let go
+        Tick(new Input { Move = 1 }, 35);
+        check(MathF.Abs(p.HSpeed - run) < 0.01f, $"running tops out at your run speed ({p.HSpeed:0.00} of {run:0.00})");
+        float x0 = p.X, y0 = p.Y;
+        Tick(default, 35);
+        float coast = MathF.Sqrt((p.X - x0) * (p.X - x0) + (p.Y - y0) * (p.Y - y0));
+        check(coast > 0.1f && coast < 0.8f && p.HSpeed == 0, $"let go and you slide to a stop ({coast:0.00} units)");
+
+        // pushing straight ahead in the air adds nothing
+        Tick(new Input { Move = 1 }, 35);
+        Tick(new Input { Move = 1, Jump = true });
+        float peak = 0;
+        while (!p.OnGround) { Tick(new Input { Move = 1 }); peak = MathF.Max(peak, p.HSpeed); }
+        check(peak <= run * 1.001f, "holding forward in the air doesn't speed you up");
+
+        // strafe jumping: strafe while turning with your velocity, hop the moment you land
+        float StrafeHops(int hops)
+        {
+            Tick(new Input { Move = 1 }, (int)fps);
+            for (int h = 0; h < hops; h++)
+            {
+                Tick(new Input { Jump = true, Strafe = 1 });
+                // turn with the mouse to keep up with your velocity as it swings round (35 frames a second, like a slow PC)
+                while (!p.OnGround)
+                {
+                    // a good strafer: wish direction just past square-on to the velocity, at Quake's best angle
+                    float amax = g.Vars.AirAccel * run / 72f, v = MathF.Max(p.HSpeed, 0.01f);
+                    float best = MathF.Asin(Math.Clamp((amax - 0.094f * run) / v, 0f, 1f));
+                    float want = MathF.Atan2(p.VY, p.VX) + best, turn = MathF.IEEERemainder(want - p.Angle, MathF.Tau);
+                    Tick(new Input { Strafe = 1, LookX = turn / (0.0025f * g.Vars.Sens) });
+                }
+            }
+            return p.HSpeed;
+        }
+        float after5 = StrafeHops(5);
+        check(after5 > run * 1.25f, $"five strafe jumps build speed well past a run ({after5 / run * 100:0}%)");
+        // the same five hops at 120 frames a second, from a standstill: about the same gain
+        Tick(default, 70);
+        fps = 120;
+        float fast5 = StrafeHops(5);
+        fps = 35;
+        check(MathF.Abs(fast5 - after5) < after5 * 0.1f, $"and about the same at 120 frames a second ({fast5 / run * 100:0}%)");
+        float after20 = StrafeHops(20);
+        check(after20 > after5 && after20 <= run * g.Vars.MaxHop + 0.001f, $"it keeps building, up to the cap ({after20 / run * 100:0}% of {g.Vars.MaxHop * 100:0}%)");
+        var r = new Renderer();
+        r.Render(g);
+        check(r.Fb.Skip(Renderer.W * (r.ViewH / 2 + 20)).Take(Renderer.W * 8).Distinct().Count() > 1, "a speed readout shows while you're past your run speed");
+
+        // land and stop hopping: ground friction bleeds it back to a run
+        Tick(new Input { Move = 1 }, 35);
+        p.X = g.Level.StartX; p.Y = g.Level.StartY; p.FloorZ = g.Level.FloorUnder(p.X, p.Y, p.Radius); // back out of the walls
+        check(MathF.Abs(p.HSpeed - run) < 0.01f, "stop hopping and friction brings you back to a run");
+
+        // a jump pressed just before you land still counts
+        Tick(new Input { Jump = true });
+        while (p.Z > 0.08f || p.VZ > 0) Tick(default);
+        Tick(new Input { Jump = true });
+        int wait = 0;
+        while (!p.OnGround && wait++ < 10) Tick(default);
+        Tick(default);
+        check(!p.OnGround && p.VZ > 0, "a jump pressed just before landing hops as soon as you touch down");
+        while (!p.OnGround) Tick(default);
+
+        // a bunny-hop tap never lights the jetpack; holding Jump still does
+        p.HasJetpack = true; p.Fuel = p.MaxFuel;
+        Tick(new Input { Jump = true, JumpHeld = true });
+        Tick(new Input(), 1);
+        bool lit = false;
+        while (!p.OnGround) { Tick(default); lit |= p.Flying; }
+        check(!lit, "a quick tap of Jump is just a hop, even with a jetpack");
+        Tick(new Input { Jump = true, JumpHeld = true });
+        for (int k = 0; k < 20 && !p.Flying; k++) Tick(new Input { JumpHeld = true });
+        check(p.Flying, "holding Jump still fires the jetpack");
+        for (int k = 0; k < 175 && p.Flying; k++) Tick(new Input { SlideHeld = true });
+
+        // classic movement: you go exactly where the keys say and stop dead
+        g.Con.Execute("quakemove 0");
+        Tick(new Input { Move = 1 }, 10);
+        x0 = p.X; y0 = p.Y;
+        Tick(default, 5);
+        check(!g.Vars.QuakeMove && p.X == x0 && p.Y == y0, "'quakemove 0' brings back classic movement: you stop dead");
+        g.Vars.QuakeMove = true;
+
+        // the options menu toggles it, and it's saved
+        g.Menu.Show(MenuPage.Options);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "Movement");
+        check(g.Menu.Value(g.Menu.Cursor) == "QUAKE", "Options shows Movement: QUAKE");
+        g.Menu.Update(new Input { Right = true }, 1f / 35f);
+        check(!g.Vars.QuakeMove && g.Menu.Value(g.Menu.Cursor) == "CLASSIC", "and switches it to CLASSIC");
+        check(Settings.Lines(g).Contains("quakemove 0"), "the choice is saved with the settings");
+        g.Menu.Close();
     }
 
     static void HudChecks(Action<bool, string> check)
@@ -2732,6 +2839,10 @@ public static class Headless
         g.Vars.Crosshair = CrosshairStyle.Cross;
         Shot("81_crosshair");
         g.Vars.Crosshair = CrosshairStyle.Off;
+        // strafe jumping: airborne at 180% of a run, with the speed readout
+        g.P.Z = 0.3f; g.P.VX = MathF.Cos(g.P.Angle) * g.RunSpeed * 1.8f; g.P.VY = MathF.Sin(g.P.Angle) * g.RunSpeed * 1.8f;
+        Shot("82_strafe_speed");
+        g.P.Z = 0; g.P.VX = g.P.VY = 0;
         g.Vars.Freeze = false;
 
         // character progression: the HUD's level bar with an XP pop-up, and the character screen

@@ -17,6 +17,9 @@ public sealed class GameVars
     public float Speed = 1f, Sens = 1f, Damage = 1f, MonsterDamage = 1f, MonsterSpeed = 1f;
     public float FireRate = 1f, ManaCost = 1f, Fog = 1f, Fov = 74f;
     public float Gravity = 12f, JumpPower = 3.3f, SlideSpeed = 4.5f, Chests = 2f;
+    /// <summary>Quake movement (momentum, air strafing, bunny hopping) and its tuning.</summary>
+    public bool QuakeMove = true;
+    public float Accel = 10f, AirAccel = 10f, Friction = 6f, MaxHop = 3f;
     public bool God, NoClip, NoTarget, Freeze, InfiniteMana, InfiniteFuel, FullBright, ShowFps, InvertMouse;
     public HudStyle Hud;
     public CrosshairStyle Crosshair;
@@ -38,6 +41,11 @@ public sealed class GameVars
         new("gravity", "gravity (units/s^2)", v => v.Gravity, (v, x) => v.Gravity = Math.Clamp(x, 1f, 60f)),
         new("jump", "jump launch speed", v => v.JumpPower, (v, x) => v.JumpPower = Math.Clamp(x, 0f, 10f)),
         new("slidespeed", "extra speed at the start of a slide", v => v.SlideSpeed, (v, x) => v.SlideSpeed = Math.Clamp(x, 0f, 20f)),
+        new("quakemove", "Quake movement: momentum, air strafing, bunny hopping", v => B(v.QuakeMove), (v, x) => v.QuakeMove = x != 0, true),
+        new("accel", "ground acceleration (Quake movement)", v => v.Accel, (v, x) => v.Accel = Math.Clamp(x, 1f, 100f)),
+        new("airaccel", "air acceleration (Quake movement)", v => v.AirAccel, (v, x) => v.AirAccel = Math.Clamp(x, 0f, 100f)),
+        new("friction", "ground friction (Quake movement)", v => v.Friction, (v, x) => v.Friction = Math.Clamp(x, 0f, 20f)),
+        new("maxhop", "top speed from strafe jumping, times your run speed", v => v.MaxHop, (v, x) => v.MaxHop = Math.Clamp(x, 1f, 5f)),
         new("chests", "chests per 200 floor cells (next game)", v => v.Chests, (v, x) => v.Chests = Math.Clamp(x, 0f, 20f)),
         new("god", "invulnerability", v => B(v.God), (v, x) => v.God = x != 0, true),
         new("noclip", "walk through walls", v => B(v.NoClip), (v, x) => v.NoClip = x != 0, true),
