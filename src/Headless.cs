@@ -200,9 +200,9 @@ public static class Headless
         p.X = ax + 0.5f; p.Y = ay + 0.5f; p.Angle = 0; p.Pitch = 0;
         float start = d.Floors[here];
         Tick(default);
-        check(g.DigTarget == (ax + 1, ay, Level.Face.Wall), "the block ahead is highlighted");
+        check(g.DigTarget is (var t1x, var t1y, Level.Face.Wall, var t1s) && t1x == ax + 1 && t1y == ay && t1s == start, "the block ahead is highlighted, at your level");
         p.Pitch = 70; Tick(default);
-        check(g.DigTarget == (ax, ay, Level.Face.Ceiling), "looking up highlights the rock overhead");
+        check(g.DigTarget is (var t2x, var t2y, Level.Face.Ceiling, _) && t2x == ax && t2y == ay, "looking up highlights the rock overhead");
         p.Pitch = 0;
         Punch(() => d.Cells[e] == '\0');
         check(d.Cells[e] == '\0' && d.Floors[e] == start && d.Heights[e] == start + 1, "punch a tunnel ahead, at your own level");
@@ -213,7 +213,7 @@ public static class Headless
         Tick(default, 2);
         p.Pitch = -70;
         Tick(default);
-        check(g.DigTarget == (ax + 1, ay, Level.Face.Floor), "looking down highlights the rock underfoot");
+        check(g.DigTarget is (var t3x, var t3y, Level.Face.Floor, _) && t3x == ax + 1 && t3y == ay, "looking down highlights the rock underfoot");
         Punch(() => d.Floors[e] < start);
         check(d.Floors[e] == start - Level.DigStep, "look down to dig out the rock under your feet");
         check(MathF.Abs(p.FloorZ - d.Floors[e]) < 0.01f && p.Z < 0.01f, "and you drop into the hole");
@@ -225,6 +225,20 @@ public static class Headless
         p.Pitch = 0; p.Angle = 0;
         Punch(() => d.Cells[e + 1] == '\0');
         check(d.Floors[e + 1] == start - Level.DigStep, "tunnels dug from lower down open lower down");
+
+        // aim a little high at the rock ahead and it opens a step up: dig a staircase and climb it
+        int south = e + d.W;
+        float low = p.FloorZ;
+        p.Angle = MathF.PI / 2; p.Pitch = 20;
+        Tick(default);
+        check(g.DigTarget is (_, _, Level.Face.Wall, var up) && up == low + Level.DigStep, "aiming high marks a slot a step up");
+        Punch(() => d.Cells[south] == '\0');
+        check(d.Floors[south] == low + Level.DigStep && d.Heights[south] == low + Level.DigStep + 1, "it opens a step up");
+        p.Pitch = 0;
+        Tick(new Input { Move = 1 }, 20);
+        check(MathF.Abs(p.FloorZ - (low + Level.DigStep)) < 0.01f, "and you walk up onto it");
+        p.X = ax + 1.5f; p.Y = ay + 0.5f; p.Angle = 0;
+        Tick(default, 25);
 
         // Use digs too (the way to dig in relaxed mode)
         p.Pitch = 70;
@@ -2395,6 +2409,12 @@ public static class Headless
         Tick(default, 1); PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0.05f, -20);
         g.Messages.Clear();
         Shot("63_depths_dug");
+        PlaceCam(dax + 1.8f, day + 0.5f, dl.Floors[day * dl.W + dax + 1], 0, 0.3f, -55);
+        Tick(default, 1); PlaceCam(dax + 1.8f, day + 0.5f, dl.Floors[day * dl.W + dax + 1], 0, 0.3f, -55);
+        Shot("65_depths_pit");
+        PlaceCam(dax + 1.5f, day + 0.5f, dl.Floors[day * dl.W + dax + 1], 0, MathF.PI / 2, 20);
+        Tick(default, 1); PlaceCam(dax + 1.5f, day + 0.5f, dl.Floors[day * dl.W + dax + 1], 0, MathF.PI / 2, 20);
+        Shot("66_depths_step_up");
         g.SetArtStyle(ArtStyle.Fantasy);
         Shot("64_depths_fantasy");
         g.SetArtStyle(ArtStyle.SciFi);

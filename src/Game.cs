@@ -633,7 +633,7 @@ public sealed class Game
             {
                 var target = MineTarget(w.Range + 0.3f);
                 int dmg = Rand(w.DmgMin, w.DmgMax);
-                if (target is (var bx, var by, var face)) HitBlock(bx, by, powered ? dmg : dmg / 2, face);
+                if (target is (var bx, var by, var face, var slot)) HitBlock(bx, by, powered ? dmg : dmg / 2, face, slot: slot);
             }
             return;
         }
@@ -768,9 +768,9 @@ public sealed class Game
     {
         var p = P;
         if (TryReadLore() || TryOpenChest()) return;
-        if (Level.Dig && MineTarget(1.3f) is (var mx, var my, var mf))
+        if (Level.Dig && MineTarget(1.3f) is (var mx, var my, var mf, var ms))
         {
-            if (p.Cooldown <= 0) { HitBlock(mx, my, Level.RubbleHp / 3 + 1, mf); p.Cooldown = 0.45f; }
+            if (p.Cooldown <= 0) { HitBlock(mx, my, Level.RubbleHp / 3 + 1, mf, slot: ms); p.Cooldown = 0.45f; }
             return;
         }
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
@@ -1382,7 +1382,7 @@ public sealed class Game
                 var face = Level.Cell(hx, hy) == Level.Rubble ? Level.Face.Wall : pr.Z < Level.FloorAt(pr.X, pr.Y) ? Level.Face.Floor : Level.Face.Ceiling;
                 pr.X -= sx; pr.Y -= sy;
                 (int, Level.Face)? direct = null;
-                if (pr.FromPlayer && Level.CanDig(hx, hy, face)) { direct = (hy * Level.W + hx, face); HitBlock(hx, hy, Rand(pr.DmgMin, pr.DmgMax), face); }
+                if (pr.FromPlayer && Level.CanDig(hx, hy, face)) { direct = (hy * Level.W + hx, face); HitBlock(hx, hy, Rand(pr.DmgMin, pr.DmgMax), face, slot: SlotAt(pr.Z)); }
                 Explode(pr, null, direct);
                 return;
             }
@@ -1439,19 +1439,23 @@ public sealed class Game
                     if (!Level.CanDig(cx, cy, face) || directBlock == (i, face)) continue;
                     float up = face == Level.Face.Floor ? MathF.Max(0, pr.Z - Level.Floors[i]) : face == Level.Face.Ceiling ? MathF.Max(0, Level.Heights[i] - pr.Z) : 0;
                     float d = MathF.Sqrt(flat * flat + up * up);
-                    if (d < pr.Splash) HitBlock(cx, cy, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), face, quiet: true);
+                    if (d < pr.Splash) HitBlock(cx, cy, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), face, quiet: true, slot: SlotAt(pr.Z));
                 }
             }
     }
 
-    /// <summary>The block your next swing (or Use) would hit, highlighted in the view; null if none.</summary>
-    public (int x, int y, Level.Face face)? DigTarget;
+    /// <summary>The block your next swing (or Use) would hit, highlighted in the view; null if none.
+    /// For rubble on a dig map, Slot is the floor of the one-storey opening it would leave.</summary>
+    public (int x, int y, Level.Face face, float slot)? DigTarget;
+
+    /// <summary>On a dig map, rubble opens as a one-storey slot around where you hit it (aim high for a step up).</summary>
+    static float SlotAt(float z) => Math.Clamp(MathF.Floor((z - 0.2f) / Level.DigStep) * Level.DigStep, 0f, Level.MaxHeight - Level.MinHeight);
 
     /// <summary>
     /// The breakable block you're looking at within reach, or null. On a dig map this is aimed in 3D, and looking
     /// all the way down (or up) aims straight down (or up), so you can dig out the rock under your feet.
     /// </summary>
-    (int x, int y, Level.Face face)? MineTarget(float reach)
+    (int x, int y, Level.Face face, float slot)? MineTarget(float reach)
     {
         var p = P;
         if (Level.Dig) reach = MathF.Max(reach, 2f); // a miner's reach, so a raised ceiling stays in range
@@ -1461,24 +1465,26 @@ public sealed class Game
         for (float d = 0.05f; d < reach; d += 0.04f)
         {
             int cx = (int)MathF.Floor(p.X + dx * d), cy = (int)MathF.Floor(p.Y + dy * d);
-            if (Level.Blocks(cx, cy)) return Level.CanDig(cx, cy, Level.Face.Wall) ? (cx, cy, Level.Face.Wall) : null;
+            float z = eye + dz * d;
+            // never more than a step above you, so the opening is always one you can walk up into
+            if (Level.Blocks(cx, cy)) return Level.CanDig(cx, cy, Level.Face.Wall) ? (cx, cy, Level.Face.Wall, MathF.Min(SlotAt(z), p.FloorZ + Level.DigStep)) : null;
             if (!Level.Dig) continue;
             int i = cy * Level.W + cx;
-            float z = eye + dz * d;
-            if (z < Level.Floors[i]) return Level.CanDig(cx, cy, Level.Face.Floor) ? (cx, cy, Level.Face.Floor) : null;
-            if (z > Level.Heights[i]) return Level.CanDig(cx, cy, Level.Face.Ceiling) ? (cx, cy, Level.Face.Ceiling) : null;
+            if (z < Level.Floors[i]) return Level.CanDig(cx, cy, Level.Face.Floor) ? (cx, cy, Level.Face.Floor, 0f) : null;
+            if (z > Level.Heights[i]) return Level.CanDig(cx, cy, Level.Face.Ceiling) ? (cx, cy, Level.Face.Ceiling, 0f) : null;
         }
         return null;
     }
 
-    /// <summary>Chips a block; when it gives way it bursts into debris. Rubble dug on a dig map opens at your level.</summary>
-    public void HitBlock(int cx, int cy, int dmg, Level.Face face = Level.Face.Wall, bool quiet = false)
+    /// <summary>Chips a block; when it gives way it bursts into debris. Rubble dug on a dig map opens with its floor
+    /// at `slot` (default: your own level).</summary>
+    public void HitBlock(int cx, int cy, int dmg, Level.Face face = Level.Face.Wall, bool quiet = false, float? slot = null)
     {
         if (!Level.CanDig(cx, cy, face)) return;
         int i = cy * Level.W + cx;
         float x = cx + 0.5f, y = cy + 0.5f;
         int before = Level.CrackStage(i, face);
-        if (!Level.DamageBlock(cx, cy, (int)MathF.Round(dmg * Vars.Damage), face, P.FloorZ))
+        if (!Level.DamageBlock(cx, cy, (int)MathF.Round(dmg * Vars.Damage), face, slot ?? P.FloorZ))
         {
             if (!quiet || Level.CrackStage(i, face) != before) Sound(Sfx.Hit, x, y);
             return;

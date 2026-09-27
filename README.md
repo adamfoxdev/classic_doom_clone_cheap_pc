@@ -92,7 +92,9 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   Monsters can't dig, and their missiles don't break rubble.
 - **Bedrock Depths** (the **Asteroid Core** in sci-fi): a solid-rock dig map, through portal **6** in the quarry's
   strongroom. Everything except the cell you arrive in is rubble, and you carve your own path in any direction:
-  - **Ahead:** a tunnel opens at your own level, one storey tall.
+  - **Ahead:** the rock opens as a slot one storey tall. Aim level for a tunnel at your own level, a little high to
+    open it half a step up (dig a staircase up by repeating it), or a little low for a step down. The highlight
+    shows exactly which slot will open.
   - **Down:** look all the way down (or well down, at the floor in front of you) and each block you break drops the
     floor half a step, down to the bedrock 4 units below the start.
   - **Up:** look all the way up and each block you break raises the ceiling half a step, up to the roof at 10.

@@ -309,8 +309,8 @@ public sealed class Level
     static bool Passable(char c) => c == '\0' || IsDoor(c) || c == Rubble;
 
     /// <summary>
-    /// Chips at a block; true when it breaks. Rubble opens its cell (on a dig map, as a tunnel one storey tall at
-    /// `tunnelFloor`, the digger's level); a floor drops, or a ceiling rises, by a DigStep.
+    /// Chips at a block; true when it breaks. Rubble opens its cell (on a dig map, as a tunnel one storey tall with
+    /// its floor at `tunnelFloor`); a floor drops, or a ceiling rises, by a DigStep.
     /// </summary>
     public bool DamageBlock(int x, int y, int dmg, Face face = Face.Wall, float? tunnelFloor = null)
     {

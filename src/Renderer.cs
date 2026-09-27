@@ -210,9 +210,13 @@ public sealed class Renderer
         _horizon = ViewH / 2f + p.Pitch;
         uint fog = th.FogColor;
         int baseLight = Light(th);
-        _hiCell = g.DigTarget is (var hx, var hy, _) ? hy * lv.W + hx : -1;
+        _hiCell = g.DigTarget is (var hx, var hy, _, _) ? hy * lv.W + hx : -1;
         _hiFace = g.DigTarget?.face ?? Level.Face.Wall;
+        _hiSlot = lv.Dig && _hiFace == Level.Face.Wall;
+        _hiLo = g.DigTarget?.slot ?? 0f;
         _hiGlow = 320 + (int)(35 * MathF.Sin(g.PlayTime * 6f));
+        _dig = lv.Dig;
+        _viewFloor = p.FloorZ;
 
         for (int x = 0; x < W; x++)
         {
@@ -336,9 +340,34 @@ public sealed class Renderer
     // the block your next swing would break: it glows, pulsing, with a bright outline round its face
     int _hiCell = -1, _hiGlow = 256;
     Level.Face _hiFace;
+    // on a dig map only the slot of rubble that will open (from _hiLo up one storey) lights up
+    bool _hiSlot;
+    float _hiLo;
     static readonly uint HiEdge = Col.Rgb(255, 236, 140);
     bool Hi(int cell, Level.Face face) => cell == _hiCell && face == _hiFace;
     uint Highlight(uint c, bool edge) => edge ? Col.Lerp(c, HiEdge, 210) : Col.Shade(c, _hiGlow);
+
+    // dig maps: rock below your feet darkens and warms the deeper it lies, and each layer of blocks reads apart
+    bool _dig;
+    float _viewFloor;
+    static readonly uint DeepTint = Col.Rgb(110, 60, 34);
+    uint Layered(uint c, float z, bool seam)
+    {
+        int layer = (int)MathF.Floor(z / Level.DigStep + 0.001f);
+        int s = (layer & 1) == 0 ? 268 : 244;
+        float depth = _viewFloor - z;
+        if (depth <= 0.01f) return Col.Shade(c, s);
+        int k = (int)MathF.Min(110 + depth * 60, 220);
+        c = Col.Lerp(c, DeepTint, k * 3 / 4);
+        s -= k / 3;
+        return Col.Shade(c, seam ? s * 140 >> 8 : s);
+    }
+    static bool Seam(float z)
+    {
+        float f = z / Level.DigStep;
+        f -= MathF.Floor(f);
+        return f < 0.04f || f > 0.96f;
+    }
 
     /// <summary>
     /// A vertical slice of wall between heights `bottom` and `top` at distance d, below clipTop.
@@ -356,6 +385,7 @@ public sealed class Renderer
         tx = Math.Clamp(tx, 0, tex.W - 1);
         int light = side == 1 ? baseLight * 200 >> 8 : baseLight;
         int vis = Vis(_theme, d);
+        float hiTop = hi && _hiSlot ? MathF.Min(top, _hiLo + Level.MinHeight) : top, hiBot = hi && _hiSlot ? MathF.Max(bottom, _hiLo) : bottom;
         for (int y = y0; y < y1; y++)
         {
             float z = _eyeZ + (_horizon - (y + 0.5f)) / s;
@@ -365,7 +395,8 @@ public sealed class Renderer
             int ty = Math.Clamp((int)(v * t.H), 0, t.H - 1);
             int idx = y * W + x;
             uint texel = t.Px[ty * t.W + Math.Min(tx, t.W - 1)];
-            if (hi) texel = Highlight(texel, tx < 2 || tx >= tex.W - 2 || z > top - 0.035f || z < bottom + 0.035f);
+            if (_dig) texel = Layered(texel, z, Seam(z));
+            if (hi && z >= hiBot && z <= hiTop) texel = Highlight(texel, tx < 2 || tx >= tex.W - 2 || z > hiTop - 2.5f / s || z < hiBot + 2.5f / s);
             Fb[idx] = Col.Fog(texel, light, vis, _theme.FogColor);
             _depth[idx] = d;
         }
@@ -389,6 +420,7 @@ public sealed class Renderer
             float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
             int u = (int)((wx - MathF.Floor(wx)) * ct.W) & (ct.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ct.H) & (ct.H - 1);
             uint texel = ct.Px[vv * ct.W + u];
+            if (_dig) texel = Layered(texel, h + 0.005f, false);
             if (hi) texel = Highlight(texel, u < 2 || u >= ct.W - 2 || vv < 2 || vv >= ct.H - 2);
             Fb[idx] = Col.Fog(texel, baseLight * 220 >> 8, Vis(_theme, rowDist), _theme.FogColor);
             _depth[idx] = rowDist;
@@ -428,6 +460,7 @@ public sealed class Renderer
             int u = (int)((wx - MathF.Floor(wx)) * ft.W) & (ft.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ft.H) & (ft.H - 1);
             int idx = y * W + x;
             uint texel = ft.Px[vv * ft.W + u];
+            if (_dig && cell >= 0 && lv.Marks[cell] == '\0') texel = Layered(texel, f - 0.005f, false);
             if (hi) texel = Highlight(texel, u < 2 || u >= ft.W - 2 || vv < 2 || vv >= ft.H - 2);
             Fb[idx] = Col.Fog(texel, fl, Vis(th, rowDist), th.FogColor);
             _depth[idx] = rowDist;
