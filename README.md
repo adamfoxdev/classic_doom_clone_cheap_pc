@@ -54,8 +54,8 @@ see [Rendered art pack](#rendered-art-pack-blender)).
     sheathed, and you can't die. Instead you explore: find the **12 relics** hidden across the hub (placed
     differently every game, favouring dead ends and far corners), read **lore stones**, and uncover **secret
     passages**. The HUD tracks relics, lore, secrets and how much of the hub you've explored. Finding every
-    relic awakens the exit portal. Keys, levers, block puzzles and chests all still work; chests are never
-    traps and the arena stays quiet.
+    relic awakens the exit portal. Keys, levers, block puzzles and chests all still work, and chests are never
+    traps.
 
 - **Three classes**, each with their own three weapons, like Hexen:
   | Class | 1 (no mana) | 2 (blue mana) | 3 (green mana) |
@@ -65,17 +65,18 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt*, the *Windspire* and
-  the optional *Chaos Arena*, *Deepdelve Quarry*, *Bedrock Depths*, *Barren World*, *Void Crossing* and *Verdant Moon*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
+  the optional *Deepdelve Quarry*, *Bedrock Depths*, *Barren World*, *Void Crossing* and *Verdant Moon*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
   gates open once all its levers are pulled *and* all its plates are covered. Lift a block off a plate and the
   gate drops again.
-- **Chaos Arena waves.** Step on the golden altar to start endless waves. Each wave has more monsters and
-  tougher types (Afrits from wave 2, Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed
-  scale up every wave, and every fifth wave adds Heresiarchs. Supplies appear at the altar after each wave.
+- **Chaos Arena** (**Arena** on the title menu): endless wave survival, with its own leaderboard and medals.
+  Step on the golden altar to start. Each wave has more monsters and tougher types (Afrits from wave 2,
+  Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed scale up every wave, and every fifth
+  wave adds Heresiarchs. Supplies appear at the altar after each wave. See [Chaos Arena](#chaos-arena).
 - **Secrets and lore (both styles):** each map hides a secret passage behind a wall that looks like any
-  other; press `E` on it to slide it open. 15 lore stones tell the story of the hub; press `E` to read one.
+  other; press `E` on it to slide it open. 21 lore stones tell the story of the hub; press `E` to read one.
 - **Treasure chests** are scattered randomly through every map each new game. Open one with `E`: it spills
   1–3 random items (health, mana, armor, flasks, rarely an urn or a weapon piece you're missing). Watch out,
   roughly one in eight is a trap and a monster bursts out. Seen chests show on the automap, and the victory
@@ -335,6 +336,30 @@ On the timed courses:
 ![Free Roam](docs/free_roam.png)
 ![The practice course leaderboard](docs/leaderboard.png)
 
+### Chaos Arena
+
+**Arena** on the title menu, then a class, puts you in the Chaos Arena on its own (it isn't part of the hub any
+more). You start in the armoury next to the arena floor. Step on the golden altar when you're ready and the waves
+begin. The run ends when you die, pick **Restart**, quit to the title or close the game.
+
+- **Leaderboard:** each class has its own board of the ten best runs. A run's score is how many waves it cleared;
+  among runs with as many waves, the quicker one ranks higher (time is counted from the altar to the last wave
+  cleared). Each run also records its kills, name and date. Open the board from the arena's pause menu or
+  **Leaderboard** on the title menu, where `Up`/`Down` steps through the practice courses and the arena. A run
+  that doesn't clear a wave isn't recorded.
+- **Medals:** bronze for clearing wave 5, silver for 10, gold for 15, the same for every class. Each medal
+  means getting past one more round of Heresiarchs. You're told when a wave earns a new medal.
+- **HUD:** under the wave count, the top-right corner shows your best for the class and the next medal you
+  don't have yet.
+- **When you die:** it tells you the run's waves, time and kills, and where it placed. Press `Enter` to go
+  again from the armoury.
+- **Always a fight:** the arena is always classic, even if your last new game was relaxed. There are no
+  treasure chests, but experience and skills work as usual (20 XP × the wave number per wave cleared).
+- **Saving:** the board is kept with your profile.
+
+![The Chaos Arena mid-wave: your best and the next medal under the wave count](docs/arena_wave.png)
+![The arena leaderboard](docs/arena_leaderboard.png)
+
 ## Walkthrough (spoilers)
 
 Names here are the fantasy ones. In the sci-fi style: Winnowing Hall = Hab Ring, Frozen Keep = Cryo Labs,
@@ -368,8 +393,7 @@ portcullis = force field, Heresiarch = Overmind, relic = artifact, lore stone = 
 7. Take portal 4 back to the Keep, then portal 1 to Winnowing Hall, and open the steel door off the courtyard.
    Kill the Heresiarch, then step on the red exit rune.
 
-Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival (Dark Bishops join from wave 4).
-Portal **5**, near the courtyard's south wall, leads to Deepdelve Quarry. Smash east through the rubble into the
+Optional: portal **5**, near the courtyard's south wall, leads to Deepdelve Quarry. Smash east through the rubble into the
 gallery, dig down through the rock field (the pockets hold loot, the middle cave a drone), and keep digging south-west
 to the strongroom's door, or south-east straight into the strongroom. Its secret wall is at the east end.
 Portal **6** in the strongroom leads down to the Bedrock Depths, where there's nothing but rock to dig.
@@ -377,12 +401,12 @@ Portal **7**, in the courtyard between its two northern trees, strands you on th
 enough ore to repair your ship. Then fly it through the Void Crossing to the Verdant Moon, whose portal 9 brings you
 back to the courtyard.
 
-**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 26 relics, which
-are spread over all ten maps (including the arena and the Windspire, where some sit on high ledges, and the
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 23 relics, which
+are spread over all nine maps (including the Windspire, where some sit on high ledges, and the
 Bedrock Depths, where they're buried in the rock) before the
 exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
-under the crypt's south-west room, under the arena's antechamber, at the east end of the Windspire's
+under the crypt's south-west room, at the east end of the Windspire's
 north-east ledge, and at the east end of the quarry's strongroom.
 
 ## Map editor
@@ -519,7 +543,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
-| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire, `map 6` = Deepdelve Quarry, `map 7` = Bedrock Depths, `map 8` = Barren World, `map 9` = Void Crossing, `map 10` = Verdant Moon) |
+| `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon) |
+| `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
@@ -612,7 +637,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Program.cs` | Raylib window, input mapping, framebuffer upload |
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
 | `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's ten maps and the themes |
-| `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
+| `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards, and the arena's medals |
 | `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
 | `src/Practice.cs` | The practice courses: Velocity Hangar, Descent, Circuit and Free Roam |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |

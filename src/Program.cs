@@ -125,6 +125,7 @@ public static class Program
         }
 
         game.SaveSettings();
+        game.EndArenaRun(); // closing the window mid-run still records it
         game.SaveProfile();
         Raylib.UnloadTexture(tex);
         audio?.Dispose();

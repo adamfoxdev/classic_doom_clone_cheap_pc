@@ -67,6 +67,32 @@ public sealed class Profile
         return place + 1;
     }
 
+    /// <summary>The arena leaderboard by class: the runs that cleared the most waves, the quickest first among equals.</summary>
+    public Dictionary<string, List<ArenaRun>> ArenaRuns { get; set; } = new();
+
+    /// <summary>A class's arena leaderboard, best first.</summary>
+    public List<ArenaRun> ArenaBoard(PClass cls)
+    {
+        ArenaRuns ??= new();
+        string key = cls.ToString();
+        if (!ArenaRuns.TryGetValue(key, out var runs)) ArenaRuns[key] = runs = new List<ArenaRun>();
+        return runs;
+    }
+
+    /// <summary>The most waves you've cleared in the arena as `cls` (0 if none).</summary>
+    public int ArenaBestWave(PClass cls) => ArenaBoard(cls) is { Count: > 0 } b ? b[0].Waves : 0;
+
+    /// <summary>Puts a finished arena run on its class's leaderboard: its place (1 is the best), or 0 if it's outside the top ten.</summary>
+    public int AddArenaRun(PClass cls, ArenaRun run)
+    {
+        var runs = ArenaBoard(cls);
+        int place = runs.Count(r => !run.Beats(r));
+        if (place >= BoardSize) return 0;
+        runs.Insert(place, run);
+        if (runs.Count > BoardSize) runs.RemoveAt(runs.Count - 1);
+        return place + 1;
+    }
+
     /// <summary>Experience needed to go from `level` to the next: 100, 282, 519, 800...</summary>
     public static int XpToNext(int level) => (int)(100 * Math.Pow(level, 1.5));
     public static int WeaponXpToNext(int level) => (int)(60 * Math.Pow(level, 1.4));
@@ -161,6 +187,7 @@ public sealed class Profile
             p.Points = Math.Max(0, p.Points);
             p.Ranks ??= new();
             p.Weapons ??= new();
+            p.ArenaRuns ??= new();
             foreach (var w in p.Weapons.Values) w.Level = Math.Clamp(w.Level, 1, MaxWeaponLevel);
             return p;
         }
@@ -185,6 +212,19 @@ public sealed class CourseRun
     public float Time { get; set; }
     public string Name { get; set; } = "";
     public DateTime When { get; set; }
+}
+
+/// <summary>One arena run: the waves it cleared, how long those took, its kills, and who and when.</summary>
+public sealed class ArenaRun
+{
+    public int Waves { get; set; }
+    public float Time { get; set; }
+    public int Kills { get; set; }
+    public string Name { get; set; } = "";
+    public DateTime When { get; set; }
+
+    /// <summary>Better than `other`: more waves, or as many in less time (a tie keeps the older run ahead).</summary>
+    public bool Beats(ArenaRun other) => Waves > other.Waves || (Waves == other.Waves && Time < other.Time);
 }
 
 /// <summary>A saved practice-course ghost: the run's time and its path (a GhostTrack, packed as base64).</summary>
