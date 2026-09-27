@@ -139,6 +139,19 @@ public sealed class Renderer
             case MenuPage.Leaderboard:
                 DrawLeaderboard(g);
                 break;
+
+            case MenuPage.Courses:
+                CenterText("PRACTICE", 20, Col.Rgb(230, 190, 80), 2);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 56 + i * 14, i == m.Cursor);
+                if (m.Cursor < Courses.All.Length)
+                {
+                    var course = Courses.All[m.Cursor];
+                    foreach (var (line, k) in Wrap(course.About, 48).Select((l, k) => (l, k))) CenterText(line, 136 + k * 10, Col.Rgb(170, 200, 255));
+                    float best = course.Timed ? Enum.GetValues<PClass>().Select(c => g.Profile.CourseBestTime(course.Key(c))).Where(t => t > 0).DefaultIfEmpty(0).Min() : 0;
+                    if (best > 0) CenterText($"YOUR BEST: {best:0.00}S", 160, Col.Rgb(255, 220, 90));
+                }
+                CenterText("ARROWS + ENTER    ESC: BACK", 186, MenuDim);
+                break;
         }
 
         if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options))
@@ -153,8 +166,8 @@ public sealed class Renderer
         uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
         CenterText("LEADERBOARD", 6, gold, 2);
         var def = ClassDef.All[(int)m.BoardClass];
-        CenterText($"VELOCITY HANGAR   < {def.Name.ToUpperInvariant()} >", 26, blue);
-        var runs = g.Profile.Board(m.BoardClass.ToString());
+        CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
+        var runs = g.Profile.Board(m.BoardCourse.Key(m.BoardClass));
         if (runs.Count == 0)
         {
             CenterText("NO RUNS YET.", 70, MenuText);
@@ -176,7 +189,7 @@ public sealed class Renderer
             }
         }
         CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
-        CenterText("LEFT/RIGHT: CLASS   ESC: BACK", 186, MenuDim);
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: COURSE   ESC: BACK", 186, MenuDim);
     }
 
     void DrawCharacter(Game g)
@@ -943,7 +956,7 @@ public sealed class Renderer
             }
         }
         DrawSpeed(g);
-        if (g.Practicing && style != HudStyle.Off) DrawRunClock(g);
+        if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
         switch (style)
         {
             case HudStyle.Full: DrawStatusBar(g, label); break;
@@ -967,7 +980,7 @@ public sealed class Renderer
     /// <summary>On the practice course: the run's time and your best, in the top-right corner (messages keep clear of it).</summary>
     void DrawRunClock(Game g)
     {
-        float best = g.Profile.CourseBestTime(g.P.Class.ToString());
+        float best = g.Profile.CourseBestTime(g.Course.Key(g.P.Class));
         string time = $"TIME {g.RunTime:0.00}", top = $"BEST {best:0.00}";
         int y = g.Vars.ShowFps ? 12 : 3;
         Text(W - 4 - Font.Width(time), y, time, g.RunStarted ? Col.Rgb(240, 236, 220) : Col.Rgb(150, 150, 160));

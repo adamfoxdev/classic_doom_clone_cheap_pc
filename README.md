@@ -158,9 +158,9 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   and terraces you could never jump to. A gauge in the corner of the view shows the fuel; it burns faster while
   climbing, and recharges whenever you're on the ground. Run dry in mid-air and you'll drop, and it won't
   relight until you let go of `Q` and press it again.
-- **Strafe-jumping practice** (**Practice** on the title menu): the Velocity Hangar, a timed course of platforms
-  over gaps that widen from 2 cells to 6, with a leaderboard of the ten fastest runs for each class. See
-  [Quake movement](#quake-movement).
+- **Strafe-jumping practice** (**Practice** on the title menu): three timed courses (the Velocity Hangar, Descent
+  and the Circuit), each with a leaderboard and a ghost of your best run, and Free Roam, an empty field to move
+  around in. See [Quake movement](#quake-movement).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
 - **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
@@ -238,19 +238,32 @@ times your run speed. Land and stop hopping, and friction brings you back to a r
 (`Q`), so hopping never lights it, and it still steers directly, so you can set down on a narrow ledge.
 Switch to the old direct movement with **Options → Movement** or `quakemove 0`.
 
-**Practice** on the title menu takes you (as whichever class you pick) to the **Velocity Hangar**, a straight hangar
-of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells:
+**Practice** on the title menu lists the courses; pick one, then a class (they run at different speeds):
 
-- The first gap takes a plain running jump. The rest need speed, and each platform tells you how much for the
+| Course | Layout |
+|---|---|
+| **Velocity Hangar** | A straight hangar of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells. |
+| **Descent** | Platforms dropping away (6 units up to 1) over gaps of 3 to 7 cells: each fall buys the hang time for a wider gap. As the Marine the last needs about 195%, as the Psion 225%. |
+| **Circuit** | One clockwise lap of an 8-wide loop round a walled island, through a checkpoint on each side and back over the finish line behind the start. Strafe into the corners to carry your speed round them. |
+| **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
+
+On the timed courses:
+
+- **Velocity Hangar speeds:** its first gap takes a plain running jump. The rest need speed, and each platform tells you how much for the
+  next gap, worked out from your class's run speed. As the Marine it's about 160%, 205% and 205% (the last
+  platform sits half a unit lower, which buys a little hang time); the slower Engineer and Psion need more. Descent's
+  platforms tell you the same. The rest need speed, and each platform tells you how much for the
   next gap, worked out from your class's run speed. As the Marine it's about 160%, 205% and 205% (the last
   platform sits half a unit lower, which buys a little hang time); the slower Engineer and Psion need more.
 - A torch in each corner of every platform marks where the gaps are.
-- Fall in and the lift pad on the gap floor carries you back up to the last platform you reached.
+- Fall in and the lift pad on the gap floor carries you back up to the last platform you reached (on the practice
+  courses that's always the newest one, even when it's lower, as on Descent).
+- The exit only finishes a run that's been through every checkpoint, so you can't cut the Circuit short.
 - The run is timed from the moment you set off; the clock sits in the top-right corner, with your best for that
   class under it. Step into the exit at the far end to finish: it tells you your time and where it placed on the
   leaderboard, and puts you back at the start for another go.
-- The **leaderboard** (on the title menu, and on the pause menu while you're on the course) keeps the ten fastest
-  runs for each class, since they run at different speeds: time, name and date, the best in gold and your latest
+- The **leaderboard** (on the title menu, and on the pause menu while you're on a course) keeps the ten fastest
+  runs for each course and class (`Up`/`Down` switch course), since they run at different speeds: time, name and date, the best in gold and your latest
   in green. `Left`/`Right` switch class. Runs go under your computer's user name; set another with `name <name>` in
   the console, so people sharing a machine can tell their times apart. The board is saved with your profile.
 
@@ -278,6 +291,10 @@ of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells:
 ![Racing the ghost of your best run](docs/practice_ghost.png)
 ![The strafe helper: hold D, keep turning right](docs/strafe_helper.png)
 ![Strafe jumping over the Velocity Hangar's 5-wide gap](docs/velocity_hangar.png)
+![The practice courses](docs/practice_courses.png)
+![Descent: the next platform far below](docs/descent.png)
+![The Circuit's first corner](docs/circuit.png)
+![Free Roam](docs/free_roam.png)
 ![The practice course leaderboard](docs/leaderboard.png)
 
 ## Walkthrough (spoilers)
@@ -558,6 +575,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's ten maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
 | `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
+| `src/Practice.cs` | The practice courses: Velocity Hangar, Descent, Circuit and Free Roam |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
 | `src/Bindings.cs` | Rebindable actions, key names, turning key state into game input |

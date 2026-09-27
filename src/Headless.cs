@@ -98,6 +98,8 @@ public static class Headless
         PracticeChecks(Check);
         Console.WriteLine("Practice ghost:");
         GhostChecks(Check);
+        Console.WriteLine("More practice courses:");
+        CourseChecks(Check);
         Console.WriteLine("Strafe helper:");
         StrafeHelperChecks(Check);
         Console.WriteLine("HUD styles:");
@@ -805,7 +807,10 @@ public static class Headless
         g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Main), "Practice");
         check(g.Menu.Cursor == 1, "Practice sits under New game on the title menu");
         g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
-        check(g.Mode == GameMode.ClassSelect, "it asks for a class, since each runs at its own speed");
+        check(g.Menu.Page == MenuPage.Courses && g.Menu.Items(MenuPage.Courses).SequenceEqual(new[] { "Velocity Hangar", "Descent", "Circuit", "Free Roam", "Back" }),
+              "it lists the courses: Velocity Hangar, Descent, Circuit and Free Roam");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(g.Mode == GameMode.ClassSelect, "picking one asks for a class, since each runs at its own speed");
         Tick(new Input { Confirm = true });
         var p = g.P;
         var lv = g.Level;
@@ -898,6 +903,12 @@ public static class Headless
         var exit = lv.FindMark('E');
         p = g.P;
         p.X = exit.Value.x - 1; p.Y = exit.Value.y; p.FloorZ = plats[^1].floor; p.Angle = 0;
+        g.Messages.Clear();
+        Tick(new Input { Move = 1 }, 20);
+        check(g.RunStarted && g.LastPlace == 0 && g.Messages.Any(m => m.text.StartsWith("Reach every checkpoint first")),
+              "the exit won't finish a run that skipped checkpoints");
+        g.Level.CheckpointsReached.UnionWith(Enumerable.Range(0, g.Level.Checkpoints.Count)); // as if you'd come the long way
+        p.X = exit.Value.x - 1; p.Y = exit.Value.y; p.FloorZ = plats[^1].floor; p.Angle = 0;
         float time = g.RunTime;
         for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
         float best = g.Profile.CourseBestTime("Fighter");
@@ -906,6 +917,7 @@ public static class Headless
         check(g.Level.CheckpointsReached.Count <= 1 && g.Checkpoint == null || g.Checkpoint.X < plats[0].x1, "with the checkpoints reset");
         Tick(new Input { Move = 1 }, 10);
         g.RunTime = best + 5;
+        g.Level.CheckpointsReached.UnionWith(Enumerable.Range(0, g.Level.Checkpoints.Count)); // as if you'd come the long way
         p.X = exit.Value.x - 1; p.Y = exit.Value.y; p.FloorZ = plats[^1].floor; p.Angle = 0;
         for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
         check(g.Profile.CourseBestTime("Fighter") == best && g.Messages.Any(m => m.text.Contains($"(best {best:0.00}s)")), "a slower run keeps your best, and tells you it");
@@ -995,6 +1007,7 @@ public static class Headless
         var p = g.P;
         Tick(new Input { Move = 1 }, 35);
         var exit = g.Level.FindMark('E').Value;
+        g.Level.CheckpointsReached.UnionWith(Enumerable.Range(0, g.Level.Checkpoints.Count)); // as if you'd come the long way
         p.X = exit.x - 1; p.Y = exit.y; p.FloorZ = Maps.CoursePlatforms[^1].floor; p.Angle = 0;
         for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
         var saved = g.Profile.Ghosts.GetValueOrDefault("Fighter");
@@ -1035,12 +1048,14 @@ public static class Headless
         // a slower run leaves the ghost alone; a new best replaces it
         float old = g.Profile.CourseBestTime("Fighter");
         g.RunTime = old + 3;
+        g.Level.CheckpointsReached.UnionWith(Enumerable.Range(0, g.Level.Checkpoints.Count)); // as if you'd come the long way
         p.X = exit.x - 1; p.Y = exit.y; p.FloorZ = Maps.CoursePlatforms[^1].floor; p.Angle = 0;
         string keep = g.Profile.Ghosts["Fighter"].Path;
         for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
         check(g.Profile.Ghosts["Fighter"].Path == keep, "a slower run keeps the ghost you had");
         Tick(new Input { Move = 1 }, 5);
         g.RunTime = old * 0.5f;
+        g.Level.CheckpointsReached.UnionWith(Enumerable.Range(0, g.Level.Checkpoints.Count)); // as if you'd come the long way
         p.X = exit.x - 1; p.Y = exit.y; p.FloorZ = Maps.CoursePlatforms[^1].floor; p.Angle = 0;
         for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
         check(g.LastPlace == 1 && g.Profile.Ghosts["Fighter"].Path != keep && g.Profile.Ghosts["Fighter"].Time == g.LastRun, "a new best becomes the ghost");
@@ -1073,6 +1088,132 @@ public static class Headless
               "the pause menu's items all fit above its footer");
         check(Renderer.OptionsTop + (opts - 1) * Renderer.OptionsRow + 9 < Renderer.OptionsFooter && Renderer.OptionsFooter + 8 <= Renderer.H,
               $"so do all {opts} Options items");
+    }
+
+    static void CourseChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        float fps = 35;
+        void Tick(Input i, int n = 1) { for (int k = 0; k < n; k++) g.Update(i, 1f / fps); }
+
+        // Descent: platforms dropping away over gaps of 3 to 7
+        g.StartPractice(PClass.Fighter, Courses.Descent);
+        var lv = g.Level;
+        var p = g.P;
+        var plats = Courses.DescentPlatforms;
+        var gaps = plats.Zip(plats.Skip(1), (a, b) => b.x0 - a.x1 - 1).ToArray();
+        check(lv.RawName == "Descent" && p.FloorZ == 6f && g.Course == Courses.Descent, "Descent starts on its top platform");
+        check(gaps.SequenceEqual(new[] { 3, 4, 5, 6, 7 }) && plats.Zip(plats.Skip(1)).All(t => t.Second.floor < t.First.floor) && lv.Checkpoints.Count == plats.Length,
+              "its platforms drop away over gaps of 3 to 7, a checkpoint on each");
+        bool Clears(int k, float speed)
+        {
+            var (a, b) = (plats[k], plats[k + 1]);
+            g.Level.CheckpointsReached.Clear(); g.Checkpoint = null;
+            p.X = a.x1 + 1 + p.Radius - 0.01f; p.Y = 5.5f; p.Angle = 0; p.Z = 0; p.VZ = 0; p.FloorZ = a.floor; p.VX = speed; p.VY = 0;
+            Tick(new Input { Jump = true });
+            for (int t = 0; t < 3 * fps && !p.OnGround; t++) Tick(default);
+            return p.OnGround && p.FloorZ == b.floor && p.X > b.x0 - p.Radius - 0.01f;
+        }
+        float run = g.RunSpeed;
+        int Need(Game gm, int k) => gm.GapSpeedPercent(gaps[k], plats[k].floor - plats[k + 1].floor);
+        bool hinted = true, tight = true, fast = true;
+        for (int k = 0; k < gaps.Length; k++)
+        {
+            hinted &= Clears(k, Need(g, k) / 100f * run);
+            tight &= k == 0 || !Clears(k, Need(g, k) / 100f * run * 0.8f);
+        }
+        fps = 120;
+        for (int k = 0; k < gaps.Length; k++) fast &= Clears(k, Need(g, k) / 100f * run);
+        fps = 35;
+        check(hinted && fast && tight, "each gap clears at its hinted speed (at 35 and 120 frames a second) and falls short at 80% of it");
+        check(Clears(0, run) && !Clears(1, run), "the first gap takes a plain running jump, the rest need speed");
+        int hardest = Enumerable.Range(0, gaps.Length).Max(k => Need(g, k));
+        var psion = new Game { FixedSeed = 1 };
+        psion.StartPractice(PClass.Mage, Courses.Descent);
+        int psionHardest = Enumerable.Range(0, gaps.Length).Max(k => Need(psion, k));
+        check(hardest <= g.Vars.MaxHop * 70 && psionHardest <= g.Vars.MaxHop * 80, $"the hardest gap needs {hardest}% as the Marine, {psionHardest}% as the Psion");
+        g.Level.CheckpointsReached.Clear(); g.Checkpoint = null;
+        p.X = plats[2].x0 + 2.5f; p.Y = 5.5f; p.FloorZ = plats[2].floor; p.Z = 0; p.VX = p.VY = 0;
+        Tick(default, 2);
+        p.X = plats[2].x1 + 2.5f; p.FloorZ = 0; p.Z = 0.3f;
+        Tick(default, 20);
+        check(p.FloorZ == plats[2].floor && p.X > plats[2].x0 && p.X < plats[2].x1,
+              "falling in, the lift takes you to the last platform you reached, though it's lower than the first");
+
+        // Circuit: a lap through four checkpoint zones, over the line behind the start
+        g.StartPractice(PClass.Fighter, Courses.Circuit);
+        lv = g.Level; p = g.P;
+        Tick(default);
+        var zones = lv.Checkpoints.Select(c => lv.CheckpointZone[c]).Distinct().Count();
+        check(lv.RawName == "Circuit" && lv.Checkpoints.Count == 4 && zones == 4, "Circuit has four checkpoint zones, one for each side of the loop");
+        check(MathF.Abs(p.Angle - MathF.PI) < 0.01f && lv.CheckpointsReached.Count == 1, "you start on the south straight, facing west along it");
+        var line = Enumerable.Range(0, lv.W * lv.H).Where(i => lv.Marks[i] == 'E').ToList();
+        check(line.Count == 8 && line.All(i => i % lv.W == line[0] % lv.W) && line[0] % lv.W > p.X, "the finish line spans the track just behind you");
+        g.Messages.Clear();
+        p.X = line[0] % lv.W - 1.5f; p.Y = 24.5f; p.Angle = 0;
+        Tick(new Input { Move = 1 }, 20);
+        check(g.LastPlace == 0 && g.Messages.Any(m => m.text.StartsWith("Reach every checkpoint first")), "backing over the line at the start doesn't count");
+        // the lap: round the west side, the north straight and the east side, then over the line
+        foreach (var (x, y) in new[] { (4.5f, 14.5f), (22.5f, 4.5f), (40.5f, 14.5f) })
+        {
+            p.X = x; p.Y = y; p.FloorZ = lv.FloorAt(x, y); p.Z = 0; p.VX = p.VY = 0;
+            Tick(new Input { Move = 1 }, 3);
+        }
+        check(lv.CheckpointsReached.Count == 4 && g.Messages.Any(m => m.text.StartsWith("Every checkpoint")), "each side's checkpoint counts, and it tells you to cross the line");
+        p.X = line[0] % lv.W + 1.5f; p.Y = 24.5f; p.FloorZ = lv.FloorAt(p.X, p.Y); p.Angle = MathF.PI;
+        for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
+        check(g.LastPlace == 1 && g.Profile.Board("circuit/Fighter").Count == 1 && g.Profile.Ghosts.ContainsKey("circuit/Fighter"),
+              "crossing the line finishes the lap, on the Circuit's own leaderboard, with its own ghost");
+        check(!g.Profile.Board("Fighter").Any() && !g.Profile.Ghosts.ContainsKey("Fighter"), "the Velocity Hangar's board and ghost are separate");
+        check(g.Ghost != null && g.Messages.Any(m => m.text.Contains("new best")), "and next lap, the ghost of it races you");
+        Tick(new Input { Move = 1 }, 10);
+        p.X = 4.5f; p.Y = 14.5f; p.FloorZ = lv.FloorAt(p.X, p.Y); p.Z = 0; p.VX = p.VY = 0;
+        g.Messages.Clear();
+        Tick(new Input { Move = 1 }, 2);
+        check(g.Messages.Any(m => m.text.Contains("vs ghost")), "and each side's checkpoint says how you're doing against it");
+
+        // Free Roam: just room
+        g.StartPractice(PClass.Fighter, Courses.FreeRoam);
+        lv = g.Level; p = g.P;
+        int open = Enumerable.Range(0, lv.W * lv.H).Count(i => lv.Cells[i] == '\0');
+        check(lv.W == 64 && lv.H == 64 && open == 62 * 62 && lv.Things.Count == 0 && lv.Checkpoints.Count == 0,
+              "Free Roam is a 64-by-64 field with nothing in it");
+        Tick(new Input { Move = 1 }, 70);
+        check(!g.RunStarted && g.RunTime == 0 && g.Ghost == null && g.StrafeAdvice() != null, "no clock and no ghost, but the strafe helper is there");
+        check(p.HasJetpack, "and you have a jetpack");
+        Tick(new Input { JetHeld = true }, 35);
+        check(p.Flying && p.Z > 1, "which flies");
+        var r = new Renderer();
+        r.Render(g);
+        int clock = Enumerable.Range(3, 8).Sum(y => Enumerable.Range(Renderer.W - 80, 76).Count(x => r.Fb[y * Renderer.W + x] == Col.Rgb(240, 236, 220)));
+        check(clock == 0, "with no clock in the corner");
+
+        check(Courses.All.All(c => { g.StartPractice(PClass.Fighter, c); return !g.Level.Things.Any(t => t is Chest); }),
+              "no treasure chests get scattered on the practice courses");
+
+        // the leaderboard steps through the timed courses
+        g.StartPractice(PClass.Fighter, Courses.Circuit);
+        g.Paused = true; g.Menu.Show(MenuPage.Pause);
+        g.Menu.Show(MenuPage.Leaderboard);
+        check(g.Menu.BoardCourse == Courses.Circuit, "on a course, the leaderboard opens on it");
+        var seen = new List<string>();
+        for (int k = 0; k < 3; k++) { g.Menu.Update(new Input { Down = true }, 1f / 35f); seen.Add(g.Menu.BoardCourse.Id); }
+        check(seen.SequenceEqual(new[] { "hangar", "descent", "circuit" }), "Up/Down step through the timed courses (Free Roam has no board)");
+        g.Menu.Close(); g.Paused = false;
+
+        // picking Free Roam from the menus
+        g.GoToTitle();
+        g.Menu.Cursor = 1;
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Courses), "Free Roam");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        Tick(new Input { Slot = 3 });
+        check(g.Practicing && g.Course == Courses.FreeRoam && g.P.Class == PClass.Mage, "Practice > Free Roam > a class starts it");
+        g.GoToTitle();
+        g.Menu.Cursor = 1;
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        g.Menu.Update(new Input { Pause = true }, 1f / 35f);
+        check(g.Menu.Page == MenuPage.Main, "Esc from the course list goes back to the title");
     }
 
     static void StrafeHelperChecks(Action<bool, string> check)
@@ -3255,6 +3396,29 @@ public static class Headless
         g.Paused = true; g.Menu.Show(MenuPage.Pause); g.Menu.Show(MenuPage.Leaderboard);
         Shot("85_leaderboard");
         g.Menu.Close(); g.Paused = false;
+
+        // the other practice courses: the course list, Descent from its top platform, the Circuit's first corner, Free Roam
+        g.Menu.Close(); g.Paused = false;
+        g.GoToTitle();
+        g.Menu.Show(MenuPage.Courses); g.Menu.Cursor = 1;
+        Shot("90_practice_courses");
+        g.Menu.Close();
+        foreach (var (course, name, cam) in new[]
+        {
+            (Courses.Descent, "91_descent", (x: 14.2f, y: 4.6f, a: 0.12f, pitch: -38f)),
+            (Courses.Circuit, "92_circuit", (x: 14.5f, y: 24.5f, a: MathF.PI + 0.55f, pitch: -4f)),
+            (Courses.FreeRoam, "93_free_roam", (x: 32.5f, y: 32.5f, a: 0.6f, pitch: -4f)),
+        })
+        {
+            g.StartPractice(PClass.Fighter, course);
+            g.Vars.Freeze = true;
+            Tick(default, 2);
+            PlaceCam(cam.x, cam.y, g.Level.FloorAt(cam.x, cam.y), 0, cam.a, cam.pitch);
+            Tick(default, 1); PlaceCam(cam.x, cam.y, g.Level.FloorAt(cam.x, cam.y), 0, cam.a, cam.pitch);
+            g.Messages.Clear();
+            Shot(name);
+            g.Vars.Freeze = false;
+        }
 
         // the ghost of your best run, a stride ahead across the first platform, then the practice pause menu
         var ghostLine = new GhostTrack();

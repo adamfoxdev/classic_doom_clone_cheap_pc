@@ -943,35 +943,45 @@ public static class Maps
     public static readonly (int x0, int x1, float floor)[] CoursePlatforms = { (1, 16, 2.5f), (19, 30, 2.5f), (35, 46, 2.5f), (52, 67, 2.5f), (74, 81, 2f) };
 
     /// <summary>
-    /// Velocity Hangar, the strafe-jumping practice course (Main menu > Practice): a straight run of raised platforms,
-    /// 9 wide, over gaps that grow from 2 cells (a plain running jump) to 6 (about twice your run speed). The gap
-    /// floors are lift pads back up to the last platform you reached; each platform's checkpoint pad counts for all of
-    /// it. The exit at the far end finishes the run.
+    /// Velocity Hangar, the first strafe-jumping practice course: a straight run of raised platforms, 9 wide, over gaps
+    /// that grow from 2 cells (a plain running jump) to 6 (about twice your run speed).
     /// </summary>
-    public static MapDef VelocityCourse()
+    public static MapDef VelocityCourse() =>
+        GapCourse("Velocity Hangar", "Velocity Hangar. Strafe-jump across the widening gaps to the exit.", "spire", CoursePlatforms, 6f);
+
+    /// <summary>
+    /// A practice course of raised platforms (x0, x1, floor) running east, 9 wide, over gaps whose floors are lift pads
+    /// back up to the last platform you reached. Each platform's checkpoint pad counts for all of it; a torch in each
+    /// corner marks the gap edges; the exit is at the east end.
+    /// </summary>
+    public static MapDef GapCourse(string name, string entry, string theme, (int x0, int x1, float floor)[] plats, float height)
     {
         const int h = 11;
-        int w = CoursePlatforms[^1].x1 + 2;
+        int w = plats[^1].x1 + 2;
         var rows = new char[h][];
         for (int y = 0; y < h; y++)
         {
             rows[y] = new char[w];
             for (int x = 0; x < w; x++)
                 rows[y][x] = y == 0 || y == h - 1 || x == 0 || x == w - 1 ? 'O'
-                    : CoursePlatforms.Any(p => x >= p.x0 && x <= p.x1) ? '.' : '=';
+                    : plats.Any(p => x >= p.x0 && x <= p.x1) ? '.' : '=';
         }
-        // a torch in each corner of every platform, so you can see where the gaps are coming
-        foreach (var (x0, x1, _) in CoursePlatforms)
+        foreach (var (x0, x1, _) in plats)
             foreach (int x in new[] { x0, x1 })
                 rows[1][x] = rows[h - 2][x] = 't';
         rows[h / 2][2] = '@';
         rows[2][2] = '+';
-        foreach (var (x0, _, _) in CoursePlatforms.Skip(1)) rows[h / 2][x0 + 1] = '+';
-        rows[h / 2][CoursePlatforms[^1].x1 - 1] = 'E';
-        var def = new MapDef("Velocity Hangar", "Velocity Hangar. Strafe-jump across the widening gaps to the exit.", "spire",
-            rows.Select(r => new string(r)).ToArray(), Height: 6f);
-        static char Glyph(float f) { int n = (int)MathF.Round(f / Level.FloorStep); return n <= 9 ? (char)('0' + n) : (char)('a' + n - 10); }
-        return Elevate(def, CoursePlatforms.Select(p => (p.x0, 1, p.x1, h - 2, Glyph(p.floor))).ToArray());
+        foreach (var (x0, _, _) in plats.Skip(1)) rows[h / 2][x0 + 1] = '+';
+        rows[h / 2][plats[^1].x1 - 1] = 'E';
+        var def = new MapDef(name, entry, theme, rows.Select(r => new string(r)).ToArray(), Height: height);
+        return Elevate(def, plats.Select(p => (p.x0, 1, p.x1, h - 2, FloorGlyph(p.floor))).ToArray());
+    }
+
+    /// <summary>The floor-grid glyph for a height (a multiple of Level.FloorStep).</summary>
+    public static char FloorGlyph(float f)
+    {
+        int n = (int)MathF.Round(f / Level.FloorStep);
+        return n <= 0 ? '.' : n <= 9 ? (char)('0' + n) : (char)('a' + n - 10);
     }
 
     /// <summary>
@@ -1013,7 +1023,7 @@ public static class Maps
     }
 
     /// <summary>Adds a floor grid to a map: rectangles (inclusive) of floor-height glyphs over ground level.</summary>
-    static MapDef Elevate(MapDef d, params (int x0, int y0, int x1, int y1, char f)[] regions)
+    internal static MapDef Elevate(MapDef d, params (int x0, int y0, int x1, int y1, char f)[] regions)
     {
         var grid = d.Rows.Select(r => Enumerable.Repeat('.', r.Length).ToArray()).ToArray();
         foreach (var (x0, y0, x1, y1, f) in regions)

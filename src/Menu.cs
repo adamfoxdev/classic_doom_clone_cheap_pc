@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -18,8 +18,9 @@ public sealed class MenuSystem
     public float NoticeTime;
     public const int BindRows = 15;
 
-    /// <summary>Whose leaderboard the Leaderboard page shows (Left/Right switch class).</summary>
+    /// <summary>Whose leaderboard the Leaderboard page shows: Left/Right switch class, Up/Down the course.</summary>
     public PClass BoardClass;
+    public Course BoardCourse = Courses.Hangar;
 
     public MenuSystem(Game g) { _g = g; }
 
@@ -29,7 +30,11 @@ public sealed class MenuSystem
     {
         if (Page != null) _back.Push((Page.Value, Cursor));
         Page = p; Cursor = 0; Column = 0; Scroll = 0; Capturing = false; NoticeTime = 0;
-        if (p == MenuPage.Leaderboard) BoardClass = _g.P?.Class ?? PClass.Fighter;
+        if (p == MenuPage.Leaderboard)
+        {
+            BoardClass = _g.P?.Class ?? PClass.Fighter;
+            BoardCourse = _g.Practicing && _g.Course.Timed ? _g.Course : Courses.Hangar;
+        }
     }
 
     public void Close()
@@ -60,6 +65,7 @@ public sealed class MenuSystem
             ? new[] { "Resume", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Leaderboard => new[] { "Back" },
+        MenuPage.Courses => Courses.All.Select(c => c.Name).Append("Back").ToArray(),
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Back" },
@@ -153,6 +159,13 @@ public sealed class MenuSystem
                 BoardClass = (PClass)(((int)BoardClass + (inp.Left ? 2 : 1)) % 3);
                 _g.PlaySound(Sfx.Swing, 0.5f);
             }
+            if (inp.Up || inp.Down)
+            {
+                var timed = Courses.Timed;
+                int i = Array.IndexOf(timed, BoardCourse);
+                BoardCourse = timed[(i + (inp.Up ? timed.Length - 1 : 1)) % timed.Length];
+            }
+            Cursor = 0;
             if (inp.Confirm) Back();
             return;
         }
@@ -206,7 +219,12 @@ public sealed class MenuSystem
         {
             case (MenuPage.Main, 0): Show(MenuPage.Style); Cursor = (int)_g.Style; break;
             case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.PendingPractice = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
-            case (MenuPage.Main, 1): _g.Style = GameStyle.Classic; _g.PendingPractice = true; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Main, 1): Show(MenuPage.Courses); break;
+            case (MenuPage.Courses, var c) when c < Courses.All.Length:
+                _g.Style = GameStyle.Classic; _g.PendingPractice = true; _g.PendingCourse = Courses.All[c];
+                Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
+                break;
+            case (MenuPage.Courses, _): Back(); break;
             case (MenuPage.Main, 2): Show(MenuPage.Leaderboard); break;
             case (MenuPage.Style, 2): Back(); break;
             case (MenuPage.Main, 3): Show(MenuPage.Character); break;
