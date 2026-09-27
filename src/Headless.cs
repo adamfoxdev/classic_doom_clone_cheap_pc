@@ -72,6 +72,9 @@ public static class Headless
         Console.WriteLine("Ceiling heights:");
         HeightChecks(Check);
 
+        Console.WriteLine("Stairs and floors:");
+        StairChecks(Check);
+
         Console.WriteLine("Audio synthesis:");
         bool audioOk = true;
         for (int i = 0; i < (int)Sfx.Count; i++) audioOk &= Audio.Synth((Sfx)i).Length > 1000;
@@ -941,6 +944,133 @@ public static class Headless
         check(eg.Mode == GameMode.Playing && eg.Level.HeightAt(6.5f, 6.5f) == 4f && eg.Level.HeightAt(8.5f, 8.5f) == 1.5f, "play-testing uses the painted heights");
     }
 
+    static void StairChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        check(hub[0].FloorAt(15.5f, 1.5f) == 0.75f && hub[0].FloorAt(15.5f, 3.5f) == 0.5f && hub[0].FloorAt(15.5f, 4.5f) == 0.25f,
+              "the great hall has a dais up three steps");
+        check(hub[0].FloorAt(4.5f, 18.5f) == 0.75f, "the Heresiarch stands on a stepped platform");
+        check(hub[1].FloorAt(27.5f, 2.5f) == 0.75f && hub[1].FloorAt(23.5f, 2.5f) == 0.25f, "the Frozen Keep has a terrace with stairs");
+        check(hub[0].HeightAt(15.5f, 1.5f) == 3f, "ceilings stay put when the floor rises");
+
+        var g = new Game { FixedSeed = 1 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster or Chest or Decor or LoreStone);
+        var wh = g.Level;
+
+        // walk up the dais steps; the camera eases up rather than jumping
+        g.P.X = 15.5f; g.P.Y = 7.5f; g.P.Angle = -MathF.PI / 2;
+        float lastEye = g.P.FloorZ + g.P.ViewZ, maxJump = 0;
+        for (int k = 0; k < 35 * 3; k++)
+        {
+            Tick(new Input { Move = 1 });
+            float eye = g.P.FloorZ + g.P.ViewZ;
+            maxJump = MathF.Max(maxJump, MathF.Abs(eye - lastEye));
+            lastEye = eye;
+        }
+        check(g.P.FloorZ == 0.75f && g.P.Y < 3f, $"walking forward climbs the stairs onto the dais (floor {g.P.FloorZ})");
+        check(maxJump < 0.12f, $"the camera rises smoothly (largest change per frame {maxJump:0.00})");
+
+        // the Keep terrace is too tall to walk onto, but you can jump up; walking off drops you
+        g.Warp(1);
+        g.Level.Things.RemoveAll(t => t is Monster or Chest or Decor or LoreStone or Pickup);
+        g.P.X = 27.5f; g.P.Y = 5.5f; g.P.Angle = -MathF.PI / 2;
+        Tick(new Input { Move = 1 }, 35);
+        check(g.P.FloorZ == 0f && g.P.Y > 5.2f, "a 0.75 ledge blocks walking");
+        Tick(new Input { Jump = true, Move = 1 });
+        Tick(new Input { Move = 1 }, 35);
+        check(g.P.FloorZ == 0.75f && g.P.Y < 4.8f, "jumping gets you up onto the ledge");
+        g.P.X = 27.5f; g.P.Y = 3.5f; g.P.Angle = MathF.PI / 2;
+        bool airborne = false;
+        for (int k = 0; k < 35; k++) { Tick(new Input { Move = 1 }); airborne |= g.P.Z > 0.05f; }
+        Tick(default, 20);
+        check(airborne && g.P.FloorZ == 0f && g.P.OnGround, "walking off the edge falls and lands");
+        g.P.X = 22.5f; g.P.Y = 2.5f; g.P.Angle = 0;
+        Tick(new Input { Move = 1 }, 35 * 2);
+        check(g.P.FloorZ == 0.75f, "the terrace stairs lead up");
+
+        // missiles hit the face of a ledge
+        var bolt = new Projectile { Kind = ProjKind.Bolt, FromPlayer = true, DmgMin = 1, DmgMax = 1, X = 27.5f, Y = 5.8f, Z = 0.35f, VY = -8, Level = g.Level };
+        g.Level.Things.Add(bolt);
+        g.P.X = 20.5f; g.P.Y = 8.5f;
+        float boltY = 0;
+        for (int k = 0; k < 35 && !bolt.Removed; k++) { Tick(default); boltY = bolt.Y; }
+        check(bolt.Removed && boltY > 4.85f && boltY < 5.3f, $"a low missile stops at the face of the ledge (y {boltY:0.00})");
+
+        // monsters climb stairs too
+        g.Warp(0);
+        g.Vars.God = true;
+        g.P.X = 15.5f; g.P.Y = 1.5f;
+        var ettin = new Monster(Monster.Ettin) { X = 15.5f, Y = 7.5f, Level = g.Level };
+        g.Level.Things.Add(ettin);
+        for (int k = 0; k < 35 * 10 && g.Level.FloorAt(ettin.X, ettin.Y) < 0.5f; k++) Tick(default);
+        check(g.Level.FloorAt(ettin.X, ettin.Y) >= 0.5f, "an ettin climbs the stairs after you");
+        g.Vars.God = false;
+
+        // the step faces render: looking at the dais from the hall floor
+        var r = new Renderer();
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.P.X = 15.5f; g.P.Y = 8.5f; g.P.FloorZ = 0; g.P.Z = 0; g.P.Angle = -MathF.PI / 2; g.P.Pitch = 0;
+        r.Render(g);
+        float proj = 160f / MathF.Tan(g.Vars.Fov * MathF.PI / 360f);
+        int riserRow = (int)(Renderer.ViewH / 2f - (0.12f - 0.5f) * proj / 3.5f);
+        check(MathF.Abs(r.DepthAt(160, riserRow) - 3.5f) < 0.15f, "the first step's face is drawn 3.5 away");
+        var flatDef = Maps.Hub[0] with { Floors = null };
+        g.Level = flatDef.Build();
+        r.Render(g);
+        check(MathF.Abs(r.DepthAt(160, riserRow) - 3.5f) > 0.3f, "without floors the same pixel is plain floor");
+        g.Level = wh;
+
+        // reachability respects steps: a platform without stairs can't be reached on foot
+        var plat = new MapDef("Plat", "Plat", "hall", new[] { "#######", "#@...h#", "#######" }, null, 1.5f,
+                              new[] { ".......", ".....3.", "......." }).Build();
+        check(!plat.Reachable(1, 1)[5] && plat.Walkable(4, 4) && !plat.Walkable(1 * 7 + 4, 1 * 7 + 5), "a 0.75 step with no stairs is unreachable");
+        check(!plat.BlockCanEnter(5, 1, 4, 1), "stone blocks only slide over level ground");
+
+        // editor: floors layer, stair brush, files, play-test
+        var keys = new FakeKeys();
+        var eg = new Game { FixedSeed = 1, Keys = keys };
+        var ed = eg.Editor;
+        void Frame(int[] hit = null, int[] held = null, float mx = -1, float my = -1)
+        {
+            keys.Hit.Clear(); keys.Held.Clear();
+            foreach (var k in hit ?? Array.Empty<int>()) keys.Hit.Add(k);
+            foreach (var k in held ?? Array.Empty<int>()) keys.Held.Add(k);
+            var inp = eg.Binds.Read(keys, false);
+            inp.MouseX = mx; inp.MouseY = my;
+            eg.Update(inp, 1f / 35f);
+        }
+        eg.OpenEditor();
+        ed.NewMap(20, 16);
+        Frame(new[] { Keys.Letter('G') }); Frame(new[] { Keys.Letter('G') });
+        check(ed.Mode == Editor.Layer.Floors, "G, G reaches the floors layer");
+        Frame(new[] { Keys.Digit(1) }); Frame(new[] { Keys.Letter('K') });
+        check(ed.StairBrush && ed.CurrentFloor == '1', "1 picks 0.25 and K turns on the stair brush");
+        for (int x = 5; x <= 8; x++)
+        {
+            float mx = x * ed.CellSize + 3, my = 8 * ed.CellSize + 3;
+            Frame(x == 5 ? new[] { Keys.Mouse1 } : null, new[] { Keys.Mouse1 }, mx, my);
+            Frame(null, new[] { Keys.Mouse1 }, mx, my);
+        }
+        Frame();
+        check(new string(Enumerable.Range(5, 4).Select(x => ed.Doc.Floors[8 * 20 + x]).ToArray()) == "1234", "dragging the stair brush builds a staircase 1-2-3-4");
+        ed.Undo();
+        check(ed.Doc.Floors[8 * 20 + 6] == '.', "undo removes the staircase");
+        ed.Redo();
+        var back = MapDoc.Parse(ed.Doc.Serialize());
+        check(back.Floors.SequenceEqual(ed.Doc.Floors) && back.Heights.SequenceEqual(ed.Doc.Heights), "floors survive save and load");
+        Frame(new[] { Keys.Letter('G') });
+        check(ed.Mode == Editor.Layer.Tiles, "G cycles back to tiles");
+        ed.Doc[2, 2] = '.'; ed.Doc[4, 8] = '@';
+        Frame(new[] { Keys.Letter('P') });
+        check(eg.Mode == GameMode.Playing && eg.Level.FloorAt(8.5f, 8.5f) == 1f && eg.Level.HeightAt(8.5f, 8.5f) >= 2f,
+              "play-testing uses the painted floors (with headroom kept above them)");
+        eg.P.Angle = 0;
+        for (int k = 0; k < 35 * 3 && eg.P.X < 8.5f; k++) eg.Update(new Input { Move = 1 }, 1f / 35f);
+        check(eg.P.FloorZ == 1f && eg.P.X >= 8.5f, "and you can walk up the painted staircase");
+    }
+
     static void ChestChecks(Action<bool, string> check)
     {
         var g = new Game { FixedSeed = 99 };
@@ -1303,6 +1433,40 @@ public static class Headless
         Tick(default, 1);
         Shot("35_editor_heights");
         g.Editor.HeightMode = false;
+        g.GoToTitle();
+
+        // stairs: up to the dais, the view from the top, the Keep terrace, and the floors layer in the editor
+        g.FixedSeed = 1;
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.Vars.Freeze = true;
+        void Place(float x, float y, float angle, float pitch)
+        {
+            g.P.X = x; g.P.Y = y; g.P.Angle = angle; g.P.Pitch = pitch;
+            g.P.FloorZ = g.Level.FloorUnder(x, y, g.P.Radius); g.P.Z = 0; g.P.StepLag = 0;
+        }
+        Place(13.2f, 7.2f, -MathF.PI / 2 + 0.25f, -8);
+        Tick(default, 50);
+        Shot("36_dais_stairs");
+        Place(15.5f, 1.6f, MathF.PI / 2 + 0.2f, -22);
+        Tick(default, 1);
+        Shot("37_from_the_dais");
+        Place(6.8f, 18.5f, MathF.PI, 5);
+        Tick(default, 1);
+        Shot("38_heresiarch_platform");
+        g.Warp(1);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        Place(20.5f, 4.6f, -0.35f, 0);
+        Tick(default, 50);
+        Shot("39_keep_terrace");
+        g.Vars.Freeze = false;
+        g.OpenEditor();
+        g.Editor.Load(MapDoc.FromDef(Maps.Hub[0]), "Opened");
+        g.Editor.Mode = Editor.Layer.Floors; g.Editor.StairBrush = true; g.Editor.ShowHelp = false;
+        g.Editor.ZoomIndex = 3; g.Editor.CursorX = 15; g.Editor.CursorY = 4;
+        Tick(default, 1);
+        Shot("40_editor_floors");
+        g.Editor.Mode = Editor.Layer.Tiles;
         g.GoToTitle();
 
         // victory screen

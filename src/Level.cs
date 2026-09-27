@@ -70,13 +70,49 @@ public sealed class Level
         c is >= '1' and <= '9' ? Math.Clamp((c - '0') * 0.5f, MinHeight, MaxHeight) : fallback;
     public static char GlyphFromHeight(float h) => (char)('0' + Math.Clamp((int)MathF.Round(h * 2), 2, 9));
 
+    /// <summary>Floor height of each cell (0 = ground). Stairs are runs of cells a step higher each.</summary>
+    public readonly float[] Floors;
+    /// <summary>The tallest step you can walk up without jumping.</summary>
+    public const float MaxStep = 0.5f, FloorStep = 0.25f;
+
+    /// <summary>Floor grid glyphs: '1'..'9' are 0.25..2.25; anything else is ground level.</summary>
+    public static float FloorFromGlyph(char c) => c is >= '1' and <= '9' ? (c - '0') * FloorStep : 0f;
+
+    public float FloorAt(float x, float y)
+    {
+        int cx = (int)MathF.Floor(x), cy = (int)MathF.Floor(y);
+        return InBounds(cx, cy) ? Floors[cy * W + cx] : 0f;
+    }
+
+    /// <summary>Highest floor under a circle (you stand on the edge of a step, like in Doom).</summary>
+    public float FloorUnder(float x, float y, float r)
+    {
+        float f = 0;
+        for (int cy = (int)MathF.Floor(y - r); cy <= (int)MathF.Floor(y + r); cy++)
+            for (int cx = (int)MathF.Floor(x - r); cx <= (int)MathF.Floor(x + r); cx++)
+                if (InBounds(cx, cy) && !Blocks(cx, cy)) f = MathF.Max(f, Floors[cy * W + cx]);
+        return f;
+    }
+
+    /// <summary>True if a circle at (x,y) would need to climb more than `reach` above `from` anywhere under it.</summary>
+    public bool TooHigh(float x, float y, float r, float from, float reach)
+    {
+        for (int cy = (int)MathF.Floor(y - r); cy <= (int)MathF.Floor(y + r); cy++)
+            for (int cx = (int)MathF.Floor(x - r); cx <= (int)MathF.Floor(x + r); cx++)
+                if (InBounds(cx, cy) && Floors[cy * W + cx] > from + reach + 0.001f) return true;
+        return false;
+    }
+
+    /// <summary>Can you walk from cell a to its neighbour b? (not up a step taller than MaxStep)</summary>
+    public bool Walkable(int a, int b) => Floors[b] <= Floors[a] + MaxStep + 0.001f;
+
     public float HeightAt(float x, float y)
     {
         int cx = (int)MathF.Floor(x), cy = (int)MathF.Floor(y);
         return InBounds(cx, cy) ? Heights[cy * W + cx] : MinHeight;
     }
 
-    public Level(string name, string entry, string[] rows, Theme theme, string[] heightRows = null, float defaultHeight = 1f)
+    public Level(string name, string entry, string[] rows, Theme theme, string[] heightRows = null, float defaultHeight = 1f, string[] floorRows = null)
     {
         Name = name;
         EntryMessage = entry;
@@ -90,6 +126,7 @@ public sealed class Level
         Outdoor = new bool[W * H];
         Marks = new char[W * H];
         Heights = new float[W * H];
+        Floors = new float[W * H];
         UpperLook = new char[W * H];
         Seen = new bool[W * H];
         DoorOpen = new float[W * H];
@@ -122,7 +159,11 @@ public sealed class Level
             {
                 int i = y * W + x;
                 char hg = heightRows != null && y < heightRows.Length && x < heightRows[y].Length ? heightRows[y][x] : '.';
-                Heights[i] = IsDoor(Cells[i]) ? MinHeight : HeightFromGlyph(hg, Math.Clamp(defaultHeight, MinHeight, MaxHeight));
+                char fg = floorRows != null && y < floorRows.Length && x < floorRows[y].Length ? floorRows[y][x] : '.';
+                Floors[i] = FloorFromGlyph(fg);
+                // ceilings are absolute heights; a raised floor keeps at least one storey of headroom
+                Heights[i] = IsDoor(Cells[i]) ? Floors[i] + MinHeight
+                    : MathF.Max(HeightFromGlyph(hg, Math.Clamp(defaultHeight, MinHeight, MaxHeight)), Floors[i] + MinHeight);
                 var look = new[] { Cell(x + 1, y), Cell(x - 1, y), Cell(x, y + 1), Cell(x, y - 1) }
                     .Where(c => c != '\0' && !IsDoor(c) && c != 'L' && c != 'X')
                     .GroupBy(c => c).OrderByDescending(gr => gr.Count()).Select(gr => gr.Key).FirstOrDefault();
@@ -228,6 +269,7 @@ public sealed class Level
                 if (d[i] >= 0) continue;
                 char ch = Cells[i];
                 if (ch != '\0' && !IsDoor(ch)) continue;
+                if (!Walkable(c, i)) continue;
                 d[i] = d[c] + 1;
                 q.Enqueue(i);
             }
@@ -266,6 +308,7 @@ public sealed class Level
                 if (seen[i] || (blocked != null && blocked.Contains(i))) continue;
                 char ch = Cells[i];
                 if (ch != '\0' && !IsDoor(ch)) continue;
+                if (!Walkable(c, i)) continue;
                 seen[i] = true;
                 q.Enqueue(i);
             }
@@ -281,11 +324,13 @@ public sealed class Level
     }
 
     /// <summary>Can a pushed block move into this cell? Empty floor (or a plate) with nothing standing on it.</summary>
-    public bool BlockCanEnter(int x, int y)
+    public bool BlockCanEnter(int x, int y, int fromX = -1, int fromY = -1)
     {
         if (!InBounds(x, y)) return false;
         int i = y * W + x;
         if (Cells[i] != '\0' || (Marks[i] != '\0' && Marks[i] != '^')) return false;
+        // blocks slide on level ground only
+        if (InBounds(fromX, fromY) && MathF.Abs(Floors[i] - Floors[fromY * W + fromX]) > 0.01f) return false;
         foreach (var t in Things)
         {
             if (t.Removed || t is Projectile or Puff) continue;
@@ -355,9 +400,9 @@ public sealed class Level
 
 /// <summary>The hub's maps. Legend: see README.</summary>
 /// <summary>A map's source: its name, arrival message, theme and ASCII rows. The level editor reads and writes these.</summary>
-public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f)
+public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null)
 {
-    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height);
+    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors);
 }
 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
@@ -422,7 +467,7 @@ public static class Maps
     {
         // Winnowing Hall: the hub's start. The lever in the great hall raises the gate to the courtyard,
         // whose portal leads to the Frozen Keep. The steel door guards the Heresiarch.
-        Raise(new("Winnowing Hall", "Winnowing Hall", "hall", new[]
+        Elevate(Raise(new("Winnowing Hall", "Winnowing Hall", "hall", new[]
         {
             "################################",
             "#....&.#............&.#........#",
@@ -450,9 +495,10 @@ public static class Maps
             "################################",
         }),
             (1, 1, 6, 5, '3'), (8, 1, 21, 10, '6'), (23, 1, 30, 5, '3'), (1, 7, 6, 10, '3'), (23, 7, 30, 10, '3'), (9, 14, 30, 22, '5'), (1, 14, 7, 22, '7')),
+            (10, 1, 20, 2, '3'), (10, 3, 20, 3, '2'), (10, 4, 20, 4, '1'), (3, 16, 5, 20, '1'), (4, 17, 4, 19, '2'), (4, 18, 4, 18, '3')),
         // Frozen Keep: fog-bound ice fortress. Portal 2 leads to Darkmere Crypt; its Fire Key opens the fire door
         // to the east room, whose lever raises the gate to the steel key vault.
-        Raise(new("Frozen Keep", "The Frozen Keep", "ice", new[]
+        Elevate(Raise(new("Frozen Keep", "The Frozen Keep", "ice", new[]
         {
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
             "I,,,,,,,,,,,,&,I,,,,,,,,,,,,,,,I",
@@ -473,6 +519,7 @@ public static class Maps
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
         }),
             (1, 1, 14, 5, '4'), (16, 1, 30, 5, '4'), (1, 7, 11, 10, '3'), (13, 7, 18, 10, '3'), (20, 7, 30, 10, '3'), (10, 12, 21, 15, '5')),
+            (23, 1, 23, 4, '1'), (24, 1, 24, 4, '2'), (25, 1, 30, 4, '3')),
         // Darkmere Crypt: a swampy crypt haunted by Dark Bishops. The gate to the Fire Key (which opens the
         // fire door in the Frozen Keep) needs both levers pulled AND both pressure plates in the south-east
         // room weighed down with the pushable stone blocks.
@@ -522,6 +569,17 @@ public static class Maps
     };
 
     public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
+
+    /// <summary>Adds a floor grid to a map: rectangles (inclusive) of floor-height glyphs over ground level.</summary>
+    static MapDef Elevate(MapDef d, params (int x0, int y0, int x1, int y1, char f)[] regions)
+    {
+        var grid = d.Rows.Select(r => Enumerable.Repeat('.', r.Length).ToArray()).ToArray();
+        foreach (var (x0, y0, x1, y1, f) in regions)
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                    grid[y][x] = f;
+        return d with { Floors = grid.Select(r => new string(r)).ToArray() };
+    }
 
     /// <summary>Adds a height grid to a map: rectangles (inclusive) of ceiling-height glyphs over a default of 1.</summary>
     static MapDef Raise(MapDef d, params (int x0, int y0, int x1, int y1, char h)[] regions)

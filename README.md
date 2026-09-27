@@ -18,6 +18,8 @@ There are no asset files.
 ![Lore stone](docs/lore_stone.png)
 ![Level editor](docs/editor.png)
 ![Tall hall](docs/tall_hall.png)
+![Stairs](docs/stairs.png)
+![Keep terrace](docs/terrace.png)
 
 ## Features
 
@@ -66,7 +68,11 @@ There are no asset files.
   moment, so a well-timed jump lets them fly underneath.
   Monsters wake on sight or on noise, open doors, and use melee and/or missiles.
 - **Inventory:** Quartz Flasks and Mystic Urns, used with `F`.
-- **Renderer:** grid raycaster with textured floors and ceilings, **per-room ceiling heights** (tall halls,
+- **Stairs, ledges and platforms:** floors can be raised in quarter steps. Walk up any step of 0.5 or less
+  (the camera eases up), jump onto taller ledges, and fall when you walk off an edge. Monsters climb stairs too,
+  flying ones float over ledges, and missiles hit the face of a ledge. Winnowing Hall has a raised dais, the
+  Heresiarch stands on a stepped platform, and the Frozen Keep has a terrace with a stairway.
+- **Renderer:** grid raycaster with textured floors and ceilings, **per-room floor and ceiling heights** (tall halls,
   towering arenas, high courtyard walls, with wall drawn above doorways where a tall room meets a lower one),
   outdoor sky areas, distance fog (black in the hall, white in the Frozen Keep), rising doors, see-through
   portcullises, mouse look up/down, depth-buffered sprites, an automap and screen flashes.
@@ -136,7 +142,8 @@ of everything you can place is on the right, drawn with the game's own textures 
 | Mouse wheel / `[` `]`, or click the palette | Choose a piece |
 | Arrows / `WASD`, `Space`, `Delete` | Move the cursor, paint, erase (no mouse needed) |
 | `F` | Toggle the fill tool (flood-fills the area you click) |
-| `G` | Toggle height mode: paint ceiling heights instead of tiles (`2`–`9` pick 1.0–4.5, `1` the map default) |
+| `G` | Cycle layers: tiles → ceilings (`2`–`9` pick 1.0–4.5, `1` the map default) → floors (`0`–`9` pick 0–2.25) |
+| `K` | Stair brush (floors layer): each cell you drag over is one step (0.25) higher than the last |
 | `-` / `=` | Zoom out / in |
 | `T` | Cycle theme (hall, ice, crypt, arena) |
 | `R` | Rename the map |
@@ -153,15 +160,18 @@ that can't be reached. While testing, **Esc → Back to editor** returns to your
 A custom map without a Heresiarch has its exit open from the start. Portal digits only link maps in the
 built-in hub.
 
-**Heights:** in height mode every open cell shows its ceiling height as a digit over a colour tint (blue is
-low, orange is tall). Doors are always one storey tall; when a taller room opens onto a lower cell, wall is drawn
+**Heights and floors:** in the ceilings layer every open cell shows its ceiling height as a digit over a colour
+tint (blue is low, orange is tall); in the floors layer it shows the floor height (`0` ground, `1`–`9` = 0.25–2.25,
+green to pale yellow). You can walk up a difference of 2 (0.5) without jumping; ceilings are absolute, and are
+kept at least one storey above a raised floor. Doors are always one storey tall; when a taller room opens onto a lower cell, wall is drawn
 above the opening. New maps default to 1.5; the built-in maps use 1 for corridors and doorways up to 3.5 for
 the arenas.
 
 Maps are saved as `.hxm` text files in the `maps` folder next to `settings.cfg`
 (`~/.config/HexenSharp/maps/` on Linux, `%APPDATA%\HexenSharp\maps\` on Windows): a `name:`, `theme:` and
 `height:` (default ceiling height) header, a `---` line, the rows using the map legend below, and optionally a
-second `---` line followed by a same-sized grid of heights (`2`–`9` = 1.0–4.5, `.` = default). You can edit them
+second `---` line followed by a same-sized grid of ceiling heights (`2`–`9` = 1.0–4.5, `.` = default) and a third
+`---` line followed by a grid of floor heights (`1`–`9` = 0.25–2.25, `.` = ground). You can edit them
 by hand too; files without heights are one storey everywhere.
 The console command `playmap <name>` plays a saved map directly.
 
