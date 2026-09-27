@@ -13,6 +13,7 @@ There are no asset files.
 ![Chest](docs/chest.png)
 ![Block puzzle](docs/block_puzzle.png)
 ![Dark Bishops](docs/dark_bishop.png)
+![Key bindings](docs/key_bindings.png)
 
 ## Features
 
@@ -39,6 +40,8 @@ There are no asset files.
   screen tallies how many you opened.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
+- **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
+  invert mouse, field of view and FPS display. Settings are saved between sessions.
 - **Developer console (`~`)** for changing game mechanics, plus Hexen's classic cheat codes.
 - **Monsters:** Ettins, Afrits (flying fire gargoyles), Centaurs, Slaughtaurs, **Dark Bishops** and the Heresiarch boss.
   Dark Bishops float, fire pairs of **homing missiles**, and **blur**: they turn see-through and dart sideways,
@@ -63,6 +66,8 @@ dotnet run -c Release
 
 ## Controls
 
+These are the defaults. Change any of them in **Options → Key bindings** (see below).
+
 | Key | Action |
 |---|---|
 | `W` `A` `S` `D` / arrow keys | Move / strafe / turn |
@@ -76,7 +81,7 @@ dotnet run -c Release
 | `F` | Use a healing item (Quartz Flask, else Mystic Urn) |
 | `Shift` | Walk |
 | `Tab` / `M` | Automap |
-| `Esc` | Pause (`Q` quits from the pause menu) |
+| `Esc` | Pause menu (Resume, Options, Restart, Quit) |
 | `F12` | Save a screenshot |
 | `~` | Developer console |
 
@@ -95,6 +100,23 @@ dotnet run -c Release
 
 Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival (Dark Bishops join from wave 4).
 
+## Options and key bindings
+
+Open **Options** from the title menu, or press `Esc` in game and pick Options.
+
+- **Key bindings:** every action has a primary and a secondary key; keyboard keys, mouse buttons and the
+  mouse wheel all work. Select a slot and press `Enter`, then press the new key (`Esc` cancels). `Backspace`
+  clears a slot, `Left`/`Right` switch between slots, and **Reset to defaults** restores everything.
+  Binding a key that's already in use moves it off the other action and tells you which.
+- **Mouse sensitivity**, **Invert mouse**, **Field of view** and **Show FPS**: change with `Left`/`Right` or `Enter`.
+- `Esc`, `Enter` and the arrow keys always work in menus, and `Esc` can't be bound, so a bad binding can
+  never lock you out.
+
+Settings are saved when you leave the Options menu and when you quit, to `settings.cfg` in your user
+config folder (`~/.config/HexenSharp/` on Linux, `%APPDATA%\HexenSharp\` on Windows,
+`~/Library/Application Support/HexenSharp/` on macOS). The file is just console commands, so you can edit it
+by hand.
+
 ## Console and cheats
 
 Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Down` recall history,
@@ -103,6 +125,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | Command | Effect |
 |---|---|
 | `vars` | list every tweakable setting and its current value |
+| `bind [action] [key] [key2]` | show or change key bindings, e.g. `bind jump space mouse2` |
+| `unbind <action>`, `binddefaults` | clear an action's keys / restore every default |
 | `set <var> <value>` (or just `<var> <value>`) | change a setting, e.g. `speed 1.5`, `fov 90`, `gravity 6` |
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
@@ -113,7 +137,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
-Settings: `speed`, `sens`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
+Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
 `gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `fullbright`, `showfps`.
 
 Hexen's cheat codes work when typed during play (or in the console):
@@ -136,6 +160,8 @@ dotnet run -c Release -- --shots shots    # renders scripted screenshots headles
 | `src/Level.cs` | Map parsing, doors, collision, line of sight, and the hub's four maps |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
+| `src/Bindings.cs` | Rebindable actions, key names, turning key state into game input |
+| `src/Menu.cs` | Title, pause, options and key-binding menus; saving and loading settings |
 | `src/DevConsole.cs` | `~` console, tweakable settings, cheat codes |
 | `src/Entities.cs` | Things: monsters (and their stats), projectiles, pickups, decorations |
 | `src/Renderer.cs` | Software raycaster, sprites, HUD, automap, menus |

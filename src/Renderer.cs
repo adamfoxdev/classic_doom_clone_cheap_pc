@@ -24,11 +24,14 @@ public sealed class Renderer
     {
         switch (g.Mode)
         {
-            case GameMode.Title: DrawTitle(g); break;
+            case GameMode.Title:
+                if (g.Menu.Page is null or MenuPage.Main) DrawTitle(g); else StoneBackdrop(g.Time);
+                break;
             case GameMode.ClassSelect: DrawClassSelect(g); break;
             case GameMode.Victory: DrawVictory(g); break;
             default: DrawGame(g); break;
         }
+        if (g.Menu.Open && g.Menu.Page != MenuPage.Main) DrawMenu(g);
         if (g.Con.Open) DrawConsole(g);
     }
 
@@ -48,12 +51,107 @@ public sealed class Renderer
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
             CenterText("PRESS ENTER TO TRY AGAIN", 90, Col.Rgb(230, 220, 200));
         if (g.Vars.ShowFps) Text(W - 40, 3, $"{g.Fps:0} FPS", Col.Rgb(120, 255, 120));
-        if (g.Paused)
+    }
+
+    // ================================================================ menus
+
+    static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
+
+    void MenuItem(string text, int y, bool selected)
+    {
+        text = text.ToUpperInvariant();
+        int x = (W - Font.Width(text)) / 2;
+        if (selected)
         {
-            Darken(0, 0, W, ViewH, 110);
-            CenterText("PAUSED", 58, Col.Rgb(230, 190, 80), 3);
-            CenterText("ESC: RESUME     Q: QUIT", 92, Col.Rgb(230, 220, 200));
+            Rect(x - 12, y - 2, Font.Width(text) + 22, 11, Col.Rgb(70, 40, 20));
+            Text(x - 9, y, ">", MenuSel);
         }
+        Text(x, y, text, selected ? MenuSel : MenuText);
+    }
+
+    void DrawMenu(Game g)
+    {
+        var m = g.Menu;
+        var page = m.Page.Value;
+        var items = m.Items(page);
+        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : 230);
+
+        switch (page)
+        {
+            case MenuPage.Pause:
+                CenterText("PAUSED", 34, Col.Rgb(230, 190, 80), 3);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 70 + i * 14, i == m.Cursor);
+                CenterText("ARROWS + ENTER    ESC: RESUME", 150, MenuDim);
+                break;
+
+            case MenuPage.Options:
+                CenterText("OPTIONS", 16, Col.Rgb(230, 190, 80), 2);
+                for (int i = 0; i < items.Length; i++)
+                {
+                    int y = 48 + i * 16;
+                    bool sel = i == m.Cursor;
+                    string label = items[i].ToUpperInvariant(), val = m.Value(i);
+                    if (val == "") { MenuItem(label, y, sel); continue; }
+                    if (sel) Rect(40, y - 3, 240, 13, Col.Rgb(70, 40, 20));
+                    Text(48, y, label, sel ? MenuSel : MenuText);
+                    string shown = sel ? $"< {val} >" : val;
+                    Text(272 - Font.Width(shown), y, shown, sel ? MenuSel : Col.Rgb(170, 200, 255));
+                }
+                CenterText("UP/DOWN: SELECT  LEFT/RIGHT: CHANGE  ESC: BACK", 186, MenuDim);
+                break;
+
+            case MenuPage.Bindings:
+                DrawBindings(g);
+                break;
+        }
+
+        if (m.NoticeTime > 0 && page != MenuPage.Bindings) CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
+    }
+
+    void DrawBindings(Game g)
+    {
+        var m = g.Menu;
+        var items = m.Items(MenuPage.Bindings);
+        CenterText("KEY BINDINGS", 6, Col.Rgb(230, 190, 80), 2);
+        const int colA = 14, colP = 150, colS = 232, top = 38, row = 9;
+        Text(colA, 28, "ACTION", MenuDim);
+        Text(colP, 28, "PRIMARY", MenuDim);
+        Text(colS, 28, "SECONDARY", MenuDim);
+        Rect(10, 36, W - 20, 1, Col.Rgb(120, 90, 50));
+
+        for (int r = 0; r < MenuSystem.BindRows && m.Scroll + r < items.Length; r++)
+        {
+            int i = m.Scroll + r, y = top + r * row;
+            bool sel = i == m.Cursor;
+            if (i >= Bindings.Count)
+            {
+                MenuItem(items[i], y, sel);
+                continue;
+            }
+            var b = Bindings.All[i];
+            if (sel) Rect(10, y - 1, W - 20, row, Col.Rgb(55, 32, 16));
+            Text(colA, y, b.Label.ToUpperInvariant(), sel ? MenuSel : MenuText);
+            for (int s = 0; s < Bindings.Slots; s++)
+            {
+                int x = s == 0 ? colP : colS;
+                bool cell = sel && m.Column == s;
+                string key = cell && m.Capturing ? "PRESS A KEY" : Keys.Name(g.Binds.Get(b.Act, s));
+                if (cell) Rect(x - 3, y - 1, 78, row, m.Capturing ? Col.Rgb(140, 40, 30) : Col.Rgb(110, 70, 30));
+                uint kc = cell ? Col.Rgb(255, 255, 255) : g.Binds.Get(b.Act, s) == Keys.None ? Col.Rgb(100, 90, 80) : Col.Rgb(170, 200, 255);
+                if (!(cell && m.Capturing && ((int)(g.Time * 3) & 1) == 1)) Text(x, y, key, kc);
+            }
+        }
+        // scroll markers
+        if (m.Scroll > 0) Text(W - 12, top, "^", MenuSel);
+        if (m.Scroll + MenuSystem.BindRows < items.Length) Text(W - 12, top + (MenuSystem.BindRows - 1) * row, "V", MenuSel);
+
+        int fy = top + MenuSystem.BindRows * row + 3;
+        Rect(10, fy - 2, W - 20, 1, Col.Rgb(120, 90, 50));
+        if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), fy + 2, Col.Rgb(120, 255, 140));
+        string help = m.Capturing
+            ? "PRESS A KEY OR MOUSE BUTTON.  ESC: CANCEL"
+            : "ENTER: BIND  BKSP: CLEAR  L/R: SLOT  ESC: BACK";
+        CenterText(help, H - 10, MenuDim);
     }
 
     // ================================================================ 3D view
@@ -567,10 +665,9 @@ public sealed class Renderer
         var a = Art.Monsters["afrit"][(int)(g.Time * 3) % 2];
         var c = Art.Monsters["centaur"][(int)(g.Time * 2) % 2];
         Icon(e, 40, 82, 64); Icon(c, 128, 82, 64); Icon(a, 216, 80, 64);
-        if (((int)(g.Time * 2) & 1) == 0) CenterText("PRESS ENTER", 154, Col.Rgb(255, 230, 120), 2);
-        CenterText("WASD MOVE  MOUSE LOOK  CLICK ATTACK  E USE", 172, Col.Rgb(170, 160, 140));
-        CenterText("SPACE JUMP  C SLIDE  1-3 WEAPONS  F HEAL", 181, Col.Rgb(170, 160, 140));
-        CenterText("SHIFT+E PULL  TAB MAP  ESC PAUSE  ~ CONSOLE", 190, Col.Rgb(170, 160, 140));
+        var items = g.Menu.Items(MenuPage.Main);
+        for (int i = 0; i < items.Length; i++) MenuItem(items[i], 150 + i * 12, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
+        CenterText("ARROWS + ENTER.  CONTROLS ARE IN OPTIONS.", 190, Col.Rgb(150, 140, 120));
     }
 
     void DrawClassSelect(Game g)
