@@ -94,6 +94,8 @@ public sealed class Level
             }
 
         if (Array.IndexOf(Marks, '*') >= 0) Arena = new ArenaState(this);
+        // a map without a Heresiarch (e.g. a custom map) has its exit open from the start
+        BossDead = !Things.Any(t => t is Monster { Def.Boss: true });
 
         // disguise each secret wall as its most common neighbouring wall
         for (int i = 0; i < Cells.Length; i++)
@@ -317,29 +319,75 @@ public sealed class Level
 }
 
 /// <summary>The hub's maps. Legend: see README.</summary>
+/// <summary>A map's source: its name, arrival message, theme and ASCII rows. The level editor reads and writes these.</summary>
+public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows)
+{
+    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId));
+}
+
+/// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
 public static class Maps
 {
-    public static Level[] BuildHub()
+    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena" };
+
+    public static Theme ThemeById(string id)
     {
-        var hall = new Theme
+        switch (id)
         {
-            FloorIn = Art.FloorStone, CeilIn = Art.CeilWood, FloorOut = Art.Grass, Sky = Art.SkyDusk,
-            FogColor = Col.Rgb(6, 4, 8), FogDist = 15f, Light = 256,
-        };
-        hall.Walls['#'] = Art.Stone; hall.Walls['B'] = Art.Brick; hall.Walls['W'] = Art.Wood; hall.Walls['M'] = Art.Moss;
-        hall.Walls['O'] = Art.Marble; hall.Walls['I'] = Art.Ice;
+            case "hall":
+            {
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorStone, CeilIn = Art.CeilWood, FloorOut = Art.Grass, Sky = Art.SkyDusk,
+                    FogColor = Col.Rgb(6, 4, 8), FogDist = 15f, Light = 256,
+                };
+                t.Walls['#'] = Art.Stone; t.Walls['B'] = Art.Brick; t.Walls['W'] = Art.Wood; t.Walls['M'] = Art.Moss;
+                t.Walls['O'] = Art.Marble; t.Walls['I'] = Art.Ice;
+                return t;
+            }
+            case "ice":
+            {
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorWood, CeilIn = Art.CeilStone, FloorOut = Art.Snow, Sky = Art.SkyIce,
+                    FogColor = Col.Rgb(150, 164, 184), FogDist = 11f, Light = 240,
+                };
+                t.Walls['#'] = Art.Stone; t.Walls['I'] = Art.Ice; t.Walls['W'] = Art.Wood; t.Walls['M'] = Art.Moss;
+                t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick;
+                return t;
+            }
+            case "crypt":
+            {
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.Grass, Sky = Art.SkyNight,
+                    FogColor = Col.Rgb(8, 20, 12), FogDist = 12f, Light = 230,
+                };
+                t.Walls['#'] = Art.Stone; t.Walls['M'] = Art.Moss; t.Walls['B'] = Art.Brick; t.Walls['W'] = Art.Wood;
+                t.Walls['O'] = Art.Marble; t.Walls['I'] = Art.Ice;
+                return t;
+            }
+            case "arena":
+            {
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.FloorStone, Sky = Art.SkyDusk,
+                    FogColor = Col.Rgb(30, 10, 24), FogDist = 18f, Light = 250,
+                };
+                t.Walls['#'] = Art.Stone; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick; t.Walls['M'] = Art.Moss;
+                t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
+            default:
+                return ThemeById("hall");
+        }
+    }
 
-        var ice = new Theme
-        {
-            FloorIn = Art.FloorWood, CeilIn = Art.CeilStone, FloorOut = Art.Snow, Sky = Art.SkyIce,
-            FogColor = Col.Rgb(150, 164, 184), FogDist = 11f, Light = 240,
-        };
-        ice.Walls['#'] = Art.Stone; ice.Walls['I'] = Art.Ice; ice.Walls['W'] = Art.Wood; ice.Walls['M'] = Art.Moss;
-        ice.Walls['O'] = Art.Marble; ice.Walls['B'] = Art.Brick;
-
+    public static readonly MapDef[] Hub =
+    {
         // Winnowing Hall: the hub's start. The lever in the great hall raises the gate to the courtyard,
         // whose portal leads to the Frozen Keep. The steel door guards the Heresiarch.
-        var winnowing = new Level("Winnowing Hall", "Winnowing Hall", new[]
+        new("Winnowing Hall", "Winnowing Hall", "hall", new[]
         {
             "################################",
             "#....&.#............&.#........#",
@@ -365,12 +413,10 @@ public static class Maps
             "#O..u..O#,,e,,,,,,,,,,,,,,,e,,,#",
             "#OOOOOOO#,,,,,,b,,,,,,,h,,,,,,,#",
             "################################",
-        }, hall);
-        winnowing.StartAngle = 0f;
-
+        }),
         // Frozen Keep: fog-bound ice fortress. Portal 2 leads to Darkmere Crypt; its Fire Key opens the fire door
         // to the east room, whose lever raises the gate to the steel key vault.
-        var keep = new Level("Frozen Keep", "The Frozen Keep", new[]
+        new("Frozen Keep", "The Frozen Keep", "ice", new[]
         {
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
             "I,,,,,,,,,,,,&,I,,,,,,,,,,,,,,,I",
@@ -389,20 +435,11 @@ public static class Maps
             "II%...&III............IIIIIIIIII",
             "IIIIIIIIII..u....g....IIIIIIIIII",
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
-        }, ice);
-
-        var crypt = new Theme
-        {
-            FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.Grass, Sky = Art.SkyNight,
-            FogColor = Col.Rgb(8, 20, 12), FogDist = 12f, Light = 230,
-        };
-        crypt.Walls['#'] = Art.Stone; crypt.Walls['M'] = Art.Moss; crypt.Walls['B'] = Art.Brick; crypt.Walls['W'] = Art.Wood;
-        crypt.Walls['O'] = Art.Marble; crypt.Walls['I'] = Art.Ice;
-
+        }),
         // Darkmere Crypt: a swampy crypt haunted by Dark Bishops. The gate to the Fire Key (which opens the
         // fire door in the Frozen Keep) needs both levers pulled AND both pressure plates in the south-east
         // room weighed down with the pushable stone blocks.
-        var darkmere = new Level("Darkmere Crypt", "Darkmere Crypt", new[]
+        new("Darkmere Crypt", "Darkmere Crypt", "crypt", new[]
         {
             "MMMMMMMMMMMMMMMMMMMMMMMMMMMM",
             "M2.....M,,,,,,,,,,,&M......M",
@@ -422,19 +459,10 @@ public static class Maps
             "BB%...&BB....f.....BBBBBBBBB",
             "BBBBBBBBB..u....g..BBBBBBBBB",
             "BBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-        }, crypt);
-
-        var chaos = new Theme
-        {
-            FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.FloorStone, Sky = Art.SkyDusk,
-            FogColor = Col.Rgb(30, 10, 24), FogDist = 18f, Light = 250,
-        };
-        chaos.Walls['#'] = Art.Stone; chaos.Walls['O'] = Art.Marble; chaos.Walls['B'] = Art.Brick; chaos.Walls['M'] = Art.Moss;
-        chaos.Walls['W'] = Art.Wood; chaos.Walls['I'] = Art.Ice;
-
+        }),
         // Chaos Arena: optional wave survival. Step on the golden altar to start; monsters pour out of the
         // purple spawn runes in ever harder waves. Portal 3 in Winnowing Hall's courtyard leads here.
-        var arena = new Level("Chaos Arena", "The Chaos Arena - step on the altar to begin", new[]
+        new("Chaos Arena", "The Chaos Arena - step on the altar to begin", "arena", new[]
         {
             "OOOOOOOOOOOOOOOOOOOOOOOOOO",
             "O.....O,*,,,,,,,,,,,,,,*,O",
@@ -451,8 +479,8 @@ public static class Maps
             "OOOOOOO,,,,,,,,,,,,,,,,,,O",
             "OOOOOOO,*,,,,,,,*,,,,,,*,O",
             "OOOOOOOOOOOOOOOOOOOOOOOOOO",
-        }, chaos);
+        }),
+    };
 
-        return new[] { winnowing, keep, darkmere, arena };
-    }
+    public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
 }

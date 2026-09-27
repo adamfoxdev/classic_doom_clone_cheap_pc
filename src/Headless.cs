@@ -66,6 +66,9 @@ public static class Headless
         Console.WriteLine("Relaxed mode and discovery:");
         RelaxedChecks(Check);
 
+        Console.WriteLine("Level editor:");
+        EditorChecks(Check);
+
         Console.WriteLine("Audio synthesis:");
         bool audioOk = true;
         for (int i = 0; i < (int)Sfx.Count; i++) audioOk &= Audio.Synth((Sfx)i).Length > 1000;
@@ -465,12 +468,12 @@ public static class Headless
 
         // title menu: New game / Options / Quit
         check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
-        Press(Keys.Down);
+        Press(Keys.Down); Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
         Press(Keys.Escape);
-        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 1, "Esc goes back to the main menu");
-        Press(Keys.Up); Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 2, "Esc goes back to the main menu");
+        Press(Keys.Up); Press(Keys.Up); Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
         Press(Keys.Enter);
         check(g.Mode == GameMode.ClassSelect && g.Style == GameStyle.Classic, "Classic goes to class select");
@@ -554,7 +557,7 @@ public static class Headless
         for (int k = 0; k < 3; k++) Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Mode == GameMode.Title && g.Menu.Page == MenuPage.Main, "Quit to title");
-        Press(Keys.Down); Press(Keys.Down); Press(Keys.Enter);
+        Press(Keys.Up); Press(Keys.Enter);
         check(g.QuitRequested, "Quit exits");
     }
 
@@ -699,6 +702,146 @@ public static class Headless
 
         g.Con.Execute("mode classic");
         check(!g.Relaxed && g.Mode == GameMode.Playing && g.RelicsTotal == 0, "console 'mode classic'");
+    }
+
+    static void EditorChecks(Action<bool, string> check)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"hexensharp-maps-{Environment.ProcessId}");
+        if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        var keys = new FakeKeys();
+        var g = new Game { FixedSeed = 1, Keys = keys, MapsDir = dir };
+        var ed = g.Editor;
+        // one frame: keys pressed this frame, keys held, and the mouse position
+        void Frame(int[] hit = null, int[] held = null, float mx = -1, float my = -1, string typed = null)
+        {
+            keys.Hit.Clear(); keys.Held.Clear();
+            foreach (var k in hit ?? Array.Empty<int>()) keys.Hit.Add(k);
+            foreach (var k in held ?? Array.Empty<int>()) keys.Held.Add(k);
+            var inp = g.Binds.Read(keys, g.Con.Open);
+            inp.MouseX = mx; inp.MouseY = my; inp.Typed = typed;
+            g.Update(inp, 1f / 35f);
+        }
+        (float, float) CellPos(int x, int y) => ((x - ed.CamX) * ed.CellSize + 3, (y - ed.CamY) * ed.CellSize + 3);
+        void Click(int button, int x, int y) { var (mx, my) = CellPos(x, y); Frame(new[] { button }, new[] { button }, mx, my); Frame(mx: mx, my: my); }
+        void Select(char glyph) => ed.BrushIndex = Array.FindIndex(Editor.Palette, b => b.Glyph == glyph);
+
+        // title menu -> Level editor
+        Frame(new[] { Keys.Down }); Frame(new[] { Keys.Enter });
+        check(g.Mode == GameMode.Editor, "title menu opens the level editor");
+        ed.NewMap(20, 16);
+        check(ed.Doc.W == 20 && ed.Doc[0, 0] == '#' && ed.Doc[5, 5] == '.' && ed.Doc[2, 2] == '@', "a new map is walled, with a player start");
+
+        // paint a wall stroke by dragging with the left button
+        Select('B');
+        for (int x = 4; x <= 8; x++) { var (mx, my) = CellPos(x, 6); Frame(x == 4 ? new[] { Keys.Mouse1 } : null, new[] { Keys.Mouse1 }, mx, my); }
+        Frame(mx: 0, my: 0);
+        check(Enumerable.Range(4, 5).All(x => ed.Doc[x, 6] == 'B'), "dragging with the left button paints a line");
+        ed.Undo();
+        check(Enumerable.Range(4, 5).All(x => ed.Doc[x, 6] == '.'), "one undo removes the whole stroke");
+        ed.Redo();
+        check(ed.Doc[8, 6] == 'B', "redo puts it back");
+        Click(Keys.Mouse2, 6, 6);
+        check(ed.Doc[6, 6] == '.', "right click erases");
+        Click(Keys.Mouse3, 5, 6);
+        check(ed.Current.Glyph == 'B', "middle click picks up a glyph");
+
+        // palette: click an icon, or use the wheel
+        int ettin = Array.FindIndex(Editor.Palette, b => b.Glyph == 'e');
+        float pmx = Editor.PaletteX + (ettin % Editor.PaletteCols) * Editor.PaletteCell + 5;
+        float pmy = Editor.PaletteY + (ettin / Editor.PaletteCols) * Editor.PaletteCell + 5;
+        Frame(new[] { Keys.Mouse1 }, new[] { Keys.Mouse1 }, pmx, pmy); Frame(mx: pmx, my: pmy);
+        check(ed.Current.Glyph == 'e', "clicking the palette selects Ettin");
+        Frame(new[] { Keys.WheelDown });
+        check(ed.Current.Glyph == Editor.Palette[ettin + 1].Glyph, "the mouse wheel steps through the palette");
+
+        // keyboard only: move the cursor and paint with Space
+        Select('h');
+        ed.CursorX = 3; ed.CursorY = 3;
+        Frame(new[] { Keys.Right }); Frame(new[] { Keys.Down });
+        Frame(new[] { Keys.Space });
+        check(ed.Doc[4, 4] == 'h', "arrows + Space paint without a mouse");
+
+        // one player start at most
+        Select('@');
+        Click(Keys.Mouse1, 10, 10);
+        check(ed.Doc.Cells.Count(c => c == '@') == 1 && ed.Doc[10, 10] == '@', "placing a new start moves it");
+
+        // fill tool: fill a walled pocket
+        Select('#');
+        foreach (var (x, y) in new[] { (14, 3), (15, 3), (16, 3), (14, 4), (16, 4), (14, 5), (15, 5), (16, 5) }) ed.Doc[x, y] = '#';
+        Select(',');
+        Frame(new[] { Keys.Letter('F') });
+        Click(Keys.Mouse1, 15, 4);
+        check(ed.FillTool && ed.Doc[15, 4] == ',' && ed.Doc[13, 4] == '.', "fill tool fills an enclosed pocket only");
+        Frame(new[] { Keys.Letter('F') });
+
+        // theme, rename, zoom
+        string theme = ed.Doc.ThemeId;
+        Frame(new[] { Keys.Letter('T') });
+        check(ed.Doc.ThemeId != theme, "T cycles the theme");
+        Frame(new[] { Keys.Letter('R') });
+        Frame(typed: "Test Grotto"); Frame(new[] { Keys.Enter });
+        check(ed.Doc.Name == "Test Grotto" && ed.RenameText == null, "R renames the map");
+        int cs = ed.CellSize;
+        Frame(new[] { Keys.Equal });
+        check(ed.CellSize > cs, "= zooms in");
+        Frame(new[] { Keys.Minus });
+
+        // validation and play-test
+        ed.Doc[10, 10] = '.';
+        Frame(new[] { Keys.Letter('P') });
+        check(g.Mode == GameMode.Editor && ed.Status.Contains("player start"), "play-test refuses a map without a start");
+        Select('@'); Click(Keys.Mouse1, 3, 12);
+        Select('E'); Click(Keys.Mouse1, 12, 12);
+        Select('e'); Click(Keys.Mouse1, 17, 12);
+        Frame(new[] { Keys.Letter('P') });
+        check(g.Mode == GameMode.Playing && g.TestingMap && g.Hub.Length == 1, "P play-tests the map");
+        check(g.Level.Name == "Test Grotto" && (int)g.P.X == 3 && (int)g.P.Y == 12, "you start at the map's @");
+        check(g.Level.Cell(8, 6) == 'B' && g.Level.Things.Any(t => t is Monster && (int)t.X == 17), "the level matches what was painted");
+        check(g.Level.BossDead, "a map with no Heresiarch has its exit open");
+
+        // pause > Back to editor
+        Frame(new[] { Keys.Escape });
+        check(g.Menu.Items(MenuPage.Pause)[3] == "Back to editor", "the pause menu offers Back to editor");
+        Frame(new[] { Keys.Down }); Frame(new[] { Keys.Down }); Frame(new[] { Keys.Down }); Frame(new[] { Keys.Enter });
+        check(g.Mode == GameMode.Editor && !g.TestingMap && ed.Doc.Name == "Test Grotto", "Back to editor keeps your map");
+
+        // winning a play-test also returns to the editor
+        Frame(new[] { Keys.Letter('P') });
+        var exit = g.Level.FindMark('E').Value;
+        g.P.X = exit.x; g.P.Y = exit.y;
+        Frame();
+        check(g.Mode == GameMode.Victory, "reaching the exit wins the play-test");
+        Frame(new[] { Keys.Enter });
+        check(g.Mode == GameMode.Editor, "Enter on victory returns to the editor");
+
+        // save / open / load
+        Frame(new[] { Keys.Letter('S') }, new[] { Keys.LeftControl });
+        string file = Path.Combine(dir, "test_grotto.hxm");
+        check(File.Exists(file) && !ed.Dirty, "Ctrl+S saves test_grotto.hxm");
+        var reloaded = MapDoc.Parse(File.ReadAllText(file));
+        check(reloaded.Name == "Test Grotto" && reloaded.Rows().SequenceEqual(ed.Doc.Rows()) && reloaded.ThemeId == ed.Doc.ThemeId, "the saved file loads back identically");
+        Frame(new[] { Keys.Letter('O') }, new[] { Keys.LeftControl });
+        check(ed.OpenList != null && ed.OpenList.Count == Maps.Hub.Length + 1, "Ctrl+O lists the built-in maps and your map");
+        Frame(new[] { Keys.Enter });
+        check(ed.Doc.Name == "Winnowing Hall" && ed.Doc.Rows().SequenceEqual(Maps.Hub[0].Rows), "open a built-in map as a template");
+        check(Maps.Hub.All(d => MapDoc.Parse(MapDoc.FromDef(d).Serialize()).Rows().SequenceEqual(d.Rows)), "every built-in map survives save and load");
+        check(MapDoc.Parse("name: X\n---\n#####\n#@?Q#\n#####\n")[2, 1] == '.', "unknown glyphs in a file become floor");
+
+        // leaving with unsaved changes needs a second Esc
+        ed.Paint(5, 5, '#');
+        Frame(new[] { Keys.Escape });
+        check(g.Mode == GameMode.Editor && ed.Status.Contains("Unsaved"), "Esc warns about unsaved changes");
+        Frame(new[] { Keys.Escape });
+        check(g.Mode == GameMode.Title, "a second Esc leaves");
+
+        // play a saved map from the console
+        g.Con.Execute("playmap test grotto");
+        check(g.Mode == GameMode.Playing && g.Level.Name == "Test Grotto", "console 'playmap test grotto'");
+        g.GoToTitle();
+        g.NewGame(PClass.Fighter);
+        check(g.Hub.Length == 4, "normal games still use the full hub afterwards");
+        Directory.Delete(dir, true);
     }
 
     static void ChestChecks(Action<bool, string> check)
@@ -996,6 +1139,50 @@ public static class Headless
             g.Vars.Freeze = false;
         }
         g.Style = GameStyle.Classic;
+
+        // level editor: a fresh map with help, a built-in map as a template, the open dialog, and a play-test
+        {
+            string mdir = Path.Combine(Path.GetTempPath(), $"hexensharp-shots-{Environment.ProcessId}");
+            g.MapsDir = mdir;
+            g.GoToTitle();
+            g.OpenEditor();
+            var ed = g.Editor;
+            ed.NewMap(32, 24);
+            ed.Doc.Name = "My Grotto";
+            void Box(int x0, int y0, int x1, int y1, char c) { for (int x = x0; x <= x1; x++) { ed.Doc[x, y0] = c; ed.Doc[x, y1] = c; } for (int y = y0; y <= y1; y++) { ed.Doc[x0, y] = c; ed.Doc[x1, y] = c; } }
+            Box(8, 3, 20, 12, 'M'); ed.Doc[8, 7] = 'D'; ed.Doc[14, 12] = 'Z';
+            for (int y = 4; y < 12; y++) for (int x = 9; x < 20; x++) ed.Doc[x, y] = ',';
+            ed.Doc[12, 6] = 'e'; ed.Doc[17, 9] = 'd'; ed.Doc[18, 4] = '$'; ed.Doc[10, 10] = 'T'; ed.Doc[15, 5] = '&'; ed.Doc[4, 18] = 'E';
+            ed.Doc[14, 14] = '%'; ed.BrushIndex = Array.FindIndex(Editor.Palette, b => b.Glyph == 'd');
+            ed.CursorX = 17; ed.CursorY = 9;
+            Tick(default, 1);
+            Shot("27_editor_help");
+            ed.ShowHelp = false;
+            Tick(default, 1);
+            Shot("28_editor_map");
+            ed.Load(MapDoc.FromDef(Maps.Hub[2]), "Opened");
+            ed.ZoomIndex = 1; ed.CursorX = 23; ed.CursorY = 9;
+            Tick(default, 1);
+            Shot("29_editor_crypt");
+            ed.ShowOpenList();
+            Shot("30_editor_open");
+            ed.OpenList = null;
+            ed.NewMap(32, 24);
+            ed.Doc.Name = "My Grotto";
+            Box(8, 3, 20, 12, 'M'); ed.Doc[8, 7] = 'D';
+            for (int y = 4; y < 12; y++) for (int x = 9; x < 20; x++) ed.Doc[x, y] = ',';
+            ed.Doc[12, 6] = 'e'; ed.Doc[17, 9] = 'd'; ed.Doc[18, 4] = '$'; ed.Doc[10, 10] = 'T'; ed.Doc[15, 5] = '&';
+            ed.Doc[2, 2] = '.'; ed.Doc[3, 7] = '@';
+            ed.PlayTest();
+            g.P.Angle = 0.12f;
+            g.Vars.Freeze = true;
+            Tick(default, 60);
+            Shot("31_editor_playtest");
+            g.Vars.Freeze = false;
+            g.ReturnToEditor();
+            g.GoToTitle();
+            g.MapsDir = null;
+        }
 
         // victory screen
         g.Mode = GameMode.Victory;

@@ -16,6 +16,7 @@ There are no asset files.
 ![Key bindings](docs/key_bindings.png)
 ![Relaxed mode](docs/relaxed_mode.png)
 ![Lore stone](docs/lore_stone.png)
+![Level editor](docs/editor.png)
 
 ## Features
 
@@ -53,6 +54,8 @@ There are no asset files.
   screen tallies how many you opened.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
+- **Level editor** (title menu → Level editor): paint your own maps with the mouse using every wall,
+  door, puzzle piece, monster and item in the game, then play-test instantly. Maps save as small text files.
 - **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
   invert mouse, field of view and FPS display. Settings are saved between sessions.
 - **Developer console (`~`)** for changing game mechanics, plus Hexen's classic cheat codes.
@@ -118,6 +121,40 @@ are spread over all four maps (including the arena) before the exit rune wakes. 
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
 under the crypt's south-west room, and under the arena's antechamber.
 
+## Level editor
+
+Pick **Level editor** on the title menu (or type `edit` in the console). The map is on the left and the palette
+of everything you can place is on the right, drawn with the game's own textures and sprites.
+
+| Input | Action |
+|---|---|
+| Left click (drag) | Paint the selected piece |
+| Right click | Erase to floor |
+| Middle click / `Q` | Pick up the piece under the cursor |
+| Mouse wheel / `[` `]`, or click the palette | Choose a piece |
+| Arrows / `WASD`, `Space`, `Delete` | Move the cursor, paint, erase (no mouse needed) |
+| `F` | Toggle the fill tool (flood-fills the area you click) |
+| `-` / `=` | Zoom out / in |
+| `T` | Cycle theme (hall, ice, crypt, arena) |
+| `R` | Rename the map |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
+| `Ctrl+S` | Save |
+| `Ctrl+O` | Open a saved map, or one of the built-in maps as a template |
+| `Ctrl+N` | New map (press again to cycle 32×24, 48×32 and 20×16) |
+| `P` / `F5` | Play-test the map (`C` picks the class, `V` switches Classic/Relaxed) |
+| `H` | Show / hide help |
+| `Esc` | Leave (asks again if there are unsaved changes) |
+
+A play-test needs a player start (`@`); the editor warns about a missing or unreachable exit and anything
+that can't be reached. While testing, **Esc → Back to editor** returns to your map, and so does winning.
+A custom map without a Heresiarch has its exit open from the start. Portal digits only link maps in the
+built-in hub.
+
+Maps are saved as `.hxm` text files in the `maps` folder next to `settings.cfg`
+(`~/.config/HexenSharp/maps/` on Linux, `%APPDATA%\HexenSharp\maps\` on Windows): a `name:` and `theme:`
+header, a `---` line, then the rows using the map legend below, so you can also edit them by hand.
+The console command `playmap <name>` plays a saved map directly.
+
 ## Options and key bindings
 
 Open **Options** from the title menu, or press `Esc` in game and pick Options.
@@ -154,6 +191,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
+| `edit`, `playmap <name>` | open the level editor / play a saved custom map |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -176,8 +214,9 @@ dotnet run -c Release -- --shots shots    # renders scripted screenshots headles
 |---|---|
 | `src/Program.cs` | Raylib window, input mapping, framebuffer upload |
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
-| `src/Level.cs` | Map parsing, doors, collision, line of sight, and the hub's four maps |
+| `src/Level.cs` | Map parsing, doors, collision, line of sight; the hub's four maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
+| `src/Editor.cs` | Level editor: map document and file format, palette, tools, undo, validation, play-testing |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
 | `src/Bindings.cs` | Rebindable actions, key names, turning key state into game input |

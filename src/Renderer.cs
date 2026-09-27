@@ -29,6 +29,7 @@ public sealed class Renderer
                 break;
             case GameMode.ClassSelect: DrawClassSelect(g); break;
             case GameMode.Victory: DrawVictory(g); break;
+            case GameMode.Editor: DrawEditor(g); break;
             default: DrawGame(g); break;
         }
         if (g.Menu.Open && g.Menu.Page != MenuPage.Main) DrawMenu(g);
@@ -465,6 +466,207 @@ public sealed class Renderer
         for (int j = y; j < y + h; j++)
             for (int i = x; i < x + w; i++)
                 Fb[j * W + i] = Col.Shade(Fb[j * W + i], 256 - amt);
+    }
+
+    // ================================================================ level editor
+
+    readonly Dictionary<string, Theme> _themes = new();
+    readonly Dictionary<(char, string), (Tex tex, bool overlay)> _icons = new();
+
+    Theme ThemeFor(string id) => _themes.TryGetValue(id, out var t) ? t : _themes[id] = Maps.ThemeById(id);
+
+    /// <summary>What a map glyph looks like in the editor: a full-cell texture, or a sprite drawn over the floor.</summary>
+    (Tex tex, bool overlay) GlyphIcon(char c, string themeId)
+    {
+        if (_icons.TryGetValue((c, themeId), out var hit)) return hit;
+        var th = ThemeFor(themeId);
+        (Tex, bool) r;
+        switch (c)
+        {
+            case '#': case 'B': case 'W': case 'M': case 'I': case 'O':
+                r = (th.Walls.TryGetValue(c, out var wt) ? wt : c switch
+                {
+                    'B' => Art.Brick, 'W' => Art.Wood, 'M' => Art.Moss, 'I' => Art.Ice, 'O' => Art.Marble, _ => Art.Stone,
+                }, false);
+                break;
+            case 'D': r = (Art.Door, false); break;
+            case 'S': r = (Art.SteelDoor, false); break;
+            case 'F': r = (Art.FireDoor, false); break;
+            case 'P': r = (Art.Portcullis, true); break;
+            case 'L': r = (Art.LeverOff, false); break;
+            case 'X': r = (Art.Block, false); break;
+            case 'Z': r = (Labelled(th.Walls.TryGetValue('#', out var st) ? st : Art.Stone, "?", Col.Rgb(255, 220, 60)), false); break;
+            case '.': r = (th.FloorIn, false); break;
+            case ',': r = (th.OutdoorFloor, false); break;
+            case 'E': r = (Art.ExitFloor, false); break;
+            case '*': r = (Art.SpawnFloor, false); break;
+            case '!': r = (Art.AltarFloor, false); break;
+            case '^': r = (Art.PlateFloor, false); break;
+            case '@': r = (Labelled(th.FloorIn, "@", Col.Rgb(90, 255, 120), true), false); break;
+            case >= '1' and <= '9': r = (Labelled(Art.PortalFloor, c.ToString(), Col.Rgb(255, 255, 255)), false); break;
+            default:
+                var thing = ThingFactory.Create(c, 0, 0);
+                r = (thing is Monster m ? Art.Monsters[m.Def.Art][(int)Pose.Walk0] : thing?.Sprite(0) ?? Art.Stone, true);
+                break;
+        }
+        return _icons[(c, themeId)] = r;
+    }
+
+    static Tex Labelled(Tex src, string text, uint color, bool big = false)
+    {
+        var t = src.Clone();
+        int scale = big ? 5 : 4;
+        int x = (t.W - Font.Width(text, scale)) / 2 + scale / 2, y = (t.H - 7 * scale) / 2;
+        Font.Draw(t.Px, t.W, t.H, x, y, text, color, scale);
+        return t;
+    }
+
+    void DrawTex(Tex t, int x, int y, int w, int h, bool alpha, int clipW, int clipH, int shade = 256)
+    {
+        for (int j = 0; j < h; j++)
+        {
+            int sy = y + j;
+            if ((uint)sy >= (uint)clipH) continue;
+            int ty = j * t.H / h;
+            for (int i = 0; i < w; i++)
+            {
+                int sx = x + i;
+                if ((uint)sx >= (uint)clipW) continue;
+                uint c = t.Px[ty * t.W + i * t.W / w];
+                if (alpha && Col.A(c) == 0) continue;
+                Fb[sy * W + sx] = shade == 256 ? c : Col.Shade(c, shade);
+            }
+        }
+    }
+
+    void DrawEditor(Game g)
+    {
+        var ed = g.Editor;
+        var doc = ed.Doc;
+        int cs = ed.CellSize;
+        Array.Fill(Fb, Col.Rgb(14, 10, 12));
+
+        // ---- map view
+        var floor = GlyphIcon('.', doc.ThemeId).tex;
+        for (int y = ed.CamY; y < doc.H && (y - ed.CamY) * cs < Editor.MapViewH; y++)
+            for (int x = ed.CamX; x < doc.W && (x - ed.CamX) * cs < Editor.MapViewW; x++)
+            {
+                int px = (x - ed.CamX) * cs, py = (y - ed.CamY) * cs;
+                char c = doc[x, y];
+                var (tex, overlay) = GlyphIcon(c, doc.ThemeId);
+                // floors are drawn dim so walls stand out even when zoomed out
+                bool isFloor = c is '.' or ',';
+                if (overlay) DrawTex(c == 'P' ? floor : NeighbourFloor(doc, x, y), px, py, cs, cs, false, Editor.MapViewW, Editor.MapViewH, 130);
+                DrawTex(tex, px, py, cs, cs, overlay, Editor.MapViewW, Editor.MapViewH, isFloor ? 130 : 256);
+                if (cs >= 8)
+                    for (int i = 0; i < cs; i++)
+                    {
+                        Shade(px + i, py + cs - 1, Editor.MapViewW, Editor.MapViewH);
+                        Shade(px + cs - 1, py + i, Editor.MapViewW, Editor.MapViewH);
+                    }
+            }
+        // cursor
+        int cx = (ed.CursorX - ed.CamX) * cs, cy = (ed.CursorY - ed.CamY) * cs;
+        uint cc = ed.FillTool ? Col.Rgb(80, 220, 255) : Col.Rgb(255, 230, 80);
+        for (int i = -1; i <= cs; i++)
+        {
+            PutClip(cx + i, cy - 1, cc); PutClip(cx + i, cy + cs, cc);
+            PutClip(cx - 1, cy + i, cc); PutClip(cx + cs, cy + i, cc);
+        }
+        Rect(Editor.MapViewW, 0, 1, Editor.MapViewH, Col.Rgb(120, 90, 50));
+
+        // ---- palette panel
+        Text(Editor.PaletteX, 2, "PALETTE", Col.Rgb(230, 190, 80));
+        for (int i = 0; i < Editor.Palette.Length; i++)
+        {
+            int px = Editor.PaletteX + (i % Editor.PaletteCols) * Editor.PaletteCell;
+            int py = Editor.PaletteY + (i / Editor.PaletteCols) * Editor.PaletteCell;
+            var b = Editor.Palette[i];
+            var (tex, overlay) = GlyphIcon(b.Glyph, doc.ThemeId);
+            if (overlay) DrawTex(floor, px, py, 13, 13, false, W, H);
+            DrawTex(tex, px, py, 13, 13, overlay, W, H);
+            if (i == ed.BrushIndex)
+                for (int k = -1; k <= 13; k++)
+                {
+                    Put(px + k, py - 1, Col.Rgb(255, 230, 80)); Put(px + k, py + 13, Col.Rgb(255, 230, 80));
+                    Put(px - 1, py + k, Col.Rgb(255, 230, 80)); Put(px + 13, py + k, Col.Rgb(255, 230, 80));
+                }
+        }
+        int iy = Editor.PaletteY + ((Editor.Palette.Length + Editor.PaletteCols - 1) / Editor.PaletteCols) * Editor.PaletteCell + 2;
+        foreach (var line in Wrap(ed.Current.Label.ToUpperInvariant(), 12)) { Text(Editor.PaletteX, iy, line, Col.Rgb(255, 230, 120)); iy += 9; }
+        Text(Editor.PaletteX, 160, ed.FillTool ? "TOOL: FILL" : "TOOL: BRUSH", Col.Rgb(170, 200, 255));
+        Text(Editor.PaletteX, 170, ed.PlayClass.ToString().ToUpperInvariant(), Col.Rgb(150, 140, 120));
+        Text(Editor.PaletteX, 179, g.Style.ToString().ToUpperInvariant(), Col.Rgb(150, 140, 120));
+
+        // ---- status bar
+        Rect(0, Editor.MapViewH, W, H - Editor.MapViewH, Col.Rgb(40, 28, 18));
+        string status = ed.StatusTime > 0 ? ed.Status
+            : $"{doc.Name}{(ed.Dirty ? "*" : "")}  {doc.W}X{doc.H} {doc.ThemeId}  ({ed.CursorX},{ed.CursorY})  H: HELP";
+        Text(3, Editor.MapViewH + 2, status.Length > 52 ? status[..52] : status, ed.StatusTime > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(220, 205, 180));
+
+        // ---- overlays
+        if (ed.ShowHelp && ed.OpenList == null && ed.RenameText == null)
+        {
+            string[] help =
+            {
+                "LEFT CLICK PAINT   RIGHT CLICK ERASE",
+                "MIDDLE / Q PICK    WHEEL / [ ] BRUSH",
+                "ARROWS / WASD MOVE   SPACE PAINT",
+                "F FILL TOOL        DEL ERASE",
+                "- = ZOOM   T THEME   R RENAME",
+                "CTRL+Z UNDO        CTRL+Y REDO",
+                "CTRL+S SAVE  CTRL+O OPEN  CTRL+N NEW",
+                "P / F5 PLAY TEST",
+                "C CLASS  V STYLE (FOR PLAY TESTS)",
+                "H HIDE HELP        ESC EXIT",
+            };
+            int bx = 6, by = 6, bw = 228, bh = help.Length * 9 + 16;
+            Darken(bx, by, bw, bh, 170);
+            Text(bx + 6, by + 4, "LEVEL EDITOR", Col.Rgb(230, 190, 80));
+            for (int i = 0; i < help.Length; i++) Text(bx + 6, by + 15 + i * 9, help[i], Col.Rgb(220, 210, 190));
+        }
+        if (ed.OpenList != null)
+        {
+            int bx = 20, by = 20, bw = 200, rows = Math.Min(14, ed.OpenList.Count), bh = rows * 10 + 24;
+            Rect(bx - 1, by - 1, bw + 2, bh + 2, Col.Rgb(150, 110, 60));
+            Rect(bx, by, bw, bh, Col.Rgb(30, 20, 14));
+            Text(bx + 6, by + 4, "OPEN MAP  (ENTER / ESC)", Col.Rgb(230, 190, 80));
+            int first = Math.Clamp(ed.OpenCursor - rows + 1, 0, Math.Max(0, ed.OpenList.Count - rows));
+            for (int i = 0; i < rows; i++)
+            {
+                int li = first + i;
+                bool sel = li == ed.OpenCursor;
+                if (sel) Rect(bx + 2, by + 15 + i * 10, bw - 4, 10, Col.Rgb(90, 55, 25));
+                string label = ed.OpenList[li].label.ToUpperInvariant();
+                Text(bx + 6, by + 16 + i * 10, label.Length > 31 ? label[..31] : label, sel ? Col.Rgb(255, 230, 120) : Col.Rgb(210, 200, 180));
+            }
+        }
+        if (ed.RenameText != null)
+        {
+            Rect(29, 69, 182, 34, Col.Rgb(150, 110, 60));
+            Rect(30, 70, 180, 32, Col.Rgb(30, 20, 14));
+            Text(36, 74, "MAP NAME  (ENTER / ESC)", Col.Rgb(230, 190, 80));
+            string cursor = ((int)(g.Time * 3) & 1) == 0 ? "_" : "";
+            if (ed.RenameText.Length == 0) Text(36, 88, ed.Doc.Name.ToUpperInvariant(), Col.Rgb(110, 100, 90));
+            Text(36, 88, ed.RenameText.ToUpperInvariant() + cursor, Col.Rgb(255, 255, 255));
+        }
+    }
+
+    /// <summary>Floor under a thing: outdoor if most neighbours are outdoor floor.</summary>
+    Tex NeighbourFloor(MapDoc doc, int x, int y)
+    {
+        int outdoor = (doc[x + 1, y] == ',' ? 1 : 0) + (doc[x - 1, y] == ',' ? 1 : 0) + (doc[x, y + 1] == ',' ? 1 : 0) + (doc[x, y - 1] == ',' ? 1 : 0);
+        return GlyphIcon(outdoor >= 2 ? ',' : '.', doc.ThemeId).tex;
+    }
+
+    void Shade(int x, int y, int clipW, int clipH)
+    {
+        if ((uint)x < (uint)clipW && (uint)y < (uint)clipH) Fb[y * W + x] = Col.Shade(Fb[y * W + x], 170);
+    }
+
+    void PutClip(int x, int y, uint c)
+    {
+        if ((uint)x < Editor.MapViewW && (uint)y < Editor.MapViewH) Fb[y * W + x] = c;
     }
 
     // ================================================================ console & arena
