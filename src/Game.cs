@@ -11,6 +11,8 @@ public struct Input
     public bool Fire, Walk;               // held
     public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Quit, Screenshot; // pressed
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
+    public string Typed;                  // text typed this frame (console / cheat codes)
+    public bool ConsoleToggle, Backspace, Tab, PageUp, PageDown, Jump, Slide;
 }
 
 public sealed class WeaponDef
@@ -79,13 +81,19 @@ public sealed class Player
     public ClassDef Def => ClassDef.All[(int)Class];
     public float X, Y, Angle, Pitch;
     public float Radius = 0.25f;
-    public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills;
+    public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills, ChestsOpened;
     public bool[] HasWeapon = { true, false, false };
     public int Weapon, PendingWeapon = -1;
     public float Cooldown, FireAnim, Raise, Bob, BobAmount;
     public float DamageFlash, PickupFlash, TeleportFlash;
-    public bool SteelKey, PortalLock, Dead;
+    public bool SteelKey, FireKey, PortalLock, Dead;
     public float EyeZ = 0.5f;
+    public float Z, VZ;                                   // height above the floor while jumping
+    public float SlideTime, SlideCd, SlideDX, SlideDY, SlideLow;
+    public const float SlideLength = 0.55f, Height = 0.55f;
+    public bool OnGround => Z <= 0f;
+    /// <summary>Camera height: eye level, raised by jumps and lowered while sliding.</summary>
+    public float ViewZ => Math.Min(0.95f, EyeZ + Z - SlideLow * 0.25f);
     public WeaponDef CurWeapon => Def.Weapons[Weapon];
 }
 
@@ -100,8 +108,13 @@ public sealed class Game
     public bool ShowMap, Paused, QuitRequested;
     public readonly List<(string text, float time)> Messages = new();
     public Action<Sfx, float> PlaySound = (_, _) => { };
+    public readonly GameVars Vars = new();
+    public readonly DevConsole Con;
+    public float Fps;
     readonly Random _rng = new(1234);
     float _exitMsgCd;
+
+    public Game() { Con = new DevConsole(this); }
 
     public int Rand(int lo, int hi) => _rng.Next(lo, hi + 1);
     public float RandF() => (float)_rng.NextDouble();
@@ -119,9 +132,21 @@ public sealed class Game
         if (v > 0.02f) PlaySound(s, v);
     }
 
+    /// <summary>Seed for chest placement and loot; null picks a fresh random layout every game.</summary>
+    public int? FixedSeed;
+    public int ChestsTotal;
+    Random _loot = new();
+
     public void NewGame(PClass cls)
     {
         Hub = Maps.BuildHub();
+        _loot = new Random(FixedSeed ?? Environment.TickCount);
+        ChestsTotal = 0;
+        foreach (var lv in Hub)
+        {
+            Chests.Scatter(lv, _loot, Vars.Chests);
+            ChestsTotal += lv.Things.Count(t => t is Chest);
+        }
         Level = Hub[0];
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
         Messages.Clear();
@@ -137,8 +162,17 @@ public sealed class Game
 
     public void Update(Input inp, float dt)
     {
+        if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
         dt = MathF.Min(dt, 0.05f);
         Time += dt;
+
+        // the developer console (~) pauses the game while it is open
+        if (inp.ConsoleToggle) Con.Open = !Con.Open;
+        if (Con.Open)
+        {
+            Con.HandleInput(inp);
+            return;
+        }
         for (int i = Messages.Count - 1; i >= 0; i--)
         {
             var m = Messages[i];
@@ -171,6 +205,8 @@ public sealed class Game
             return;
         }
         if (inp.Map) ShowMap = !ShowMap;
+        if (!string.IsNullOrEmpty(inp.Typed) && Mode == GameMode.Playing)
+            foreach (char c in inp.Typed) Con.FeedCheat(c);
 
         PlayTime += dt;
         UpdatePlayer(inp, dt);
@@ -192,19 +228,64 @@ public sealed class Game
         if (Mode == GameMode.Dead) return;
 
         // look
-        p.Angle += inp.LookX * 0.0025f + inp.Turn * 2.6f * dt;
-        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f, -70f, 70f);
+        p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
+        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens, -70f, 70f);
 
         // move
-        float speed = 3.6f * p.Def.Speed * (inp.Walk ? 0.5f : 1f);
+        float speed = 3.6f * p.Def.Speed * Vars.Speed * (inp.Walk ? 0.5f : 1f);
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
         float mx = (ca * inp.Move - sa * inp.Strafe), my = (sa * inp.Move + ca * inp.Strafe);
         float len = MathF.Sqrt(mx * mx + my * my);
         if (len > 1) { mx /= len; my /= len; }
         float dx = mx * speed * dt, dy = my * speed * dt;
-        if (!Blocked(p.X + dx, p.Y, p.Radius, null)) p.X += dx;
-        if (!Blocked(p.X, p.Y + dy, p.Radius, null)) p.Y += dy;
-        float moving = MathF.Min(1, len);
+
+        // jumping (Space): simple ballistic hop, Hexen-style
+        if (inp.Jump && p.OnGround && p.SlideTime <= 0 && Vars.JumpPower > 0)
+        {
+            p.VZ = Vars.JumpPower;
+            PlaySound(Sfx.Jump, 0.8f);
+        }
+        if (!p.OnGround || p.VZ > 0)
+        {
+            p.VZ -= Vars.Gravity * dt;
+            p.Z += p.VZ * dt;
+            if (p.Z <= 0)
+            {
+                if (p.VZ < -2f) PlaySound(Sfx.Land, 0.7f);
+                p.Z = 0; p.VZ = 0;
+            }
+        }
+
+        // sliding (C): a burst of speed in the direction you're moving, camera dropped low
+        p.SlideCd -= dt;
+        if (inp.Slide && p.OnGround && p.SlideTime <= 0 && p.SlideCd <= 0 && len > 0.1f)
+        {
+            p.SlideTime = Player.SlideLength;
+            p.SlideCd = Player.SlideLength + 0.45f;
+            float ml = MathF.Sqrt(mx * mx + my * my);
+            p.SlideDX = mx / ml; p.SlideDY = my / ml;
+            PlaySound(Sfx.Slide, 0.8f);
+        }
+        if (p.SlideTime > 0)
+        {
+            p.SlideTime -= dt;
+            float boost = Vars.SlideSpeed * MathF.Max(0, p.SlideTime / Player.SlideLength) * dt;
+            dx += p.SlideDX * boost; dy += p.SlideDY * boost;
+        }
+        float lowTarget = p.SlideTime > 0 ? 1f : 0f;
+        p.SlideLow += (lowTarget - p.SlideLow) * MathF.Min(1, dt * 14);
+
+        if (Vars.NoClip)
+        {
+            p.X = Math.Clamp(p.X + dx, 0.3f, Level.W - 0.3f);
+            p.Y = Math.Clamp(p.Y + dy, 0.3f, Level.H - 0.3f);
+        }
+        else
+        {
+            if (!Blocked(p.X + dx, p.Y, p.Radius, null)) p.X += dx;
+            if (!Blocked(p.X, p.Y + dy, p.Radius, null)) p.Y += dy;
+        }
+        float moving = p.OnGround && p.SlideTime <= 0 ? MathF.Min(1, len) : 0f;
         p.BobAmount += (moving - p.BobAmount) * MathF.Min(1, dt * 8);
         p.Bob += dt * 9 * moving;
 
@@ -263,7 +344,8 @@ public sealed class Game
         Say(P.Def.Weapons[w].Name);
     }
 
-    bool HasMana(WeaponDef w) => w.Mana == 0 || (w.Mana == 1 ? P.BlueMana : P.GreenMana) >= w.Cost;
+    int ManaCost(WeaponDef w) => Vars.InfiniteMana ? 0 : (int)MathF.Ceiling(w.Cost * Vars.ManaCost);
+    bool HasMana(WeaponDef w) => w.Mana == 0 || (w.Mana == 1 ? P.BlueMana : P.GreenMana) >= ManaCost(w);
 
     void Fire()
     {
@@ -278,9 +360,9 @@ public sealed class Game
             p.Cooldown = 0.3f;
             return;
         }
-        if (powered && w.Mana == 1) p.BlueMana -= w.Cost;
-        if (powered && w.Mana == 2) p.GreenMana -= w.Cost;
-        p.Cooldown = w.Cooldown;
+        if (powered && w.Mana == 1) p.BlueMana -= ManaCost(w);
+        if (powered && w.Mana == 2) p.GreenMana -= ManaCost(w);
+        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate);
         p.FireAnim = 0.22f;
         PlaySound(w.Sound, 1);
         WakeNear(p.X, p.Y, 10f);
@@ -327,6 +409,7 @@ public sealed class Game
     void UseLine()
     {
         var p = P;
+        if (TryOpenChest()) return;
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
         for (float d = 0.1f; d < 1.3f; d += 0.05f)
         {
@@ -344,22 +427,91 @@ public sealed class Game
                     if (!p.SteelKey) { Say("You need the Steel Key to open this door."); PlaySound(Sfx.Locked, 1); }
                     else if (Level.DoorOpen[i] < 1f) { Level.OpenDoor(cx, cy); PlaySound(Sfx.Door, 1); }
                     break;
+                case 'F':
+                    if (!p.FireKey) { Say("You need the Fire Key to open this door."); PlaySound(Sfx.Locked, 1); }
+                    else if (Level.DoorOpen[i] < 1f) { Level.OpenDoor(cx, cy); PlaySound(Sfx.Door, 1); }
+                    break;
                 case 'P':
                     if (Level.DoorOpen[i] < 1f) { Say("The portcullis will not budge. Perhaps a lever..."); PlaySound(Sfx.Locked, 1); }
                     break;
                 case 'L':
-                    if (!Level.LeverPulled)
+                    if (Level.PulledLevers.Add(i))
                     {
-                        Level.LeverPulled = true;
-                        for (int k = 0; k < Level.Cells.Length; k++)
-                            if (Level.Cells[k] == 'P') Level.DoorMove[k] = 1;
                         PlaySound(Sfx.Lever, 1);
-                        Say("You hear a gate grind open...");
+                        if (Level.LeverPulled)
+                        {
+                            OpenGates(Level);
+                            Say("You hear a gate grind open...");
+                        }
+                        else Say($"Lever {Level.PulledLevers.Count} of {Level.LeverCount} pulled. Find the others...");
                     }
                     break;
             }
             return;
         }
+    }
+
+    /// <summary>Opens the closed chest the player is facing, if any.</summary>
+    bool TryOpenChest()
+    {
+        Chest best = null;
+        float bestD = 1.5f;
+        foreach (var t in Level.Things)
+        {
+            if (t is not Chest c || c.Opened) continue;
+            float d = Dist(c.X, c.Y, P.X, P.Y);
+            if (d >= bestD) continue;
+            if (MathF.Abs(AngleDiff(MathF.Atan2(c.Y - P.Y, c.X - P.X), P.Angle)) > 0.6f) continue;
+            best = c; bestD = d;
+        }
+        if (best == null) return false;
+        OpenChest(best);
+        return true;
+    }
+
+    public void OpenChest(Chest c)
+    {
+        c.Opened = true;
+        P.ChestsOpened++;
+        PlaySound(Sfx.Chest, 1);
+
+        // spill loot toward the player so it's easy to grab
+        float dx = P.X - c.X, dy = P.Y - c.Y, l = MathF.Max(0.01f, MathF.Sqrt(dx * dx + dy * dy));
+        dx /= l; dy /= l;
+        var loot = Chests.RollLoot(_loot, P);
+        for (int i = 0; i < loot.Count; i++)
+        {
+            float side = (i - (loot.Count - 1) / 2f) * 0.35f;
+            float x = c.X + dx * 0.6f - dy * side, y = c.Y + dy * 0.6f + dx * side;
+            if (Level.BlocksPoint(x, y)) { x = c.X + dx * 0.5f; y = c.Y + dy * 0.5f; }
+            var t = ThingFactory.Create(loot[i], x, y);
+            t.Level = Level;
+            Level.Things.Add(t);
+        }
+        SpawnPuff(Art.Fireball[1], c.X, c.Y, 0.35f, 0.3f);
+
+        bool trap = Level.Arena == null && _loot.NextDouble() < Chests.TrapChance;
+        if (trap)
+        {
+            // a monster bursts out beside the chest
+            var def = _loot.Next(3) switch { 0 => Monster.Ettin, 1 => Monster.Afrit, _ => Monster.Centaur };
+            for (int k = 0; k < 8; k++)
+            {
+                float a = MathF.Atan2(dy, dx) + MathF.PI / 2 + k * MathF.PI / 4;
+                float x = c.X + MathF.Cos(a) * 0.8f, y = c.Y + MathF.Sin(a) * 0.8f;
+                if (Blocked(x, y, def.Radius, c)) continue;
+                SpawnMonster(def, x, y, 1f, 1f, 1f);
+                Say($"It's a trap! A {def.Name} bursts out!");
+                break;
+            }
+        }
+        else Say("Chest: " + string.Join(", ", loot.Select(g => Chests.LootNames[g]).Distinct()));
+    }
+
+    public static void OpenGates(Level lv)
+    {
+        for (int k = 0; k < lv.Cells.Length; k++)
+            if (lv.Cells[k] == 'P' && lv.DoorOpen[k] < 1f) lv.DoorMove[k] = 1;
     }
 
     void UseItem()
@@ -396,6 +548,8 @@ public sealed class Game
                 p.GreenMana = Math.Min(200, p.GreenMana + 25); msg = "Green Mana"; break;
             case PickupKind.SteelKey:
                 p.SteelKey = true; msg = "Steel Key! It must open a door somewhere in the hub."; break;
+            case PickupKind.FireKey:
+                p.FireKey = true; msg = "Fire Key! A scorched door awaits it."; break;
             case PickupKind.Armor:
                 if (p.Armor >= 100) return;
                 p.Armor = Math.Min(100, p.Armor + 50); msg = "Mesh Armor"; break;
@@ -414,7 +568,7 @@ public sealed class Game
         }
         pk.Removed = true;
         p.PickupFlash = 1;
-        PlaySound(pk.Kind is PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.SteelKey ? Sfx.Item : Sfx.Pickup, 1);
+        PlaySound(pk.Kind is PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.SteelKey or PickupKind.FireKey ? Sfx.Item : Sfx.Pickup, 1);
         Say(msg);
     }
 
@@ -442,6 +596,7 @@ public sealed class Game
     void UpdateWorld(float dt)
     {
         var lv = Level;
+        lv.Arena?.Update(this, dt);
         lv.UpdateDoors(dt, (x, y) => CellOccupied(x, y), (x, y) => Sound(Sfx.Door, x, y));
 
         for (int i = 0; i < lv.Things.Count; i++)
@@ -450,7 +605,9 @@ public sealed class Game
             if (t.Removed) continue;
             switch (t)
             {
-                case Monster m: UpdateMonster(m, dt); break;
+                case Monster m:
+                    if (!Vars.Freeze || !m.Alive) UpdateMonster(m, dt);
+                    break;
                 case Projectile pr: UpdateProjectile(pr, dt); break;
                 case Puff pf: pf.Tick(dt); break;
             }
@@ -496,6 +653,7 @@ public sealed class Game
 
     void WakeNear(float x, float y, float range)
     {
+        if (Vars.NoTarget) return;
         foreach (var t in Level.Things)
             if (t is Monster m && m.State == AiState.Idle && Dist(m.X, m.Y, x, y) < range)
                 Wake(m);
@@ -521,14 +679,14 @@ public sealed class Game
         switch (m.State)
         {
             case AiState.Idle:
-                if (playerAlive && dist < m.Def.SightRange && Level.Sight(m.X, m.Y, P.X, P.Y)) Wake(m);
+                if (playerAlive && !Vars.NoTarget && dist < m.Def.SightRange && Level.Sight(m.X, m.Y, P.X, P.Y)) Wake(m);
                 break;
 
             case AiState.Chase:
                 {
                     m.Anim += dt;
                     m.AttackCd -= dt;
-                    if (!playerAlive) { ChaseMove(m, dt, wander: true); break; }
+                    if (!playerAlive || Vars.NoTarget) { ChaseMove(m, dt, wander: true); break; }
                     bool canMelee = m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius;
                     if (canMelee && m.AttackCd <= 0) { SetState(m, AiState.Attack); break; }
                     if (m.Def.Missile != null && m.AttackCd <= 0 && dist < 18f && RandF() < dt * 2.5f && Level.Sight(m.X, m.Y, P.X, P.Y))
@@ -548,7 +706,7 @@ public sealed class Game
                         if (m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius + 0.25f)
                         {
                             Sound(Sfx.Swing, m.X, m.Y);
-                            if (playerAlive) DamagePlayer(Rand(m.Def.MeleeMin, m.Def.MeleeMax));
+                            if (playerAlive && P.Z < 0.3f) DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult));
                         }
                         else if (m.Def.Missile != null) FireMissile(m);
                     }
@@ -572,7 +730,7 @@ public sealed class Game
 
     void ChaseMove(Monster m, float dt, bool wander)
     {
-        float step = m.Def.Speed * dt;
+        float step = m.Def.Speed * m.SpeedMult * Vars.MonsterSpeed * dt;
         float dx, dy;
         if (m.StuckTime > 0)
         {
@@ -626,7 +784,7 @@ public sealed class Game
             float a = baseA + (i - (m.Def.MissileCount - 1) / 2f) * m.Def.MissileSpread + (RandF() - 0.5f) * 0.06f;
             Level.Things.Add(new Projectile
             {
-                Kind = kind, FromPlayer = false, DmgMin = lo, DmgMax = hi, Owner = m, Level = Level,
+                Kind = kind, FromPlayer = false, DmgMin = (int)(lo * m.DamageMult), DmgMax = (int)(hi * m.DamageMult), Owner = m, Level = Level,
                 X = m.X + MathF.Cos(a) * (m.Radius + 0.1f), Y = m.Y + MathF.Sin(a) * (m.Radius + 0.1f),
                 Z = m.Z + m.SpriteH * 0.45f, VX = MathF.Cos(a) * speed, VY = MathF.Sin(a) * speed,
             });
@@ -657,13 +815,20 @@ public sealed class Game
                         return;
                     }
             }
-            else if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius)
+            else if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z))
             {
                 DamagePlayer(Rand(pr.DmgMin, pr.DmgMax));
                 Explode(pr, null);
                 return;
             }
         }
+    }
+
+    /// <summary>Is height z within the player's body? Jumping lifts it, sliding shrinks it.</summary>
+    bool HitsPlayerHeight(float z)
+    {
+        float top = P.Z + Player.Height * (1f - 0.5f * P.SlideLow);
+        return z >= P.Z - 0.05f && z <= top;
     }
 
     void Explode(Projectile pr, Monster direct)
@@ -688,7 +853,7 @@ public sealed class Game
     void DamageMonster(Monster m, int dmg)
     {
         if (!m.Alive || dmg <= 0) return;
-        m.Health -= dmg;
+        m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
         if (m.State == AiState.Idle) Wake(m);
         if (m.Health <= 0)
         {
@@ -698,7 +863,7 @@ public sealed class Game
             if (m.Def.Boss)
             {
                 Level.BossDead = true;
-                Say("The Heresiarch is vanquished! The exit portal awakens.");
+                Say(Level.FindMark('E') != null ? "The Heresiarch is vanquished! The exit portal awakens." : "A Heresiarch falls!");
                 PlaySound(Sfx.BossSight, 1);
             }
             return;
@@ -713,7 +878,9 @@ public sealed class Game
     void DamagePlayer(int dmg)
     {
         var p = P;
-        if (Mode != GameMode.Playing) return;
+        if (Mode != GameMode.Playing || Vars.God) return;
+        dmg = Math.Max(0, (int)MathF.Round(dmg * Vars.MonsterDamage));
+        if (dmg == 0) return;
         int saved = Math.Min(p.Armor, (int)(dmg * p.Def.ArmorSave));
         p.Armor -= saved;
         p.Health -= dmg - saved;
@@ -722,11 +889,80 @@ public sealed class Game
         {
             p.Health = 0;
             p.Dead = true;
+            p.Z = 0; p.VZ = 0; p.SlideTime = 0; p.SlideLow = 0;
             Mode = GameMode.Dead;
             PlaySound(Sfx.PlayerDeath, 1);
             Say("You have died. Press Enter to try again.");
         }
         else PlaySound(Sfx.PlayerPain, 1);
+    }
+
+    // ================================================================ console / cheat helpers
+
+    /// <summary>Kills every living monster on the current map. Returns how many died.</summary>
+    public int KillAll()
+    {
+        int n = 0;
+        foreach (var m in Level.Things.OfType<Monster>().ToList())
+            if (m.Alive) { m.Health = 1; DamageMonsterRaw(m, 100000); n++; }
+        return n;
+    }
+
+    void DamageMonsterRaw(Monster m, int dmg)
+    {
+        float saved = Vars.Damage;
+        Vars.Damage = 1;
+        DamageMonster(m, dmg);
+        Vars.Damage = saved;
+    }
+
+    /// <summary>Moves the player to a hub map (0-based), at its start or first portal.</summary>
+    public void Warp(int index)
+    {
+        var lv = Hub[index];
+        float x = lv.StartX, y = lv.StartY;
+        if (x == 0)
+        {
+            var mark = lv.FindMark('1') ?? lv.FindMark('2') ?? lv.FindMark('E');
+            if (mark != null) (x, y) = mark.Value;
+        }
+        foreach (var t in Level.Things) if (t is Projectile or Puff) t.Removed = true;
+        Level = lv;
+        P.X = x; P.Y = y;
+        P.PortalLock = true;
+        P.TeleportFlash = 1;
+        PlaySound(Sfx.Teleport, 1);
+        Say(lv.EntryMessage);
+    }
+
+    /// <summary>Spawns an already-awake monster with a teleport flash (used by arena waves).</summary>
+    public Monster SpawnMonster(MonsterDef def, float x, float y, float healthMult, float damageMult, float speedMult)
+    {
+        var m = new Monster(def) { X = x, Y = y, Level = Level, DamageMult = damageMult, SpeedMult = speedMult };
+        m.Health = (int)(def.Health * healthMult);
+        Level.Things.Add(m);
+        SpawnPuff(Art.BossBall[1], x, y, 0.5f, 0.8f);
+        Sound(Sfx.Teleport, x, y);
+        SetState(m, AiState.Chase);
+        m.AttackCd = 1f + RandF();
+        return m;
+    }
+
+    /// <summary>Spawns a thing (by map glyph) a short distance in front of the player.</summary>
+    public bool Summon(char glyph)
+    {
+        var t = ThingFactory.Create(glyph, 0, 0);
+        if (t == null) return false;
+        for (float d = 1.6f; d >= 0.6f; d -= 0.2f)
+        {
+            float x = P.X + MathF.Cos(P.Angle) * d, y = P.Y + MathF.Sin(P.Angle) * d;
+            if (Level.BlocksCircle(x, y, t.Radius)) continue;
+            t.X = x; t.Y = y; t.Level = Level;
+            Level.Things.Add(t);
+            if (t is Monster m) Wake(m);
+            return true;
+        }
+        return false;
     }
 
     public static float Dist(float x0, float y0, float x1, float y1)

@@ -3,7 +3,7 @@ namespace HexenSharp;
 public enum Sfx
 {
     Swing, Hit, Shoot, Magic, Explode, Sight, Death, Pickup, Item, Door, Lever,
-    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Count
+    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Count
 }
 
 public abstract class Thing
@@ -30,7 +30,7 @@ public sealed class Decor : Thing
 
 // ---------------------------------------------------------------- pickups
 
-public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, Armor, Weapon2, Weapon3 }
+public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3 }
 
 public sealed class Pickup : Thing
 {
@@ -70,6 +70,7 @@ public sealed class Monster : Thing
     public float StateTime, AttackCd, Anim, StuckTime, StrafeTime;
     public float StuckDX, StuckDY, StrafeSign = 1;
     public bool AttackFired;
+    public float DamageMult = 1f, SpeedMult = 1f;   // raised by arena waves
 
     public Monster(MonsterDef def)
     {
@@ -193,12 +194,14 @@ public static class ThingFactory
             'b' => new Pickup(PickupKind.BlueMana, Art.BlueMana, 0.4f),
             'g' => new Pickup(PickupKind.GreenMana, Art.GreenMana, 0.4f),
             'k' => new Pickup(PickupKind.SteelKey, Art.SteelKey, 0.4f),
+            'f' => new Pickup(PickupKind.FireKey, Art.FireKey, 0.4f),
             'r' => new Pickup(PickupKind.Armor, Art.Armor, 0.5f),
             'w' => new Pickup(PickupKind.Weapon2, Art.WeaponPiece2, 0.5f),
             'x' => new Pickup(PickupKind.Weapon3, Art.WeaponPiece3, 0.5f),
             't' => new Decor(Art.Torch, 0.5f, 0.75f, true, true),
             'p' => new Decor(new[] { Art.Pillar }, 0.6f, 1.0f, true, false),
             'T' => new Decor(new[] { Art.Tree }, 1.0f, 1.3f, true, false),
+            '$' => new Chest(),
             _ => null,
         };
         if (t == null) return null;

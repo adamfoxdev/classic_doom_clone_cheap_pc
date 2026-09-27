@@ -7,8 +7,10 @@ namespace HexenSharp;
 public sealed class Renderer
 {
     public const int W = 320, H = 200, HudH = 32, ViewH = H - HudH;
-    const float PlaneLen = 0.75f;              // ~74 degree horizontal FOV
-    const float Proj = (W / 2f) / PlaneLen;    // pixels per world unit at distance 1
+    float PlaneLen = 0.75f;                    // set from the fov setting each frame
+    float Proj = (W / 2f) / 0.75f;             // pixels per world unit at distance 1
+    float _fogDist;
+    bool _fullBright;
 
     public readonly uint[] Fb = new uint[W * H];
     readonly float[] _depth = new float[W * ViewH];
@@ -22,10 +24,16 @@ public sealed class Renderer
     {
         switch (g.Mode)
         {
-            case GameMode.Title: DrawTitle(g); return;
-            case GameMode.ClassSelect: DrawClassSelect(g); return;
-            case GameMode.Victory: DrawVictory(g); return;
+            case GameMode.Title: DrawTitle(g); break;
+            case GameMode.ClassSelect: DrawClassSelect(g); break;
+            case GameMode.Victory: DrawVictory(g); break;
+            default: DrawGame(g); break;
         }
+        if (g.Con.Open) DrawConsole(g);
+    }
+
+    void DrawGame(Game g)
+    {
 
         DrawView(g);
         DrawWeapon(g);
@@ -33,11 +41,13 @@ public sealed class Renderer
         if (g.ShowMap) DrawAutomap(g);
         DrawHud(g);
         DrawMessages(g);
+        DrawArenaHud(g);
 
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
             CenterText("YOU DIED", 60, Col.Rgb(220, 40, 30), 3);
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
             CenterText("PRESS ENTER TO TRY AGAIN", 90, Col.Rgb(230, 220, 200));
+        if (g.Vars.ShowFps) Text(W - 40, 3, $"{g.Fps:0} FPS", Col.Rgb(120, 255, 120));
         if (g.Paused)
         {
             Darken(0, 0, W, ViewH, 110);
@@ -48,19 +58,21 @@ public sealed class Renderer
 
     // ================================================================ 3D view
 
-    Tex WallTex(Level lv, char c)
+    Tex WallTex(Level lv, char c, int cell)
     {
         switch (c)
         {
             case 'D': return Art.Door;
             case 'S': return Art.SteelDoor;
+            case 'F': return Art.FireDoor;
             case 'P': return Art.Portcullis;
-            case 'L': return lv.LeverPulled ? Art.LeverOn : Art.LeverOff;
+            case 'L': return lv.PulledLevers.Contains(cell) ? Art.LeverOn : Art.LeverOff;
         }
         return lv.Theme.Walls.TryGetValue(c, out var t) ? t : Art.Stone;
     }
 
-    int Vis(Theme th, float d) => (int)(256 * Math.Clamp(1f - d / th.FogDist, 0f, 1f));
+    int Vis(Theme th, float d) => _fullBright ? 256 : (int)(256 * Math.Clamp(1f - d / _fogDist, 0f, 1f));
+    int Light(Theme th) => _fullBright ? 256 : th.Light;
 
     void DrawView(Game g)
     {
@@ -69,10 +81,16 @@ public sealed class Renderer
         var p = g.P;
         _px = p.X; _py = p.Y;
         _dirX = MathF.Cos(p.Angle); _dirY = MathF.Sin(p.Angle);
+        PlaneLen = MathF.Tan(g.Vars.Fov * MathF.PI / 360f);
+        Proj = (W / 2f) / PlaneLen;
+        _fogDist = th.FogDist * g.Vars.Fog;
+        _fullBright = g.Vars.FullBright;
         _plX = -_dirY * PlaneLen; _plY = _dirX * PlaneLen;
-        _eyeZ = p.EyeZ + MathF.Sin(p.Bob) * 0.025f * p.BobAmount;
+        _eyeZ = p.ViewZ + MathF.Sin(p.Bob) * 0.025f * p.BobAmount;
         _horizon = ViewH / 2f + p.Pitch;
         uint fog = th.FogColor;
+        int baseLight = Light(th);
+        int hitCell = -1;
 
         for (int x = 0; x < W; x++)
         {
@@ -107,13 +125,13 @@ public sealed class Renderer
                     if (lv.DoorOpen[ci] < 1f) _doors.Add((d, side, wx, ci));
                     continue;
                 }
-                perp = d; wallX = wx; hit = c;
+                perp = d; wallX = wx; hit = c; hitCell = ci;
                 break;
             }
             if (perp < 0.01f) perp = 0.01f;
 
             // ---- solid wall column
-            var tex = WallTex(lv, hit);
+            var tex = WallTex(lv, hit, hitCell);
             int tx = (int)(wallX * tex.W);
             if (side == 0 && rdx < 0) tx = tex.W - 1 - tx;
             if (side == 1 && rdy > 0) tx = tex.W - 1 - tx;
@@ -121,7 +139,7 @@ public sealed class Renderer
             float hScale = Proj / perp;
             float top = _horizon - (1f - _eyeZ) * hScale, bot = _horizon + _eyeZ * hScale;
             int yTop = Math.Max(0, (int)MathF.Ceiling(top - 0.5f)), yBot = Math.Min(ViewH, (int)MathF.Ceiling(bot - 0.5f));
-            int light = side == 1 ? th.Light * 200 >> 8 : th.Light;
+            int light = side == 1 ? baseLight * 200 >> 8 : baseLight;
             int vis = Vis(th, perp);
             float vStep = 1f / hScale;
             for (int y = yTop; y < yBot; y++)
@@ -143,12 +161,14 @@ public sealed class Renderer
                 float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
                 int cx = (int)MathF.Floor(wx), cy = (int)MathF.Floor(wy);
                 Tex ft = th.FloorIn;
-                int fl = th.Light;
+                int fl = baseLight;
                 if (lv.InBounds(cx, cy))
                 {
                     int ci = cy * lv.W + cx;
                     char mk = lv.Marks[ci];
                     if (mk == 'E') { ft = lv.BossDead ? Art.ExitFloor : Art.ExitFloorOff; fl = 300; }
+                    else if (mk == '*') { ft = Art.SpawnFloor; fl = 280; }
+                    else if (mk == '!') { ft = lv.Arena?.Started == true ? Art.AltarFloorOff : Art.AltarFloor; fl = 300; }
                     else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
                     else if (lv.Outdoor[ci]) ft = th.OutdoorFloor;
                 }
@@ -179,7 +199,7 @@ public sealed class Renderer
                     {
                         var ct = th.CeilIn;
                         int u = (int)((wx - cx) * ct.W) & (ct.W - 1), vv = (int)((wy - cy) * ct.H) & (ct.H - 1);
-                        Fb[idx] = Col.Fog(ct.Px[vv * ct.W + u], th.Light * 220 >> 8, Vis(th, rowDist), fog);
+                        Fb[idx] = Col.Fog(ct.Px[vv * ct.W + u], baseLight * 220 >> 8, Vis(th, rowDist), fog);
                         _depth[idx] = rowDist;
                         continue;
                     }
@@ -192,7 +212,7 @@ public sealed class Renderer
             {
                 var (d, dside, dwx, ci) = _doors[k];
                 char c = lv.Cells[ci];
-                var dt = WallTex(lv, c);
+                var dt = WallTex(lv, c, ci);
                 float open = lv.DoorOpen[ci];
                 int dtx = (int)(dwx * dt.W);
                 if (dside == 0 && rdx < 0) dtx = dt.W - 1 - dtx;
@@ -202,7 +222,7 @@ public sealed class Renderer
                 float dTop = _horizon - (1f - _eyeZ) * s;
                 float dBot = _horizon - (open - _eyeZ) * s;
                 int y0 = Math.Max(0, (int)MathF.Ceiling(dTop - 0.5f)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(dBot - 0.5f));
-                int dl = dside == 1 ? th.Light * 200 >> 8 : th.Light;
+                int dl = dside == 1 ? baseLight * 200 >> 8 : baseLight;
                 int dv = Vis(th, d);
                 for (int y = y0; y < y1; y++)
                 {
@@ -242,7 +262,7 @@ public sealed class Renderer
             if (t.Removed) continue;
             float rx = t.X - _px, ry = t.Y - _py;
             float ty = invDet * (-_plY * rx + _plX * ry);
-            if (ty < 0.15f || ty > th.FogDist + 1) continue;
+            if (ty < 0.15f || (!_fullBright && ty > _fogDist + 1)) continue;
             _sprites.Add((t, ty));
         }
         _sprites.Sort((a, b) => b.depth.CompareTo(a.depth));
@@ -259,7 +279,7 @@ public sealed class Renderer
             int y0 = Math.Max(0, (int)MathF.Ceiling(top)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(top + sh));
             if (x0 >= x1 || y0 >= y1) continue;
             var tex = t.Sprite(g.Time);
-            int light = t.FullBright ? 256 : th.Light;
+            int light = t.FullBright ? 256 : Light(th);
             int vis = t.FullBright ? Math.Max(Vis(th, depth), 160) : Vis(th, depth);
             bool painFlash = t is Monster m && m.State == AiState.Pain;
             for (int x = x0; x < x1; x++)
@@ -329,6 +349,46 @@ public sealed class Renderer
                 Fb[j * W + i] = Col.Shade(Fb[j * W + i], 256 - amt);
     }
 
+    // ================================================================ console & arena
+
+    void DrawConsole(Game g)
+    {
+        const int ch = 112;
+        for (int y = 0; y < ch; y++)
+            for (int x = 0; x < W; x++)
+                Fb[y * W + x] = Col.Lerp(Fb[y * W + x], Col.Rgb(20, 10, 16), 210);
+        Rect(0, ch, W, 1, Col.Rgb(200, 150, 60));
+        var con = g.Con;
+        int rows = (ch - 14) / 9;
+        int end = con.Log.Count - con.Scroll;
+        int start = Math.Max(0, end - rows);
+        int y0 = ch - 14 - (end - start) * 9;
+        for (int i = start; i < end; i++, y0 += 9)
+        {
+            string l = con.Log[i];
+            if (l.Length > 52) l = l[..52];
+            Text(3, y0, l, l.StartsWith(">") ? Col.Rgb(255, 220, 120) : Col.Rgb(210, 200, 185));
+        }
+        string cursor = ((int)(g.Time * 3) & 1) == 0 ? "_" : " ";
+        Text(3, ch - 11, "] " + con.Line + cursor, Col.Rgb(255, 255, 255));
+        if (con.Scroll > 0) Text(W - 30, 2, "^^^", Col.Rgb(200, 150, 60));
+    }
+
+    void DrawArenaHud(Game g)
+    {
+        var a = g.Level.Arena;
+        if (a == null || !a.Started) return;
+        string status = a.InIntermission ? $"WAVE {a.Wave} CLEARED" : $"WAVE {a.Wave}   ENEMIES {a.Remaining}";
+        Text(W - 4 - Font.Width(status), g.Vars.ShowFps ? 12 : 3, status, Col.Rgb(230, 120, 255));
+        if (a.BannerTime > 0)
+        {
+            string big = a.InIntermission ? "WAVE CLEARED!" : $"WAVE {a.Wave}";
+            CenterText(big, 40, a.InIntermission ? Col.Rgb(120, 255, 140) : Col.Rgb(255, 90, 60), 3);
+            if (!a.InIntermission && a.Wave % 5 == 0) CenterText("A HERESIARCH APPROACHES", 68, Col.Rgb(230, 120, 255));
+        }
+        if (a.InIntermission) CenterText($"NEXT WAVE IN {MathF.Ceiling(a.Timer):0}", 80, Col.Rgb(240, 225, 170));
+    }
+
     // ================================================================ automap
 
     void DrawAutomap(Game g)
@@ -347,12 +407,13 @@ public sealed class Renderer
                 if (c == '\0')
                 {
                     char mk = lv.Marks[i];
-                    col = mk == 'E' ? Col.Rgb(200, 50, 40) : mk != '\0' ? Col.Rgb(60, 120, 255) : lv.Outdoor[i] ? Col.Rgb(34, 50, 30) : Col.Rgb(40, 36, 32);
+                    col = mk == 'E' ? Col.Rgb(200, 50, 40) : mk == '*' ? Col.Rgb(150, 50, 200) : mk == '!' ? Col.Rgb(230, 190, 60) : mk != '\0' ? Col.Rgb(60, 120, 255) : lv.Outdoor[i] ? Col.Rgb(34, 50, 30) : Col.Rgb(40, 36, 32);
                 }
                 else col = c switch
                 {
                     'D' => Col.Rgb(210, 170, 60),
                     'S' => Col.Rgb(150, 170, 230),
+                    'F' => Col.Rgb(240, 110, 40),
                     'P' => Col.Rgb(140, 140, 140),
                     'L' => Col.Rgb(80, 220, 90),
                     _ => Col.Rgb(150, 110, 70),
@@ -364,6 +425,15 @@ public sealed class Renderer
                         Put(ox + x * cs + xx, oy + y * cs + yy, c == '\0' || !edge ? col : Col.Shade(col, 150));
                     }
             }
+        // chests you've seen: gold when closed, brown once looted
+        foreach (var t in lv.Things)
+            if (t is Chest ch && lv.Seen[(int)t.Y * lv.W + (int)t.X])
+            {
+                uint cc = ch.Opened ? Col.Rgb(110, 70, 30) : Col.Rgb(255, 210, 60);
+                int cx = ox + (int)(t.X * cs), cy = oy + (int)(t.Y * cs);
+                for (int yy = -1; yy <= 1; yy++) for (int xx = -1; xx <= 1; xx++) Put(cx + xx, cy + yy, cc);
+            }
+
         // player arrow
         float px = ox + g.P.X * cs, py = oy + g.P.Y * cs;
         float ca = MathF.Cos(g.P.Angle), sa = MathF.Sin(g.P.Angle);
@@ -419,7 +489,8 @@ public sealed class Renderer
         Text(250, by + 13, p.Flasks.ToString(), Col.Rgb(240, 230, 210));
         Icon(Art.Urn, 258, by + 2, 18);
         Text(274, by + 13, p.Urns.ToString(), Col.Rgb(240, 230, 210));
-        if (p.SteelKey) Icon(Art.SteelKey, 290, by + 6, 22);
+        if (p.SteelKey) Icon(Art.SteelKey, 284, by + 6, 20);
+        if (p.FireKey) Icon(Art.FireKey, 298, by + 6, 20);
 
         string cls = p.Def.Name.ToUpperInvariant();
         Text(W - 4 - Font.Width(cls), by - 1, cls, Col.Rgb(230, 190, 80));
@@ -491,8 +562,9 @@ public sealed class Renderer
         var c = Art.Monsters["centaur"][(int)(g.Time * 2) % 2];
         Icon(e, 40, 82, 64); Icon(c, 128, 82, 64); Icon(a, 216, 80, 64);
         if (((int)(g.Time * 2) & 1) == 0) CenterText("PRESS ENTER", 154, Col.Rgb(255, 230, 120), 2);
-        CenterText("WASD MOVE  MOUSE LOOK  CLICK ATTACK  E USE", 176, Col.Rgb(170, 160, 140));
-        CenterText("1-3 WEAPONS  F HEAL  TAB MAP  ESC PAUSE", 186, Col.Rgb(170, 160, 140));
+        CenterText("WASD MOVE  MOUSE LOOK  CLICK ATTACK  E USE", 172, Col.Rgb(170, 160, 140));
+        CenterText("SPACE JUMP  C SLIDE  1-3 WEAPONS  F HEAL", 181, Col.Rgb(170, 160, 140));
+        CenterText("TAB MAP  ESC PAUSE  ~ CONSOLE", 190, Col.Rgb(170, 160, 140));
     }
 
     void DrawClassSelect(Game g)
@@ -538,7 +610,7 @@ public sealed class Renderer
         CenterText("THE HERESIARCH HAS FALLEN.", 80, Col.Rgb(230, 220, 200));
         CenterText($"THE {g.P.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL...", 94, Col.Rgb(230, 220, 200));
         int t = (int)g.PlayTime;
-        CenterText($"KILLS: {g.P.Kills}    TIME: {t / 60}:{t % 60:00}", 120, Col.Rgb(170, 200, 255));
+        CenterText($"KILLS: {g.P.Kills}    CHESTS: {g.P.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 120, Col.Rgb(170, 200, 255));
         CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
     }
 }

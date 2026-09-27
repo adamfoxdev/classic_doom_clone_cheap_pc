@@ -29,11 +29,16 @@ public sealed class Level
     public readonly Theme Theme;
     public readonly List<Thing> Things = new();
     public float StartX, StartY, StartAngle;
-    public bool LeverPulled, BossDead;
+    public bool BossDead;
+    public readonly HashSet<int> PulledLevers = new();
+    public int LeverCount;
+    /// <summary>Gates open once every lever in the map has been pulled.</summary>
+    public bool LeverPulled => LeverCount > 0 && PulledLevers.Count >= LeverCount;
     public readonly string EntryMessage;
+    public ArenaState Arena;   // non-null on wave-survival maps
 
-    public const string DoorGlyphs = "DSP";
-    public const string WallGlyphs = "#BWMIODSPL";
+    public const string DoorGlyphs = "DSFP";
+    public const string WallGlyphs = "#BWMIODSFPL";
 
     public Level(string name, string entry, string[] rows, Theme theme)
     {
@@ -58,16 +63,18 @@ public sealed class Level
             {
                 char ch = rows[y][x];
                 int i = y * W + x;
-                if (WallGlyphs.IndexOf(ch) >= 0) { Cells[i] = ch; continue; }
+                if (WallGlyphs.IndexOf(ch) >= 0) { Cells[i] = ch; if (ch == 'L') LeverCount++; continue; }
                 Outdoor[i] = ch == ',';
                 if (ch == '.' || ch == ',') continue;
-                if (char.IsDigit(ch) || ch == 'E') { Marks[i] = ch; continue; }
+                if (char.IsDigit(ch) || ch == 'E' || ch == '*' || ch == '!') { Marks[i] = ch; continue; }
                 if (ch == '@') { StartX = x + 0.5f; StartY = y + 0.5f; continue; }
                 var t = ThingFactory.Create(ch, x + 0.5f, y + 0.5f);
                 if (t == null) throw new InvalidDataException($"{name}: unknown map glyph '{ch}' at {x},{y}");
                 t.Level = this;
                 Things.Add(t);
             }
+
+        if (Array.IndexOf(Marks, '*') >= 0) Arena = new ArenaState(this);
 
         // Cells holding things or markers inherit "outdoor" from their neighbours.
         for (int y = 1; y < H - 1; y++)
@@ -87,7 +94,7 @@ public sealed class Level
 
     public bool InBounds(int x, int y) => (uint)x < (uint)W && (uint)y < (uint)H;
     public char Cell(int x, int y) => InBounds(x, y) ? Cells[y * W + x] : '#';
-    public static bool IsDoor(char c) => c == 'D' || c == 'S' || c == 'P';
+    public static bool IsDoor(char c) => c == 'D' || c == 'S' || c == 'F' || c == 'P';
 
     /// <summary>True when a cell blocks movement (walls, and doors that are not fully open).</summary>
     public bool Blocks(int x, int y)
@@ -117,6 +124,39 @@ public sealed class Level
     {
         int cx = (int)x, cy = (int)y;
         return InBounds(cx, cy) ? Marks[cy * W + cx] : '\0';
+    }
+
+    /// <summary>Where the player first appears: the start spot, else the first portal.</summary>
+    public (int x, int y) ArrivalCell()
+    {
+        if (StartX > 0) return ((int)StartX, (int)StartY);
+        int i = Array.FindIndex(Marks, char.IsDigit);
+        return i >= 0 ? (i % W, i / W) : (1, 1);
+    }
+
+    /// <summary>Flood fill of cells reachable on foot, treating every door and gate as passable.</summary>
+    public bool[] Reachable(int sx, int sy, HashSet<int> blocked = null)
+    {
+        var seen = new bool[W * H];
+        var q = new Queue<int>();
+        seen[sy * W + sx] = true;
+        q.Enqueue(sy * W + sx);
+        while (q.Count > 0)
+        {
+            int c = q.Dequeue(), x = c % W, y = c / W;
+            foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                int nx = x + dx, ny = y + dy;
+                if (!InBounds(nx, ny)) continue;
+                int i = ny * W + nx;
+                if (seen[i] || (blocked != null && blocked.Contains(i))) continue;
+                char ch = Cells[i];
+                if (ch != '\0' && !IsDoor(ch)) continue;
+                seen[i] = true;
+                q.Enqueue(i);
+            }
+        }
+        return seen;
     }
 
     public (float x, float y)? FindMark(char m)
@@ -226,7 +266,7 @@ public static class Maps
             "#OOOOOOO#,,,,,,,,,,,,,,,,,,,,,,#",
             "#O.....O#,,c,,,,,,,,,,,,,,c,,,,#",
             "#O.....O#,,,,T,,,,,,,,T,,,,,,,,#",
-            "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
+            "#O.t.t.O#,,,,,,,,,,,,,,,,,,3,,,#",
             "#OE.H...S,,,,,,,,,,1,,,,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
             "#O.....O#,,,,T,,,,,,,,T,,,,g,,,#",
@@ -236,7 +276,8 @@ public static class Maps
         }, hall);
         winnowing.StartAngle = 0f;
 
-        // Frozen Keep: fog-bound ice fortress. Its lever (east wall) raises the gate to the steel key vault.
+        // Frozen Keep: fog-bound ice fortress. Portal 2 leads to Darkmere Crypt; its Fire Key opens the fire door
+        // to the east room, whose lever raises the gate to the steel key vault.
         var keep = new Level("Frozen Keep", "The Frozen Keep", new[]
         {
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
@@ -245,10 +286,10 @@ public static class Maps
             "I,,,,,,,,,,,,,,I,,,,,,,,,,,,,,,I",
             "I,,,,T,,,,T,,,,I,,,,C,,,,,,b,,,I",
             "I,,,,,,,,,,,,,,I,,,,,,,,,,,,,,,I",
-            "IIIIIIIDIIIIIIIIIIIIIIIIIDIIIIII",
+            "IIIIIIIDIIIIIIIIIIIIIIIIIFIIIIII",
             "I...........I......I...........I",
-            "I..a....c...D......D...c....h..I",
-            "I...........I..x...I...........L",
+            "I..a....c...D......I...c....h..I",
+            "I.........2.I..x...I...........L",
             "I....q......I......I...a.......I",
             "IIIIIIIIIIIIIIIPIIIIIIIIIIIIIIII",
             "IIIIIIIIII............IIIIIIIIII",
@@ -258,6 +299,67 @@ public static class Maps
             "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
         }, ice);
 
-        return new[] { winnowing, keep };
+        var crypt = new Theme
+        {
+            FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.Grass, Sky = Art.SkyNight,
+            FogColor = Col.Rgb(8, 20, 12), FogDist = 12f, Light = 230,
+        };
+        crypt.Walls['#'] = Art.Stone; crypt.Walls['M'] = Art.Moss; crypt.Walls['B'] = Art.Brick; crypt.Walls['W'] = Art.Wood;
+        crypt.Walls['O'] = Art.Marble; crypt.Walls['I'] = Art.Ice;
+
+        // Darkmere Crypt: a swampy crypt. Two levers must both be pulled to raise the gate to the Fire Key,
+        // which opens the fire door in the Frozen Keep.
+        var darkmere = new Level("Darkmere Crypt", "Darkmere Crypt", new[]
+        {
+            "MMMMMMMMMMMMMMMMMMMMMMMMMMMM",
+            "M2.....M,,,,,,,,,,,,M......M",
+            "M......D,,,e,,,,T,,,D..b...M",
+            "M..h...M,,,,,,,,,,,,M...a..M",
+            "M......M,,T,,,,,,,,,M......L",
+            "MMMDMMMM,,,,,,a,,,,,MMMMMMMM",
+            "M......M,,,,,,,,,,,,M......M",
+            "M..e...M,,,,,,,,T,,,M..c...M",
+            "M......MMMMMMDMMMMMMM......M",
+            "M..g...M....p..p....M..q...M",
+            "M......D............D......M",
+            "ML.....M..e......e..M.....rM",
+            "MMMMMMMM....t..t....MMMMMMMM",
+            "BBBBBBBBMMMMMPMMMMMMBBBBBBBB",
+            "BBBBBBBBBC........CBBBBBBBBB",
+            "BBBBBBBBB....f.....BBBBBBBBB",
+            "BBBBBBBBB..u....g..BBBBBBBBB",
+            "BBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        }, crypt);
+
+        var chaos = new Theme
+        {
+            FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.FloorStone, Sky = Art.SkyDusk,
+            FogColor = Col.Rgb(30, 10, 24), FogDist = 18f, Light = 250,
+        };
+        chaos.Walls['#'] = Art.Stone; chaos.Walls['O'] = Art.Marble; chaos.Walls['B'] = Art.Brick; chaos.Walls['M'] = Art.Moss;
+        chaos.Walls['W'] = Art.Wood; chaos.Walls['I'] = Art.Ice;
+
+        // Chaos Arena: optional wave survival. Step on the golden altar to start; monsters pour out of the
+        // purple spawn runes in ever harder waves. Portal 3 in Winnowing Hall's courtyard leads here.
+        var arena = new Level("Chaos Arena", "The Chaos Arena - step on the altar to begin", new[]
+        {
+            "OOOOOOOOOOOOOOOOOOOOOOOOOO",
+            "O.....O,*,,,,,,,,,,,,,,*,O",
+            "O.3...O,,,,,,,,,,,,,,,,,,O",
+            "O.....O,,,p,,,,,,,,,,p,,,O",
+            "O..h..O,,,,,,,,,,,,,,,,,,O",
+            "O.....D,,,,,,,,,,,,,,,,,,O",
+            "O..b..O,*,,,,,,,,,,,,,,*,O",
+            "O.....O,,,,,,,,,,,,,,,,,,O",
+            "OOOOOOO,,,,,,,,!,,,,,,,,,O",
+            "OOOOOOO,,,,,,,,,,,,,,,,,,O",
+            "OOOOOOO,*,,,,,,,,,,,,,,*,O",
+            "OOOOOOO,,,p,,,,,,,,,,p,,,O",
+            "OOOOOOO,,,,,,,,,,,,,,,,,,O",
+            "OOOOOOO,*,,,,,,,*,,,,,,*,O",
+            "OOOOOOOOOOOOOOOOOOOOOOOOOO",
+        }, chaos);
+
+        return new[] { winnowing, keep, darkmere, arena };
     }
 }
