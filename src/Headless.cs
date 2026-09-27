@@ -21,8 +21,9 @@ public static class Headless
             var arrival = Enumerable.Range(0, lv.Marks.Length).First(i => char.IsDigit(lv.Marks[i]));
             var start = lv == hub[0] ? ((int)lv.StartX, (int)lv.StartY) : (arrival % lv.W, arrival / lv.W);
             var reach = lv.Reachable(start.Item1, start.Item2);
+            var flyTo = lv.Reachable(start.Item1, start.Item2, move: Level.Move.Fly);
             for (int i = 0; i < lv.Marks.Length; i++)
-                if (lv.Marks[i] != '\0') Check(reach[i], $"mark '{lv.Marks[i]}' at {i % lv.W},{i / lv.W} reachable");
+                if (lv.Marks[i] != '\0') Check(lv.Marks[i] == '+' ? flyTo[i] : reach[i], $"mark '{lv.Marks[i]}' at {i % lv.W},{i / lv.W} reachable");
             foreach (var t in lv.Things)
             {
                 if (t is Pickup pk && pk.Kind is PickupKind.SteelKey or PickupKind.FireKey or PickupKind.Weapon2 or PickupKind.Weapon3)
@@ -84,6 +85,8 @@ public static class Headless
         Console.WriteLine("Windspire:");
         SpireChecks(Check);
         VerticalAimChecks(Check);
+        Console.WriteLine("Checkpoints:");
+        CheckpointChecks(Check);
 
         Console.WriteLine("Audio synthesis:");
         SoundChecks(Check);
@@ -213,10 +216,79 @@ public static class Headless
         WalkTo(12.9f, 9.6f); WalkTo(14.5f, 9.6f);
         for (int k = 0; k < 35 * 3 && !p.OnGround; k++) Tick(default);
         check(p.FloorZ == 0f && p.OnGround && p.Health == 100, "stepping off the summit drops you safely to the ground");
-        WalkTo(10.5f, 13.5f); WalkTo(9.9f, 16.5f); WalkTo(13.5f, 18.5f); WalkTo(15.5f, 18.5f); WalkTo(16.5f, 17.5f);
+        // back into the entry hall, around the lift pad (which would carry you straight back up to the summit)
+        WalkTo(10.5f, 13.5f); WalkTo(9.9f, 16.5f); WalkTo(9.9f, 18.5f); WalkTo(13.5f, 18.5f); WalkTo(15.5f, 18.5f); WalkTo(16.5f, 17.5f);
         check(p.Urns == 1, "the vault's Nano canister is yours");
         WalkTo(18.5f, 18.5f);
         check(p.SteelKey, "and so is the blue keycard");
+
+        // every ledge's checkpoint lit on the way up; dying now puts you back on the summit, key and all
+        check(sp.CheckpointsReached.Count == 8 && g.Checkpoint?.Floor == 8.5f, $"all 8 ledge checkpoints lit, the summit's is the one you'd return to ({sp.CheckpointsReached.Count})");
+        g.DamagePlayer(500);
+        check(g.Mode == GameMode.Dead && g.CanRespawn && g.Messages.Last().text.Contains("checkpoint"), "dying in the Windspire offers the checkpoint");
+        Tick(default, 35);
+        Tick(new Input { Confirm = true }); Tick(default);
+        check(g.Mode == GameMode.Playing && p.FloorZ == 8.5f && sp.CheckpointZone[(int)p.Y * sp.W + (int)p.X] == g.Checkpoint.Index,
+              "Enter respawns you on the summit's checkpoint pad");
+        check(p.Health >= 50 && p.SteelKey && p.Urns == 1 && p.HasJetpack && p.Fuel == Player.FuelMax && g.Level == sp,
+              "you keep the key, your items and the jetpack, with health restored and a full tank");
+
+        // the lift pad at the foot of the tower beams you straight back up
+        WalkTo(12.9f, 9.6f); WalkTo(14.5f, 9.6f);
+        for (int k = 0; k < 35 * 3 && !p.OnGround; k++) Tick(default);
+        WalkTo(10.5f, 13.5f); WalkTo(9.9f, 16.5f);
+        for (int k = 0; k < 35 * 3 && p.FloorZ == 0; k++) { Face(11.5f, 17.5f); Tick(new Input { Move = 1 }); }
+        check(p.FloorZ == 8.5f && g.Messages.Any(m => m.text.Contains("beams you up")), "stepping on the lift pad takes you back up to the summit");
+    }
+
+    static void CheckpointChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        var lv = hub.First(l => l.RawName == "Windspire");
+        var padFloors = lv.Checkpoints.Select(c => lv.Floors[c]).OrderBy(f => f).ToList();
+        check(padFloors.SequenceEqual(new[] { 1.5f, 2.5f, 3.5f, 4.5f, 5.5f, 6.5f, 7.5f, 8.5f }), "the Windspire has one checkpoint pad on each of its 8 ledges");
+        int shaftLedgeCells = 0, covered = 0;
+        for (int y = 1; y <= 14; y++)
+            for (int x = 1; x <= 20; x++)
+            {
+                int i = y * lv.W + x;
+                if (lv.Cells[i] != '\0' || lv.Floors[i] <= 0) continue;
+                shaftLedgeCells++;
+                if (lv.CheckpointZone[i] >= 0 && lv.Floors[lv.Checkpoints[lv.CheckpointZone[i]]] == lv.Floors[i]) covered++;
+            }
+        check(covered == shaftLedgeCells, $"landing anywhere on a ledge counts for its checkpoint ({covered}/{shaftLedgeCells} cells)");
+        check(lv.Marks.Count(m => m == '=') == 1 && lv.Floors[Array.IndexOf(lv.Marks, '=')] == 0, "one lift pad on the ground floor");
+        check(hub.Where(l => l != lv).All(l => l.Checkpoints.Count == 0), "only the Windspire has checkpoints");
+
+        var g = new Game { FixedSeed = 5 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        int si = Array.FindIndex(g.Hub, l => l.RawName == "Windspire");
+        g.Warp(si);
+        var sp = g.Level;
+        var p = g.P;
+        sp.Things.RemoveAll(t => t is Monster);
+        void Stand(float x, float y) { p.X = x; p.Y = y; p.FloorZ = sp.FloorAt(x, y); p.Z = 0; p.VZ = 0; p.Flying = false; Tick(default); }
+
+        // the lift is dark until you've reached a checkpoint
+        Stand(11.5f, 17.5f);
+        check(p.FloorZ == 0 && g.Checkpoint == null && g.Messages.Any(m => m.text.Contains("lift pad is dark")), "the lift pad does nothing before you reach a checkpoint");
+        Stand(12.5f, 18.5f);
+
+        Stand(17.5f, 2.5f);
+        check(g.Checkpoint?.Floor == 3.5f && g.Messages.Last().text.StartsWith("Checkpoint reached (1 of 8)"), "landing on a ledge sets a checkpoint");
+        Stand(18.5f, 12.5f);
+        check(g.Checkpoint.Floor == 3.5f && sp.CheckpointsReached.Count == 2, "dropping to a lower ledge lights it but keeps the higher checkpoint");
+        Stand(4.5f, 13.5f);
+        check(g.Checkpoint.Floor == 7.5f, "a higher ledge moves the checkpoint up");
+
+        // dying elsewhere in the hub is a normal restart
+        g.Warp(0);
+        check(!g.CanRespawn, "the Windspire's checkpoint only applies inside the Windspire");
+        g.DamagePlayer(500);
+        Tick(default, 35); Tick(new Input { Confirm = true });
+        check(g.Mode == GameMode.Playing && g.Level == g.Hub[0] && g.Checkpoint == null && g.Hub[si].CheckpointsReached.Count == 0,
+              "dying outside it restarts the game, clearing checkpoints");
     }
 
     static void VerticalAimChecks(Action<bool, string> check)
@@ -1894,6 +1966,11 @@ public static class Headless
         PlaceCam(9.3f, 10.75f, 8.5f, 0, -1.2f, -25);
         Tick(default, 1); PlaceCam(9.3f, 10.75f, 8.5f, 0, -1.2f, -25);
         Shot("49_spire_summit");
+        PlaceCam(18.6f, 2.4f, 3.5f, 0, MathF.PI + 0.25f, -35);
+        Tick(default, 1); PlaceCam(18.6f, 2.4f, 3.5f, 0, MathF.PI + 0.25f, -35);
+        g.Messages.RemoveAll(m => !m.text.StartsWith("Checkpoint"));
+        Shot("51_spire_checkpoint");
+        g.Messages.Clear();
         g.SetArtStyle(ArtStyle.Fantasy);
         PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
         Shot("50_windspire_fantasy");

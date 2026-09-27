@@ -13,6 +13,7 @@ There are no asset files.
 ![Jetpack flight](docs/scifi_jetpack.png)
 ![Comms Spire](docs/scifi_spire.png)
 ![Comms Spire summit](docs/scifi_spire_summit.png)
+![Checkpoint](docs/scifi_checkpoint.png)
 
 <details>
 <summary>More screenshots, including the original fantasy style</summary>
@@ -87,6 +88,10 @@ There are no asset files.
   have to fly ledge to ledge with the jetpack (a spare waits beside the arrival portal), resting on each to
   refuel, while Afrits and a Dark Bishop harry you. At the top, 8.5 units up, the beacon lever opens the vault
   at the foot of the tower, which holds the **Steel Key** you need to reach the Heresiarch. A secret wall off a high ledge hides a nook that only a flyer can reach.
+  **Checkpoints:** every ledge has a checkpoint pad that lights up when you land anywhere on it. Die in the tower
+  and you come back on the highest one you've lit, keeping your keys, items and relics, with at least half health
+  and a full tank. The **lift pad** by the tower's opening beams you straight back up to it, so a fall costs you
+  nothing. Checkpoints last until you leave the game or restart; dying anywhere else is a normal restart.
 - **Vertical aiming.** Shots climb or dive to meet a monster above or below you, or follow your view when you
   look well up or down or fire from the air. Monsters aim their missiles up at you when you're on a ledge or
   flying.
@@ -177,7 +182,8 @@ portcullis = force field, Heresiarch = Overmind, relic = artifact, lore stone = 
    - south-west ledge (7.5)
    - then across to the summit (8.5) in the middle
 
-   Land on each ledge to let the tank recharge. Pull the beacon lever and step off the summit (there's no fall
+   Land on each ledge to let the tank recharge and light its checkpoint. If you fall, the lift pad by the tower's
+   opening takes you back up to your highest checkpoint. Pull the beacon lever and step off the summit (there's no fall
    damage). Then take the **Steel Key** from the vault at the foot of the tower, along with a Mystic Urn, armor and
    mana. The secret wall is at the east end of the north-east ledge.
 7. Take portal 4 back to the Keep, then portal 1 to Winnowing Hall, and open the steel door off the courtyard.
@@ -337,4 +343,5 @@ Maps are ASCII grids in `src/Level.cs`:
 | `Z` | secret wall (looks like its neighbours) | `&` | lore stone |
 | `%` | secret treasure (a relic in Relaxed, a Mystic Urn in Classic) | | |
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |
+| `+` | checkpoint pad (its whole ledge counts; respawn here) | `=` | lift pad (back to your highest checkpoint) |
 | `w` `x` | weapon piece for slot 2 / slot 3 | `t` `p` `T` | torch, pillar, tree |

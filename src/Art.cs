@@ -13,7 +13,8 @@ public static class Art
     // Walls
     public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble, Block, StepRiser;
     // Flats
-    public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor;
+    public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor,
+        CheckpointFloor, CheckpointFloorOff, LiftFloor;
     public static Tex SkyDusk, SkyIce, SkyNight;
     // Sprites
     public static readonly Dictionary<string, Tex[]> Monsters = new();
@@ -306,6 +307,9 @@ public static class Art
         SpawnFloor = RuneFloor(Col.Rgb(160, 60, 220));
         AltarFloor = RuneFloor(Col.Rgb(255, 200, 60));
         AltarFloorOff = RuneFloor(Col.Rgb(110, 90, 50));
+        CheckpointFloor = RuneFloor(Col.Rgb(90, 240, 120));
+        CheckpointFloorOff = RuneFloor(Col.Rgb(60, 84, 64));
+        LiftFloor = RuneFloor(Col.Rgb(210, 240, 255));
 
         SkyDusk = BuildSky(201, (40, 20, 60), (200, 90, 60), (30, 16, 30), false);
         SkyNight = BuildSky(205, (8, 14, 20), (50, 80, 60), (12, 20, 14), false);

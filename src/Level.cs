@@ -38,6 +38,11 @@ public sealed class Level
     public bool LeverPulled => LeverCount > 0 && PulledLevers.Count >= LeverCount;
     public int PlateCount;
 
+    /// <summary>Checkpoint pads ('+'), in reading order, and which checkpoint's ledge each cell belongs to (-1 for none).</summary>
+    public readonly List<int> Checkpoints = new();
+    public readonly int[] CheckpointZone;
+    public readonly HashSet<int> CheckpointsReached = new();
+
     /// <summary>Secret walls ('Z') look like the wall beside them until opened.</summary>
     public readonly Dictionary<int, char> SecretLook = new();
     public readonly HashSet<int> SecretsFound = new();
@@ -159,7 +164,13 @@ public sealed class Level
                 if (WallGlyphs.IndexOf(ch) >= 0) { Cells[i] = ch; if (ch == 'L') LeverCount++; continue; }
                 Outdoor[i] = ch == ',';
                 if (ch == '.' || ch == ',') continue;
-                if (char.IsDigit(ch) || ch == 'E' || ch == '*' || ch == '!' || ch == '^') { Marks[i] = ch; if (ch == '^') PlateCount++; continue; }
+                if (char.IsDigit(ch) || ch is 'E' or '*' or '!' or '^' or '+' or '=')
+                {
+                    Marks[i] = ch;
+                    if (ch == '^') PlateCount++;
+                    if (ch == '+') Checkpoints.Add(i);
+                    continue;
+                }
                 if (ch == '@') { StartX = x + 0.5f; StartY = y + 0.5f; continue; }
                 var t = ThingFactory.Create(ch, x + 0.5f, y + 0.5f);
                 if (t == null) throw new InvalidDataException($"{name}: unknown map glyph '{ch}' at {x},{y}");
@@ -190,6 +201,29 @@ public sealed class Level
 
         foreach (var d in Things.OfType<Decor>())
             if (d.ReachCeiling) d.SpriteH = HeightAt(d.X, d.Y);
+
+        // each checkpoint pad claims the ledge it sits on: the open cells joined to it at the same floor height
+        CheckpointZone = new int[W * H];
+        Array.Fill(CheckpointZone, -1);
+        for (int k = 0; k < Checkpoints.Count; k++)
+        {
+            var q = new Queue<int>();
+            q.Enqueue(Checkpoints[k]);
+            CheckpointZone[Checkpoints[k]] = k;
+            while (q.Count > 0)
+            {
+                int c = q.Dequeue(), cx = c % W, cy = c / W;
+                foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                {
+                    int nx = cx + dx, ny = cy + dy;
+                    if (!InBounds(nx, ny)) continue;
+                    int n = ny * W + nx;
+                    if (CheckpointZone[n] >= 0 || Cells[n] != '\0' || MathF.Abs(Floors[n] - Floors[c]) > 0.001f) continue;
+                    CheckpointZone[n] = k;
+                    q.Enqueue(n);
+                }
+            }
+        }
 
         // disguise each secret wall as its most common neighbouring wall
         for (int i = 0; i < Cells.Length; i++)
@@ -623,28 +657,29 @@ public static class Maps
             (1, 1, 5, 7, '3'), (7, 1, 24, 13, '7')),
         // Windspire: an open-topped tower whose ledges climb far beyond any jump. Portal 4 in the Frozen Keep's vault
         // leads here. Fly ledge to ledge with the jetpack (a spare waits by the portal) up to the beacon at the top;
-        // its lever opens the vault at the foot of the tower, which holds the Steel Key. A secret wall off the north-east
+        // its lever opens the vault at the foot of the tower, which holds the Steel Key. Each ledge has a checkpoint
+        // pad ('+'); the lift pad ('=') by the tower's opening takes you back up to the highest one you've reached. A secret wall off the north-east
         // ledge hides a nook that only a flyer can reach.
         Elevate(Raise(new("Windspire", "The Windspire. Only the winged may reach the beacon at its crown.", "spire", new[]
         {
             "OOOOOOOOOOOOOOOOOOOOOOOOO",
-            "O&,,,,,,,,,,,,,,,,,,,O&.O",
-            "O,,q,,,,,,,,,,,,,,b,,Z.%O",
+            "O&,,,,,,,,,+,,,,,,,,,O&.O",
+            "O,,q+,,,,,,,,,,,+,b,,Z.%O",
             "O,,,,,,,,,,,,,,,,,,,,O..O",
             "O,,,,,,,,,,,,d,,,,,,,OOOO",
             "O,,,,,,,a,,,,,,,,,,,,OOOO",
             "O,,,,,,,,,,,,,,,,,,,,OOOO",
-            "O,,,,,,,,,,,,,,,,,,,,OOOO",
-            "Og,,,,,,,,L,,,,,,,,,,OOOO",
-            "O,,,,,,,,,,,,,a,,,,,,OOOO",
+            "O,+,,,,,,,,,,,,,,,,,,OOOO",
+            "Og,,,,,,,,L,,,,,,,,+,OOOO",
+            "O,,,,,,,,+,,,,a,,,,,,OOOO",
             "O,,,,,,,,,,,&,,,,,,,,OOOO",
             "O,,,,,a,,,,,,,,,,,,,,OOOO",
             "O,,,,,,,,,,,,,,,,,,h,OOOO",
-            "O,,r,,,,,,,,,,,,,,,,,OOOO",
+            "O,,r+,,,,,,,,,,,,,+,,OOOO",
             "O&,,,,,,,,,,,,,,,,,,,OOOO",
             "OOOOOOOOO..OOOOOOOOOOOOOO",
             "O.....&.......O......OOOO",
-            "O.............O.u..r.OOOO",
+            "O..........=..O.u..r.OOOO",
             "O..4..........P...k..OOOO",
             "O......J......O.g..b.OOOO",
             "O.............O......OOOO",

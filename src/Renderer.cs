@@ -54,7 +54,7 @@ public sealed class Renderer
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
             CenterText("YOU DIED", 60, Col.Rgb(220, 40, 30), 3);
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
-            CenterText("PRESS ENTER TO TRY AGAIN", 90, Col.Rgb(230, 220, 200));
+            CenterText(g.CanRespawn ? "PRESS ENTER TO RETURN TO THE CHECKPOINT" : "PRESS ENTER TO TRY AGAIN", 90, Col.Rgb(230, 220, 200));
         if (g.Vars.ShowFps) Text(W - 40, 3, $"{g.Fps:0} FPS", Col.Rgb(120, 255, 120));
     }
 
@@ -395,6 +395,8 @@ public sealed class Renderer
             if (mk == 'E') { ft = lv.BossDead ? Art.ExitFloor : Art.ExitFloorOff; fl = 300; }
             else if (mk == '*') { ft = Art.SpawnFloor; fl = 280; }
             else if (mk == '^') ft = Art.PlateFloor;
+            else if (mk == '+') { ft = lv.CheckpointsReached.Contains(lv.CheckpointZone[cell]) ? Art.CheckpointFloor : Art.CheckpointFloorOff; fl = 300; }
+            else if (mk == '=') { ft = Art.LiftFloor; fl = 300; }
             else if (mk == '!') { ft = lv.Arena?.Started == true ? Art.AltarFloorOff : Art.AltarFloor; fl = 300; }
             else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
             else if (lv.Outdoor[cell]) ft = th.OutdoorFloor;
@@ -558,6 +560,8 @@ public sealed class Renderer
             case '*': r = (Art.SpawnFloor, false); break;
             case '!': r = (Art.AltarFloor, false); break;
             case '^': r = (Art.PlateFloor, false); break;
+            case '+': r = (Art.CheckpointFloor, false); break;
+            case '=': r = (Art.LiftFloor, false); break;
             case '@': r = (Labelled(th.FloorIn, "@", Col.Rgb(90, 255, 120), true), false); break;
             case >= '1' and <= '9': r = (Labelled(Art.PortalFloor, c.ToString(), Col.Rgb(255, 255, 255)), false); break;
             default:
