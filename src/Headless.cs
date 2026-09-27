@@ -69,6 +69,9 @@ public static class Headless
         Console.WriteLine("Level editor:");
         EditorChecks(Check);
 
+        Console.WriteLine("Ceiling heights:");
+        HeightChecks(Check);
+
         Console.WriteLine("Audio synthesis:");
         bool audioOk = true;
         for (int i = 0; i < (int)Sfx.Count; i++) audioOk &= Audio.Synth((Sfx)i).Length > 1000;
@@ -844,6 +847,100 @@ public static class Headless
         Directory.Delete(dir, true);
     }
 
+    static void HeightChecks(Action<bool, string> check)
+    {
+        check(Level.HeightFromGlyph('2', 1) == 1f && Level.HeightFromGlyph('6', 1) == 3f && Level.HeightFromGlyph('9', 1) == 4.5f
+              && Level.HeightFromGlyph('.', 1.5f) == 1.5f && Level.HeightFromGlyph('1', 1) == 1f, "height glyphs: 2..9 = 1.0..4.5, others = default");
+        var hub = Maps.BuildHub();
+        var wh = hub[0];
+        check(wh.HeightAt(14.5f, 5.5f) == 3f, "Winnowing Hall's great hall is 3 tall");
+        check(wh.HeightAt(4.5f, 18.5f) == 3.5f && hub[3].HeightAt(15.5f, 8.5f) == 3.5f, "the boss arena and Chaos Arena tower at 3.5");
+        check(wh.HeightAt(17.5f, 12.5f) == 1f, "corridors stay one storey");
+        check(Enumerable.Range(0, wh.Cells.Length).Where(i => Level.IsDoor(wh.Cells[i])).All(i => wh.Heights[i] == 1f), "doors are always one storey");
+        check(hub[2].HeightAt(23.5f, 8.5f) == 1f, "the crypt's block-puzzle room stays one storey");
+
+        // rendering: the same view, with and without heights
+        var g = new Game { FixedSeed = 1 };
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster or Decor or Chest or LoreStone);
+        var r = new Renderer();
+        float proj = 160f / MathF.Tan(g.Vars.Fov * MathF.PI / 360f), horizon = Renderer.ViewH / 2f;
+        int RowOf(float z, float d) => (int)(horizon - (z - 0.5f) * proj / d);
+
+        // great hall, facing the north wall 7.5 away: its top reaches far higher than one storey
+        g.P.X = 14.5f; g.P.Y = 8.5f; g.P.Angle = -MathF.PI / 2; g.P.Pitch = 0;
+        r.Render(g);
+        int y25 = RowOf(2.5f, 7.5f);
+        check(MathF.Abs(r.DepthAt(160, y25) - 7.5f) < 0.2f, "a 3-tall hall's far wall is drawn 2.5 units up");
+        var flat = new MapDef("Flat", "Flat", "hall", Maps.Hub[0].Rows).Build();
+        flat.Things.RemoveAll(t => t is Monster or Decor or Chest or LoreStone);
+        var tall = g.Level;
+        g.Level = flat;
+        r.Render(g);
+        check(r.DepthAt(160, y25) < 7f, "without heights the same spot is ceiling");
+        g.Level = tall;
+
+        // start room (1.5 tall) facing the closed door 3 away: wall fills the space above the door
+        g.P.X = 4f; g.P.Y = 3.5f; g.P.Angle = 0;
+        r.Render(g);
+        float dd = 7f - 4f;
+        int doorTop = RowOf(1f, dd), roomTop = RowOf(1.5f, dd);
+        bool lintel = Enumerable.Range(roomTop + 2, Math.Max(1, doorTop - roomTop - 4)).All(y => MathF.Abs(r.DepthAt(160, y) - dd) < 0.05f);
+        check(lintel && roomTop + 2 < doorTop - 2, "wall is drawn above a doorway in a taller room");
+
+        // the camera never pokes through a low ceiling
+        var low = new MapDef("Low", "Low", "hall", new[] { "#####", "#@..#", "#####" }).Build();
+        g.Level = low; g.P.X = 1.5f; g.P.Y = 1.5f; g.P.Z = 0.45f;
+        r.Render(g);
+        check(r.DepthAt(160, 0) > 0, "jumping under a one-storey ceiling renders fine");
+        g.P.Z = 0;
+
+        // map files: heights survive save/load; files without heights stay flat
+        var doc = new MapDoc(10, 8) { Name = "Tower", DefaultHeight = 2f };
+        doc[2, 2] = '@';
+        doc.Heights[3 * 10 + 4] = '8';
+        var back = MapDoc.Parse(doc.Serialize());
+        check(back.DefaultHeight == 2f && back.Heights[3 * 10 + 4] == '8' && back.Heights[3 * 10 + 5] == '.', "heights and the default height round-trip through a file");
+        var built = back.ToDef().Build();
+        check(built.HeightAt(4.5f, 3.5f) == 4f && built.HeightAt(5.5f, 3.5f) == 2f, "a saved tower builds with its heights");
+        check(MapDoc.Parse("name: Old\n---\n#####\n#@..#\n#####\n").ToDef().Build().HeightAt(2.5f, 1.5f) == 1f, "old map files without heights are one storey");
+        check(Maps.Hub.All(d => MapDoc.FromDef(d).ToDef().Build().Heights.SequenceEqual(d.Build().Heights)), "built-in maps keep their heights when opened in the editor");
+
+        // editor: height mode painting, fill, undo, and play-testing the result
+        var keys = new FakeKeys();
+        var eg = new Game { FixedSeed = 1, Keys = keys };
+        var ed = eg.Editor;
+        void Frame(int[] hit = null, int[] held = null, float mx = -1, float my = -1)
+        {
+            keys.Hit.Clear(); keys.Held.Clear();
+            foreach (var k in hit ?? Array.Empty<int>()) keys.Hit.Add(k);
+            foreach (var k in held ?? Array.Empty<int>()) keys.Held.Add(k);
+            var inp = eg.Binds.Read(keys, false);
+            inp.MouseX = mx; inp.MouseY = my;
+            eg.Update(inp, 1f / 35f);
+        }
+        eg.OpenEditor();
+        ed.NewMap(20, 16);
+        check(ed.Doc.DefaultHeight == 1.5f, "new maps start 1.5 tall");
+        Frame(new[] { Keys.Letter('G') });
+        Frame(new[] { Keys.Digit(8) });
+        check(ed.HeightMode && ed.CurrentHeight == '8', "G enters height mode; 8 picks 4.0");
+        float cx = 6 * ed.CellSize + 3, cy = 6 * ed.CellSize + 3;
+        Frame(new[] { Keys.Mouse1 }, new[] { Keys.Mouse1 }, cx, cy); Frame(mx: cx, my: cy);
+        check(ed.Doc.Heights[6 * 20 + 6] == '8' && ed.Doc[6, 6] == '.', "painting in height mode changes the height, not the tile");
+        Frame(new[] { Keys.Letter('F') });
+        Frame(new[] { Keys.Digit(4) });
+        Frame(new[] { Keys.Mouse1 }, new[] { Keys.Mouse1 }, 10 * ed.CellSize + 3, 10 * ed.CellSize + 3);
+        check(ed.Doc.Heights[10 * 20 + 10] == '4' && ed.Doc.Heights[1 * 20 + 1] == '4' && ed.Doc.Heights[6 * 20 + 6] == '8', "height fill covers the room but not other heights");
+        ed.Undo();
+        check(ed.Doc.Heights[10 * 20 + 10] == '.' && ed.Doc.Heights[6 * 20 + 6] == '8', "undo reverts a height fill");
+        Frame(new[] { Keys.Letter('F') });
+        Frame(new[] { Keys.Letter('G') });
+        check(!ed.HeightMode, "G returns to tile mode");
+        Frame(new[] { Keys.Letter('P') });
+        check(eg.Mode == GameMode.Playing && eg.Level.HeightAt(6.5f, 6.5f) == 4f && eg.Level.HeightAt(8.5f, 8.5f) == 1.5f, "play-testing uses the painted heights");
+    }
+
     static void ChestChecks(Action<bool, string> check)
     {
         var g = new Game { FixedSeed = 99 };
@@ -1183,6 +1280,30 @@ public static class Headless
             g.GoToTitle();
             g.MapsDir = null;
         }
+
+        // raised roofs: looking up in the great hall, and the wall above the start room's door
+        g.Style = GameStyle.Classic;
+        g.FixedSeed = 1;
+        g.NewGame(PClass.Cleric);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.Vars.Freeze = true;
+        g.P.X = 20.2f; g.P.Y = 9.6f; g.P.Angle = -MathF.PI * 0.8f; g.P.Pitch = 55;
+        Tick(default, 50);
+        Shot("32_great_hall_tall");
+        g.P.X = 3.5f; g.P.Y = 3.5f; g.P.Angle = 0; g.P.Pitch = 30;
+        Tick(default, 1);
+        Shot("33_door_lintel");
+        g.P.X = 20.5f; g.P.Y = 21.0f; g.P.Angle = -MathF.PI / 2 - 0.5f; g.P.Pitch = 30;
+        Tick(default, 1);
+        Shot("34_courtyard_walls");
+        g.Vars.Freeze = false;
+        g.OpenEditor();
+        g.Editor.Load(MapDoc.FromDef(Maps.Hub[0]), "Opened");
+        g.Editor.HeightMode = true; g.Editor.ShowHelp = false; g.Editor.ZoomIndex = 2; g.Editor.CursorX = 14; g.Editor.CursorY = 5;
+        Tick(default, 1);
+        Shot("35_editor_heights");
+        g.Editor.HeightMode = false;
+        g.GoToTitle();
 
         // victory screen
         g.Mode = GameMode.Victory;
