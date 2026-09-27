@@ -9,7 +9,7 @@ public struct Input
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
     public bool Fire, Walk, JumpHeld, SlideHeld; // held
-    public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot; // pressed
+    public bool Use, UseItem, Place, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public float MouseX, MouseY;          // mouse position in framebuffer pixels (-1 when unknown)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
@@ -89,6 +89,9 @@ public sealed class Player
     public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills, ChestsOpened, Relics, LoreRead, Secrets;
     /// <summary>The ship's forward speed on a flight map.</summary>
     public float ShipSpeed;
+    /// <summary>Rubble blocks you've broken loose and carry, ready to place (up to a stack of BlockStack).</summary>
+    public int Blocks;
+    public const int BlockStack = 64;
     /// <summary>Ore you're carrying, by Level.OreGlyphs index (iron, crystal, fuel).</summary>
     public readonly int[] Ore = new int[Level.OreGlyphs.Length];
     public bool[] HasWeapon = { true, false, false };
@@ -566,6 +569,7 @@ public sealed class Game
         // actions
         if (inp.Use) UseLine(pull: inp.Walk);
         if (inp.UseItem) UseItem();
+        if (inp.Place) PlaceBlock();
 
         // weapons
         if (inp.Slot >= 1 && inp.Slot <= 3) SelectWeapon(inp.Slot - 1);
@@ -1628,6 +1632,62 @@ public sealed class Game
     static float SlotAt(float z) => Math.Clamp(MathF.Floor((z - 0.2f) / Level.DigStep) * Level.DigStep, 0f, Level.MaxHeight - Level.MinHeight);
 
     /// <summary>
+    /// Where a block you place would go: into the open cell in front of the wall you're looking at (or at the end of
+    /// your reach), or, on a dig map, onto the floor or under the ceiling you're looking at. Null if nowhere fits.
+    /// </summary>
+    public (int x, int y, Level.Face face)? PlaceTarget()
+    {
+        var p = P;
+        float reach = Level.Dig ? 2f : 1.6f;
+        float pitch = Level.Dig ? Math.Clamp(p.Pitch / 70f, -1f, 1f) * 85f * MathF.PI / 180f : 0f;
+        float flat = MathF.Cos(pitch), dz = MathF.Sin(pitch);
+        float dx = MathF.Cos(p.Angle) * flat, dy = MathF.Sin(p.Angle) * flat, eye = p.FloorZ + p.ViewZ;
+        int px = -1, py = -1, fx = -1, fy = -1;
+        for (float d = 0.05f; d < reach; d += 0.04f)
+        {
+            int cx = (int)MathF.Floor(p.X + dx * d), cy = (int)MathF.Floor(p.Y + dy * d);
+            if (Level.Blocks(cx, cy)) return px >= 0 ? Placeable(px, py, Level.Face.Wall) : null;
+            if (Level.Dig)
+            {
+                int i = cy * Level.W + cx;
+                float z = eye + dz * d;
+                if (z < Level.Floors[i]) return Placeable(cx, cy, Level.Face.Floor);
+                if (z > Level.Heights[i]) return Placeable(cx, cy, Level.Face.Ceiling);
+            }
+            if (!PlayerTouchesCell(cx, cy)) { px = cx; py = cy; if (fx < 0) { fx = cx; fy = cy; } }
+        }
+        // nothing to build against: the cell just ahead of you
+        return fx >= 0 ? Placeable(fx, fy, Level.Face.Wall) : null;
+    }
+
+    (int x, int y, Level.Face face)? Placeable(int x, int y, Level.Face f)
+    {
+        if (!Level.CanPlace(x, y, f)) return null;
+        var p = P;
+        if (PlayerTouchesCell(x, y))
+        {
+            int i = y * Level.W + x;
+            // building under yourself lifts you up a step; building over yourself mustn't squash you
+            if (f == Level.Face.Wall) return null;
+            if (f == Level.Face.Floor && Level.Floors[i] + Level.DigStep > p.FloorZ + p.Z + Level.MaxStep + 0.001f) return null;
+            if (f == Level.Face.Ceiling && Level.Heights[i] - Level.DigStep < p.FloorZ + p.Z + Player.Height + 0.05f) return null;
+        }
+        return (x, y, f);
+    }
+
+    /// <summary>Places one of your carried rubble blocks where you're aiming.</summary>
+    void PlaceBlock()
+    {
+        var p = P;
+        if (Level.Flight) return;
+        if (p.Blocks <= 0) { Say("You have no blocks to place. Break some rubble first."); PlaySound(Sfx.Locked, 0.5f); return; }
+        if (PlaceTarget() is not (var x, var y, var face) || !Level.PlaceBlock(x, y, face)) { PlaySound(Sfx.Locked, 0.4f); return; }
+        p.Blocks--;
+        PlaySound(Sfx.Land, 1);
+        SpawnPuff(Art.RubbleChunk, x + 0.5f, y + 0.5f, Level.Floors[y * Level.W + x] + 0.3f, 0.25f);
+    }
+
+    /// <summary>
     /// The breakable block you're looking at within reach, or null. On a dig map this is aimed in 3D, and looking
     /// all the way down (or up) aims straight down (or up), so you can dig out the rock under your feet.
     /// </summary>
@@ -1667,12 +1727,19 @@ public sealed class Game
             return;
         }
         Sound(Sfx.Break, x, y);
+        // the rock you break loose is yours to build with (ore goes to the ship instead)
+        if ((face != Level.Face.Wall || was == Level.Rubble) && P.Blocks < Player.BlockStack) P.Blocks++;
         if (face == Level.Face.Wall && Level.OreIndex(was) is var ore and >= 0)
         {
             P.Ore[ore]++;
             P.PickupFlash = 1;
             PlaySound(Sfx.Pickup, 1);
-            Say($"+1 {Words.T(OreNames[ore])} ({P.Ore[ore]} carried)");
+            if (Level.Ship is { } ship)
+            {
+                int have = ship.Delivered[ore] + P.Ore[ore];
+                Say($"+1 {Words.T(OreNames[ore])} ({Math.Min(have, Ship.Need[ore])}/{Ship.Need[ore]})" + (have == Ship.Need[ore] ? Words.T(" - that's enough!") : ""));
+            }
+            else Say($"+1 {Words.T(OreNames[ore])} ({P.Ore[ore]} carried)");
         }
         float z = face == Level.Face.Ceiling ? Level.Heights[i] - Level.DigStep - 0.2f : Level.Floors[i];
         for (int k = 0; k < 5; k++)

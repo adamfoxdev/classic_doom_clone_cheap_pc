@@ -31,6 +31,7 @@ public static class Words
         ["Lift-off! You leave the barren world behind and make it home."] = "Lift-off! You leave the barren planet behind and make it back to the station.",
         ["SKYSHIP READY - USE IT TO TAKE OFF"] = "SHUTTLE READY - USE IT TO TAKE OFF",
         ["SKYSHIP REPAIRS"] = "SHUTTLE REPAIRS",
+        ["USE THE SKYSHIP TO LOAD ORE"] = "USE THE SHUTTLE TO LOAD ORE",
         ["iron ore"] = "titanium ore",
         ["moonstone"] = "power crystal",
         ["brimstone"] = "fuel ore",

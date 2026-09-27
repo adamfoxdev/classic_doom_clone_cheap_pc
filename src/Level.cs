@@ -319,6 +319,36 @@ public sealed class Level
     static bool Passable(char c) => c == '\0' || IsDoor(c) || IsRubble(c);
 
     /// <summary>
+    /// Can a block be placed here? Into an empty cell (Wall: it fills with rubble), or on a dig map onto a floor
+    /// (raising it a DigStep) or under a ceiling (lowering it), as long as a storey of headroom is left.
+    /// </summary>
+    public bool CanPlace(int x, int y, Face f)
+    {
+        if (!InBounds(x, y)) return false;
+        int i = y * W + x;
+        if (Cells[i] != '\0' || Marks[i] != '\0') return false;
+        return f switch
+        {
+            Face.Wall => !Things.Any(t => !t.Removed && t is not (Projectile or Puff) && (int)MathF.Floor(t.X) == x && (int)MathF.Floor(t.Y) == y),
+            _ => Dig && Heights[i] - Floors[i] >= MinHeight + DigStep - 0.001f,
+        };
+    }
+
+    /// <summary>Places a rubble block: fills an empty cell, raises a floor or lowers a ceiling.</summary>
+    public bool PlaceBlock(int x, int y, Face f)
+    {
+        if (!CanPlace(x, y, f)) return false;
+        int i = y * W + x;
+        switch (f)
+        {
+            case Face.Wall: Cells[i] = Rubble; BlockHp[i] = RubbleHp; break;
+            case Face.Floor: Floors[i] += DigStep; FloorHp[i] = RubbleHp; break;
+            default: Heights[i] -= DigStep; CeilHp[i] = RubbleHp; break;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Chips at a block; true when it breaks. Rubble opens its cell (on a dig map, as a tunnel one storey tall with
     /// its floor at `tunnelFloor`); a floor drops, or a ceiling rises, by a DigStep.
     /// </summary>

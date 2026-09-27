@@ -90,6 +90,15 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   loose with Use, three pulls each, which is how you dig in Relaxed mode. Pockets in the rock field hide mana and
   vials. A drone waits in a sealed cave, and the quarrymen's strongroom holds armor, a Mystic Urn and a secret nook.
   Monsters can't dig, and their missiles don't break rubble.
+- **Building with blocks.** Every rubble block you break goes into your pack, up to a stack of 64, shown bottom-left.
+  So does rock dug from floors and ceilings in the Bedrock Depths. Ore goes to the ship instead. Right click (or `B`)
+  places a block:
+  - against the wall you're facing, or in the cell just ahead of you, but never on top of you;
+  - in the Bedrock Depths, also onto the floor you're looking at (look down to build a step under your own feet and
+    climb up on it) or under the ceiling (it comes down half a step, but always leaves a storey of headroom).
+
+  Placed blocks are ordinary rubble, so you can break them out again. Wall off a corridor, or build your way back
+  out of a pit.
 - **Bedrock Depths** (the **Asteroid Core** in sci-fi): a solid-rock dig map, through portal **6** in the quarry's
   strongroom. Everything except the cell you arrive in is rubble, and you carve your own path in any direction:
   - **Ahead:** the rock opens as a slot one storey tall. Aim level for a tunnel at your own level, a little high to
@@ -199,6 +208,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `C` | Slide (while moving); hold while flying to sink |
 | `1` `2` `3` / mouse wheel | Select weapon |
 | `F` | Use a healing item (Quartz Flask, else Mystic Urn) |
+| Right click / `B` | Place a rubble block you've broken loose |
 | `Shift` | Walk |
 | `Tab` / `M` | Automap |
 | `Esc` | Pause menu (Resume, Options, Restart, Quit) |

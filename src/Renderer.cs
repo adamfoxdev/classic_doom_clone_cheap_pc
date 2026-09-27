@@ -1027,6 +1027,11 @@ public sealed class Renderer
         uint label = Col.Rgb(200, 180, 140);
         if (p.HasJetpack) DrawFuel(p, label);
         if (g.Level.Ship != null) DrawShipPanel(g);
+        if (p.Blocks > 0 && !g.Level.Flight)
+        {
+            Icon(Art.Rubble, 4, ViewH - 16, 12);
+            Text(19, ViewH - 12, $"x{p.Blocks}", Col.Rgb(230, 220, 200));
+        }
         if (g.Relaxed) { DrawDiscoveryHud(g, by, label); return; }
         Text(6, by, "HEALTH", label);
         uint hcol = p.Health > 50 ? Col.Rgb(240, 230, 210) : p.Health > 25 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
@@ -1069,11 +1074,20 @@ public sealed class Renderer
         string title = s.Built ? Words.T("SKYSHIP READY - USE IT TO TAKE OFF") : Words.T("SKYSHIP REPAIRS");
         int x = W - 4, y = 3;
         Text(x - Font.Width(title), y, title, s.Built ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
+        bool carrying = false;
         for (int k = 0; k < Ship.Need.Length && !s.Built; k++)
         {
             y += 9;
-            string line = $"{Words.T(Game.OreNames[k].ToUpperInvariant())} {s.Delivered[k]}/{Ship.Need[k]}  +{g.P.Ore[k]}";
-            Text(x - Font.Width(line), y, line, s.Delivered[k] >= Ship.Need[k] ? Col.Rgb(120, 255, 140) : cols[k]);
+            // what you've gathered so far: handed over plus in your pack
+            int have = Math.Min(Ship.Need[k], s.Delivered[k] + g.P.Ore[k]);
+            carrying |= g.P.Ore[k] > 0 && s.Delivered[k] < Ship.Need[k];
+            string line = $"{Words.T(Game.OreNames[k].ToUpperInvariant())} {have}/{Ship.Need[k]}";
+            Text(x - Font.Width(line), y, line, have >= Ship.Need[k] ? Col.Rgb(120, 255, 140) : cols[k]);
+        }
+        if (carrying)
+        {
+            string hint = Words.T("USE THE SKYSHIP TO LOAD ORE");
+            Text(x - Font.Width(hint), y + 11, hint, Col.Rgb(200, 190, 170));
         }
     }
 

@@ -3,7 +3,7 @@ namespace HexenSharp;
 /// <summary>Rebindable player actions.</summary>
 public enum Act
 {
-    Forward, Back, StrafeLeft, StrafeRight, TurnLeft, TurnRight, Attack, Use, Jump, Slide, Walk, UseItem,
+    Forward, Back, StrafeLeft, StrafeRight, TurnLeft, TurnRight, Attack, Use, Jump, Slide, Walk, UseItem, Place,
     Weapon1, Weapon2, Weapon3, NextWeapon, PrevWeapon, Automap, Console, Screenshot,
 }
 
@@ -86,6 +86,7 @@ public sealed class Bindings
         new(Act.Slide, "slide", "Slide", Keys.Letter('C'), Keys.None),
         new(Act.Walk, "walk", "Walk / pull", Keys.LeftShift, Keys.RightShift),
         new(Act.UseItem, "useitem", "Use item", Keys.Letter('F'), Keys.None),
+        new(Act.Place, "place", "Place block", Keys.Mouse2, Keys.Letter('B')),
         new(Act.Weapon1, "weapon1", "Weapon 1", Keys.Digit(1), Keys.None),
         new(Act.Weapon2, "weapon2", "Weapon 2", Keys.Digit(2), Keys.None),
         new(Act.Weapon3, "weapon3", "Weapon 3", Keys.Digit(3), Keys.None),
@@ -150,6 +151,7 @@ public sealed class Bindings
         i.SlideHeld = Down(k, Act.Slide);
         i.Slide = Pressed(k, Act.Slide);
         i.UseItem = Pressed(k, Act.UseItem);
+        i.Place = Pressed(k, Act.Place);
         i.Map = Pressed(k, Act.Automap);
         i.ConsoleToggle = Pressed(k, Act.Console);
         i.Screenshot = Pressed(k, Act.Screenshot);

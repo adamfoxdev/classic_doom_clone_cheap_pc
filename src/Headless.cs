@@ -170,8 +170,65 @@ public static class Headless
         }
         g.SetArtStyle(ArtStyle.SciFi);
         DigChecks(check);
+        PlaceChecks(check);
         PlanetChecks(check);
         FlightChecks(check);
+    }
+
+    static void PlaceChecks(Action<bool, string> check)
+    {
+        // in the quarry: break a block, carry it, build a wall with it
+        var g = new Game { FixedSeed = 3 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        int qi = Array.FindIndex(g.Hub, l => l.RawName == "Deepdelve Quarry");
+        g.Warp(qi);
+        var q = g.Level;
+        var p = g.P;
+        q.Things.RemoveAll(t => t is Monster or Chest);
+        p.X = 3.5f; p.Y = 2.5f; p.Angle = 0; p.PortalLock = true;
+        Tick(new Input { Place = true });
+        check(p.Blocks == 0 && q.Cells[2 * q.W + 4] == '\0', "nothing to place until you've broken a block");
+        g.HitBlock(6, 2, 999);
+        check(p.Blocks == 1, "breaking rubble puts the block in your pack");
+        Tick(new Input { Place = true });
+        check(p.Blocks == 0 && q.Cells[2 * q.W + 4] == Level.Rubble && q.BlockHp[2 * q.W + 4] == Level.RubbleHp, "Place builds it into the cell ahead of you");
+        g.HitBlock(4, 2, 999);
+        check(p.Blocks == 1 && q.Cells[2 * q.W + 4] == '\0', "and you can break it back out");
+        p.X = 4.5f; p.Y = 2.5f; p.Angle = 0;
+        Tick(new Input { Place = true });
+        check(q.Cells[2 * q.W + 4] == '\0' && q.Cells[2 * q.W + 5] == Level.Rubble, "you never build a block on top of yourself");
+        g.HitBlock(5, 2, 999);
+        check(p.Blocks == 1, "your own block comes back to you");
+
+        // on a dig map: build a step up under yourself, or bring the ceiling down
+        int di = Array.FindIndex(g.Hub, l => l.Dig);
+        g.Warp(di);
+        var d = g.Level;
+        var (ax, ay) = d.ArrivalCell();
+        p.X = ax + 0.5f; p.Y = ay + 0.5f; p.Angle = 0; p.Pitch = 0; p.PortalLock = true;
+        g.HitBlock(ax + 1, ay, 999, slot: d.Floors[ay * d.W + ax]);
+        int e = ay * d.W + ax + 1;
+        for (int k = 0; k < 3; k++) g.HitBlock(ax + 1, ay, 999, Level.Face.Ceiling);
+        p.X = ax + 1.5f; Tick(default, 3);
+        float floor = d.Floors[e], roof = d.Heights[e];
+        p.Pitch = -70; p.Blocks = 4;
+        Tick(new Input { Place = true }); Tick(default, 10);
+        check(d.Floors[e] == floor + Level.DigStep && MathF.Abs(p.FloorZ - d.Floors[e]) < 0.01f, "look down and place: a block under your feet lifts you a step");
+        p.Pitch = 70;
+        Tick(new Input { Place = true }); Tick(default);
+        Tick(new Input { Place = true }); Tick(default);
+        check(d.Heights[e] == roof - 2 * Level.DigStep && d.Heights[e] - d.Floors[e] == Level.MinHeight, "look up and place: the ceiling comes down a block at a time");
+        Tick(new Input { Place = true });
+        check(d.Heights[e] - d.Floors[e] == Level.MinHeight && p.Blocks == 1, "but never lower than a storey above the floor");
+
+        // ore you mine goes to the ship, not your block pack
+        int bi = Array.FindIndex(g.Hub, l => l.Ship != null);
+        g.Warp(bi);
+        int vein = Array.FindIndex(g.Level.Cells, c => c == 'N');
+        int before = p.Blocks;
+        g.HitBlock(vein % g.Level.W, vein / g.Level.W, 999);
+        check(p.Blocks == before && p.Ore[0] == 1, "ore goes to the ship, not your block pack");
     }
 
     static void FlightChecks(Action<bool, string> check)
