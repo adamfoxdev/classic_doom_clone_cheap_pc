@@ -6,10 +6,52 @@ namespace HexenSharp;
 /// their platforms, which the hints use to say how fast you'll need to be for each gap.
 /// </summary>
 public sealed record Course(string Id, string Name, string About, Func<MapDef> Map, bool Timed, string Intro,
-    (int x0, int x1, float floor)[] Platforms = null, float StartAngle = 0, bool Jetpack = false)
+    (int x0, int x1, float floor)[] Platforms = null, float StartAngle = 0, bool Jetpack = false, float Route = 0)
 {
     /// <summary>The leaderboard and ghost key for a class (the Velocity Hangar's are just the class, as they were first).</summary>
     public string Key(PClass cls) => Id == "hangar" ? cls.ToString() : $"{Id}/{cls}";
+
+    /// <summary>How far a run goes, start to finish: a gap course's length (from the start to the exit), or its set route.</summary>
+    public float RouteLength => Route > 0 ? Route : Platforms != null ? Platforms[^1].x1 - 3f : 0;
+
+    /// <summary>
+    /// The medal target times for a class, in seconds: the time to cover the route at an average of your class's run
+    /// speed (bronze), 1.35 times it (silver) and 1.7 times it (gold), rounded up to the half second. Classes that run
+    /// slower get more time; skills don't change the targets.
+    /// </summary>
+    public (float gold, float silver, float bronze) MedalTimes(PClass cls)
+    {
+        if (!Timed) return (0, 0, 0);
+        float run = 3.6f * ClassDef.All[(int)cls].Speed;
+        float T(float pace) => MathF.Ceiling(RouteLength / (pace * run) * 2) / 2;
+        return (T(Medals.GoldPace), T(Medals.SilverPace), T(Medals.BronzePace));
+    }
+
+    /// <summary>The medal a time earns as `cls` (None for no time, or slower than bronze).</summary>
+    public Medal MedalFor(PClass cls, float time)
+    {
+        if (time <= 0 || !Timed) return Medal.None;
+        var (gold, silver, bronze) = MedalTimes(cls);
+        return time <= gold ? Medal.Gold : time <= silver ? Medal.Silver : time <= bronze ? Medal.Bronze : Medal.None;
+    }
+}
+
+public enum Medal { None, Bronze, Silver, Gold }
+
+public static class Medals
+{
+    /// <summary>Average speed over the route, as a multiple of your class's run speed, for each medal.</summary>
+    public const float BronzePace = 1f, SilverPace = 1.35f, GoldPace = 1.7f;
+
+    public static uint Colour(Medal m) => m switch
+    {
+        Medal.Gold => Col.Rgb(255, 204, 60),
+        Medal.Silver => Col.Rgb(200, 212, 228),
+        Medal.Bronze => Col.Rgb(210, 130, 60),
+        _ => Col.Rgb(90, 86, 80),
+    };
+
+    public static string Name(Medal m) => m.ToString().ToUpperInvariant();
 }
 
 public static class Courses
@@ -30,7 +72,8 @@ public static class Courses
 
     public static readonly Course Circuit = new("circuit", "Circuit",
         "A LAP OF A LOOPED TRACK. KEEP YOUR SPEED THROUGH THE CORNERS BY STRAFING INTO THEM.",
-        CircuitMap, true, "Circuit: one lap, clockwise. Strafe into each corner to carry your speed round it.", StartAngle: MathF.PI);
+        CircuitMap, true, "Circuit: one lap, clockwise. Strafe into each corner to carry your speed round it.", StartAngle: MathF.PI,
+        Route: 96); // a lap on a line cutting the corners, between the centre line (110) and hugging the island (84)
 
     public static readonly Course FreeRoam = new("free", "Free Roam",
         "A WIDE OPEN FIELD WITH NOTHING IN IT: NO CLOCK, NO EXIT. PRACTISE HOWEVER YOU LIKE.",

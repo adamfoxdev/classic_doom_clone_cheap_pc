@@ -278,13 +278,25 @@ public sealed class Game
     {
         string key = Course.Key(P.Class);
         float best = Profile.CourseBestTime(key);
+        var had = Course.MedalFor(P.Class, best);
+        var medal = Course.MedalFor(P.Class, RunTime);
         int place = Profile.AddCourseRun(key, RunTime, RunnerName, DateTime.Now);
         if (place > 0) SaveProfile();
-        PlaySound(place == 1 ? Sfx.Secret : Sfx.Teleport, 1);
+        PlaySound(place == 1 || medal > had ? Sfx.Secret : Sfx.Teleport, 1);
         Messages.Clear();
-        Say(place == 1 ? $"Course cleared in {RunTime:0.00}s - a new best!"
-            : place > 0 ? $"Course cleared in {RunTime:0.00}s - #{place} on the leaderboard (best {best:0.00}s)."
-            : $"Course cleared in {RunTime:0.00}s (best {best:0.00}s).");
+        string earned = medal == Medal.None ? "" : $" {Medals.Name(medal)}.";
+        Say(place == 1 ? $"Course cleared in {RunTime:0.00}s - a new best!{earned}"
+            : place > 0 ? $"Course cleared in {RunTime:0.00}s - #{place} on the leaderboard (best {best:0.00}s).{earned}"
+            : $"Course cleared in {RunTime:0.00}s (best {best:0.00}s).{earned}");
+        if (medal > had) Say($"New medal: {Medals.Name(medal)}!");
+        var mine = medal > had ? medal : had;
+        if (mine < Medal.Gold)
+        {
+            var next = mine + 1;
+            var t = Course.MedalTimes(P.Class);
+            Say($"{Medals.Name(next)} is {(next == Medal.Gold ? t.gold : next == Medal.Silver ? t.silver : t.bronze):0.00}s.");
+        }
+        LastMedal = medal;
         LastRun = RunTime;
         LastPlace = place;
         // the ghost is your best run: this one replaces it if it's the new best, or if there's no ghost yet
@@ -355,6 +367,15 @@ public sealed class Game
     /// <summary>The time of the last finished practice run, and its place on the leaderboard (0 if off it).</summary>
     public float LastRun;
     public int LastPlace;
+    /// <summary>The medal the last finished practice run earned.</summary>
+    public Medal LastMedal;
+
+    /// <summary>The best medal the run in progress can still make (None once it's slower than bronze), and its time.</summary>
+    public (Medal medal, float time) NextMedal()
+    {
+        var (gold, silver, bronze) = Course.MedalTimes(P.Class);
+        return RunTime <= gold ? (Medal.Gold, gold) : RunTime <= silver ? (Medal.Silver, silver) : RunTime <= bronze ? (Medal.Bronze, bronze) : (Medal.None, 0);
+    }
 
     /// <summary>The name your practice runs go on the leaderboard under (`name` in the console).</summary>
     public string RunnerName = CleanName(Environment.UserName);
