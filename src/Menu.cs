@@ -51,7 +51,7 @@ public sealed class MenuSystem
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Character", "Options", "Quit" },
+        MenuPage.Main => new[] { "New game", "Practice", "Character", "Options", "Quit" },
         MenuPage.Pause => new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
@@ -177,11 +177,12 @@ public sealed class MenuSystem
         switch (Page, Cursor)
         {
             case (MenuPage.Main, 0): Show(MenuPage.Style); Cursor = (int)_g.Style; break;
-            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.PendingPractice = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Main, 1): _g.Style = GameStyle.Classic; _g.PendingPractice = true; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
             case (MenuPage.Style, 2): Back(); break;
-            case (MenuPage.Main, 1): Show(MenuPage.Character); break;
-            case (MenuPage.Main, 2): Show(MenuPage.Options); break;
-            case (MenuPage.Main, 3): _g.QuitRequested = true; break;
+            case (MenuPage.Main, 2): Show(MenuPage.Character); break;
+            case (MenuPage.Main, 3): Show(MenuPage.Options); break;
+            case (MenuPage.Main, 4): _g.QuitRequested = true; break;
             case (MenuPage.Pause, 0): Close(); _g.Paused = false; break;
             case (MenuPage.Pause, 1): Show(MenuPage.Character); break;
             case (MenuPage.Pause, 2): Show(MenuPage.Options); break;

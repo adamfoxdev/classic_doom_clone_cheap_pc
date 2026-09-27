@@ -3,7 +3,7 @@ namespace HexenSharp;
 /// <summary>Rebindable player actions.</summary>
 public enum Act
 {
-    Forward, Back, StrafeLeft, StrafeRight, TurnLeft, TurnRight, Attack, Use, Jump, Slide, Walk, UseItem, Place,
+    Forward, Back, StrafeLeft, StrafeRight, TurnLeft, TurnRight, Attack, Use, Jump, Jetpack, Slide, Walk, UseItem, Place,
     Weapon1, Weapon2, Weapon3, NextWeapon, PrevWeapon, Automap, Console, Screenshot, Character, CycleHud,
 }
 
@@ -83,6 +83,7 @@ public sealed class Bindings
         new(Act.Attack, "attack", "Attack", Keys.Mouse1, Keys.LeftControl),
         new(Act.Use, "use", "Use / push", Keys.Letter('E'), Keys.None),
         new(Act.Jump, "jump", "Jump", Keys.Space, Keys.None),
+        new(Act.Jetpack, "jetpack", "Jetpack (hold to fly)", Keys.Letter('Q'), Keys.None),
         new(Act.Slide, "slide", "Slide", Keys.Letter('C'), Keys.None),
         new(Act.Walk, "walk", "Walk / pull", Keys.LeftShift, Keys.RightShift),
         new(Act.UseItem, "useitem", "Use item", Keys.Letter('F'), Keys.None),
@@ -150,6 +151,7 @@ public sealed class Bindings
         i.Use = Pressed(k, Act.Use);
         i.Jump = Pressed(k, Act.Jump);
         i.JumpHeld = Down(k, Act.Jump);
+        i.JetHeld = Down(k, Act.Jetpack);
         i.SlideHeld = Down(k, Act.Slide);
         i.Slide = Pressed(k, Act.Slide);
         i.UseItem = Pressed(k, Act.UseItem);

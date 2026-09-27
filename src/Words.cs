@@ -82,7 +82,7 @@ public static class Words
         ["Chest: "] = "Crate: ",
         ["Wings of Wrath"] = "Jetpack",
         ["Wings of Wrath: recharged"] = "Jetpack: refuelled",
-        ["Wings of Wrath! Jump, then hold Jump to fly. Hold Slide to sink."] = "Jetpack! Jump, then hold Jump to fly. Hold Slide to sink.",
+        ["Wings of Wrath! Hold Q to fly. Hold Slide to sink."] = "Jetpack! Hold Q to fly. Hold Slide to sink.",
         ["The Wings of Wrath falter!"] = "Jetpack out of fuel!",
         ["WINGS"] = "JET",
         // doors, switches and the boss

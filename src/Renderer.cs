@@ -853,6 +853,7 @@ public sealed class Renderer
             }
         }
         DrawSpeed(g);
+        if (g.Practicing && style != HudStyle.Off) DrawRunClock(g);
         switch (style)
         {
             case HudStyle.Full: DrawStatusBar(g, label); break;
@@ -872,6 +873,19 @@ public sealed class Renderer
         uint c = pct >= 200 ? Col.Rgb(255, 120, 60) : pct >= 150 ? Col.Rgb(255, 220, 90) : Col.Rgb(200, 230, 255);
         CenterText(s, ViewH / 2 + 20, c);
     }
+
+    /// <summary>On the practice course: the run's time and your best, in the top-right corner (messages keep clear of it).</summary>
+    void DrawRunClock(Game g)
+    {
+        float best = g.Profile.CourseBest.GetValueOrDefault(g.P.Class.ToString());
+        string time = $"TIME {g.RunTime:0.00}", top = $"BEST {best:0.00}";
+        int y = g.Vars.ShowFps ? 12 : 3;
+        Text(W - 4 - Font.Width(time), y, time, g.RunStarted ? Col.Rgb(240, 236, 220) : Col.Rgb(150, 150, 160));
+        if (best > 0) Text(W - 4 - Font.Width(top), y + 10, top, Col.Rgb(255, 220, 90));
+    }
+
+    /// <summary>Room for the practice clock in the top-right corner.</summary>
+    const int RunClockW = 84;
 
     /// <summary>The classic status bar along the bottom of the screen.</summary>
     void DrawStatusBar(Game g, uint label)
@@ -1133,8 +1147,9 @@ public sealed class Renderer
     {
         int y = 3;
         if (g.ShowMap) y = 14;
+        int width = W - 8 - (g.Practicing ? RunClockW : 0);
         foreach (var (text, _) in g.Messages)
-            foreach (var line in Wrap(text, (W - 8) / Font.CharW))
+            foreach (var line in Wrap(text, width / Font.CharW))
             {
                 Text(4, y, line, Col.Rgb(240, 225, 170));
                 y += 9;

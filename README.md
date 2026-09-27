@@ -152,11 +152,14 @@ see [Rendered art pack](#rendered-art-pack-blender)).
 - **Vertical aiming.** Shots climb or dive to meet a monster above or below you, or follow your view when you
   look well up or down or fire from the air. Monsters aim their missiles up at you when you're on a ledge or
   flying.
-- **Jetpack** (the **Wings of Wrath** in the fantasy style): pick it up right by the start of the Hab Ring. Jump,
-  then hold Jump to fly. Keep holding to climb (up to the ceiling), hold Slide to sink, or let go of both to
-  hover. Fly up onto ledges and terraces you could never jump to. A gauge in the corner of the view shows the
-  fuel; it burns faster while climbing, and recharges whenever you're on the ground. Run dry in mid-air and
-  you'll drop.
+- **Jetpack** (the **Wings of Wrath** in the fantasy style): pick it up right by the start of the Hab Ring. It has
+  its own key, `Q`, so Jump stays free for bunny hopping. Hold `Q` to take off, from the ground or mid-air, and
+  keep holding to climb (up to the ceiling); hold Slide to sink, or let go of both to hover. Fly up onto ledges
+  and terraces you could never jump to. A gauge in the corner of the view shows the fuel; it burns faster while
+  climbing, and recharges whenever you're on the ground. Run dry in mid-air and you'll drop, and it won't
+  relight until you let go of `Q` and press it again.
+- **Strafe-jumping practice** (**Practice** on the title menu): the Velocity Hangar, a timed course of platforms
+  over gaps that widen from 2 cells to 6. See [Quake movement](#quake-movement).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
 - **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
@@ -204,7 +207,8 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | Left click / `Ctrl` | Attack |
 | `E` | Use (doors, levers, chests, lore stones, secret walls); push a stone block; pry at rubble (above and below you too, in the Bedrock Depths) |
 | `Shift+E` | Pull a stone block toward you |
-| `Space` | Jump (tap it as you land to bunny hop); hold in mid-air to fly with the jetpack |
+| `Space` | Jump (tap it as you land to bunny hop) |
+| `Q` | Jetpack: hold to take off and climb |
 | `C` | Slide (while moving); hold while flying to sink |
 | `1` `2` `3` / mouse wheel | Select weapon |
 | `F` | Use a healing item (Quartz Flask, else Mystic Urn) |
@@ -229,9 +233,23 @@ let go. In the air there's no friction, and pushing forward adds nothing, but **
    the ground friction, so the speed carries over and builds with every hop.
 
 A **SPEED** readout under your aim shows how fast you're going once you pass 110% of a run. It builds up to three
-times your run speed. Land and stop hopping, and friction brings you back to a run. The jetpack still steers
-directly, so you can set down on a narrow ledge; a quick tap of jump never lights it, only holding jump does.
+times your run speed. Land and stop hopping, and friction brings you back to a run. The jetpack is on its own key
+(`Q`), so hopping never lights it, and it still steers directly, so you can set down on a narrow ledge.
 Switch to the old direct movement with **Options → Movement** or `quakemove 0`.
+
+**Practice** on the title menu takes you (as whichever class you pick) to the **Velocity Hangar**, a straight hangar
+of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells:
+
+- The first gap takes a plain running jump. The rest need speed, and each platform tells you how much for the
+  next gap, worked out from your class's run speed. As the Marine it's about 160%, 205% and 205% (the last
+  platform sits half a unit lower, which buys a little hang time); the slower Engineer and Psion need more.
+- A torch in each corner of every platform marks where the gaps are.
+- Fall in and the lift pad on the gap floor carries you back up to the last platform you reached.
+- The run is timed from the moment you set off; the clock sits in the top-right corner, with your best for that
+  class under it. Step into the exit at the far end to finish: it tells you your time, keeps your best (saved with
+  your profile) and puts you back at the start for another go.
+
+![Strafe jumping over the Velocity Hangar's 5-wide gap](docs/velocity_hangar.png)
 
 ## Walkthrough (spoilers)
 

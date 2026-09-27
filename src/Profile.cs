@@ -32,6 +32,8 @@ public sealed class Profile
     public int TotalXp { get; set; }
     public int TotalKills { get; set; }
     public int Wins { get; set; }
+    /// <summary>Best strafe-jumping practice course times in seconds, by class.</summary>
+    public Dictionary<string, float> CourseBest { get; set; } = new();
 
     /// <summary>Experience needed to go from `level` to the next: 100, 282, 519, 800...</summary>
     public static int XpToNext(int level) => (int)(100 * Math.Pow(level, 1.5));
