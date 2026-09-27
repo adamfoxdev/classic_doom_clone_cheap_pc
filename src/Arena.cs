@@ -10,6 +10,10 @@ public sealed class ArenaState
     public bool Started, InIntermission;
     public int Wave, BestWave;
     public float Timer, BannerTime;
+    /// <summary>Time since the trials began, and when the last wave was cleared (a run's time on the leaderboard).</summary>
+    public float RunTime, ClearedAt;
+    /// <summary>This run has gone on the arena leaderboard (it ends once: death, restart or leaving).</summary>
+    public bool Recorded;
     public const float Intermission = 6f;
     public const int MaxAlive = 14;
 
@@ -88,6 +92,7 @@ public sealed class ArenaState
             return;
         }
 
+        if (g.Mode == GameMode.Playing) RunTime += dt;
         if (InIntermission)
         {
             Timer -= dt;
@@ -109,9 +114,11 @@ public sealed class ArenaState
             Timer = Intermission;
             BannerTime = 2.5f;
             BestWave = Math.Max(BestWave, Wave);
+            ClearedAt = RunTime;
             g.PlaySound(Sfx.Item, 1);
             g.Say($"Wave {Wave} cleared! Supplies have appeared at the altar.");
             g.GainXp(Game.Xp.PerWave * Wave);
+            if (g.ArenaMode) g.ArenaWaveCleared(Wave);
             Reward(g);
         }
     }
@@ -164,4 +171,19 @@ public sealed class ArenaState
             _lv.Things.Add(t);
         }
     }
+}
+
+/// <summary>
+/// Arena medals: for the waves a run clears, the same for every class. Every fifth wave brings Heresiarchs, so each
+/// medal is for getting past one more of those.
+/// </summary>
+public static class ArenaMedals
+{
+    public const int Bronze = 5, Silver = 10, Gold = 15;
+
+    public static Medal For(int waves) => waves >= Gold ? Medal.Gold : waves >= Silver ? Medal.Silver : waves >= Bronze ? Medal.Bronze : Medal.None;
+
+    /// <summary>The next medal after `waves` cleared, and the wave it takes (None, 0 once you have gold).</summary>
+    public static (Medal medal, int wave) Next(int waves) =>
+        waves < Bronze ? (Medal.Bronze, Bronze) : waves < Silver ? (Medal.Silver, Silver) : waves < Gold ? (Medal.Gold, Gold) : (Medal.None, 0);
 }

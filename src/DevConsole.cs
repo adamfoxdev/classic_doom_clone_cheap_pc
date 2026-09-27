@@ -202,6 +202,14 @@ public sealed class DevConsole
             if ((int)s < 0) { Print("usage: skill <vitality|power|agility|focus|thrusters>"); return; }
             Print(_g.SpendSkill(s) ? $"{s.ToString().ToLowerInvariant()} is now rank {_g.Profile.Rank(s)}" : "no points to spend, or that skill is maxed");
         });
+        Add("arena", "[fighter|cleric|mage]", "start a run in the Chaos Arena (your class unless you name one)", a =>
+        {
+            var names = Enum.GetNames<PClass>();
+            var n = a.Length > 1 ? names.FirstOrDefault(c => c.StartsWith(a[1], StringComparison.OrdinalIgnoreCase)) : null;
+            if (a.Length > 1 && n == null) { Print("usage: arena [fighter|cleric|mage]"); return; }
+            _g.StartArena(n != null ? Enum.Parse<PClass>(n) : _g.P?.Class ?? PClass.Fighter);
+            Open = false;
+        });
         Add("demo", "", "on a practice course: watch the demo play it (1/2/3 speed, E step by step, move to take over)", a =>
         {
             if (!_g.Practicing) { Print("demo: start a practice course first (title menu > Practice)"); return; }

@@ -237,11 +237,62 @@ public sealed class Game
         HubSource = () => new[] { c.Map().Build() };
         TestingMap = true;
         Practicing = true;
+        ArenaMode = false;
         Demo = DemoPaused = DemoSteps = false; Pilot = null; DemoTrack = null; PracticeSpeed = 1f;
         NewGame(cls); // sets the course up (SetUpCourse) once the map is built
         if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
         float best = Course.Timed ? Profile.CourseBestTime(Course.Key(P.Class)) : 0;
         if (best > 0) Say($"Your best as the {P.Def.Name}: {best:0.00}s.");
+    }
+
+    /// <summary>In the Chaos Arena (Main menu > Arena): wave survival, with its own leaderboard and medals.</summary>
+    public bool ArenaMode;
+    /// <summary>Picking a class from the class screen starts the arena rather than a new game.</summary>
+    public bool PendingArena;
+    /// <summary>The last arena run that ended, and its place on the leaderboard (0 if off it).</summary>
+    public ArenaRun LastArena;
+    public int LastArenaPlace;
+
+    /// <summary>Starts a run in the Chaos Arena with the given class. Always classic: the waves need a fight.</summary>
+    public void StartArena(PClass cls)
+    {
+        HubSource = () => new[] { Maps.ChaosArena.Build() };
+        TestingMap = true;
+        Practicing = false; Demo = false; PracticeSpeed = 1f;
+        ArenaMode = true;
+        Style = GameStyle.Classic;
+        NewGame(cls);
+        int best = Profile.ArenaBestWave(cls);
+        var (next, at) = ArenaMedals.Next(best);
+        Say(best > 0 ? $"Your best as the {P.Def.Name}: {best} wave{(best == 1 ? "" : "s")}." : "Step on the altar when you're ready.");
+        if (next != Medal.None) Say($"{Medals.Name(next)}: clear wave {at}.");
+    }
+
+    /// <summary>A wave is cleared in arena mode: a medal when it reaches one, and a new best past your old one.</summary>
+    public void ArenaWaveCleared(int wave)
+    {
+        int best = Profile.ArenaBestWave(P.Class);
+        var medal = ArenaMedals.For(wave);
+        if (medal != ArenaMedals.For(wave - 1) && medal > ArenaMedals.For(best)) { Say($"New medal: {Medals.Name(medal)}!"); PlaySound(Sfx.BossSight, 0.6f); }
+        if (wave == best + 1 && best > 0) Say($"A new best: wave {wave}!");
+    }
+
+    /// <summary>
+    /// Ends the arena run in progress (on death, Restart, leaving for the title or quitting) and puts it on the
+    /// leaderboard if it cleared a wave. Each run is recorded once.
+    /// </summary>
+    public void EndArenaRun()
+    {
+        if (!ArenaMode || Level?.Arena is not { Started: true, Recorded: false } a || P == null) return;
+        a.Recorded = true;
+        if (a.BestWave == 0) { LastArena = null; LastArenaPlace = 0; return; }
+        LastArena = new ArenaRun { Waves = a.BestWave, Time = a.ClearedAt, Kills = P.Kills, Name = RunnerName, When = DateTime.Now };
+        LastArenaPlace = Profile.AddArenaRun(P.Class, LastArena);
+        SaveProfile();
+        string msg = $"Run over: {a.BestWave} wave{(a.BestWave == 1 ? "" : "s")} in {a.ClearedAt:0.0}s, {P.Kills} kills.";
+        if (LastArenaPlace == 1) msg += " Your best!";
+        else if (LastArenaPlace > 0) msg += $" #{LastArenaPlace} on the leaderboard.";
+        Say(msg);
     }
 
     /// <summary>The demo is playing the course for you to watch (Esc > Watch demo, or 'demo').</summary>
@@ -511,6 +562,7 @@ public sealed class Game
         HubSource = () => new[] { map.Build() };
         TestingMap = true;
         Practicing = false;
+        ArenaMode = false;
         NewGame(cls);
         Say($"Play-testing '{map.Name}'.");
     }
@@ -537,6 +589,8 @@ public sealed class Game
 
     public void GoToTitle()
     {
+        EndArenaRun();
+        ArenaMode = false;
         SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
         Practicing = false; Demo = false; PracticeSpeed = 1f;
@@ -594,6 +648,7 @@ public sealed class Game
 
     public void NewGame(PClass cls)
     {
+        EndArenaRun(); // Restart, or trying again after dying
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
         ChestsTotal = 0;
@@ -607,7 +662,7 @@ public sealed class Game
         string NextName() => names[nameIndex++ % names.Count];
         foreach (var lv in Hub)
         {
-            if (!Practicing) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses stay clear
+            if (!Practicing && !ArenaMode) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses and the arena stay clear
             ChestsTotal += lv.Things.Count(t => t is Chest);
 
             // treasure in secret nooks: a relic when relaxed, a Mystic Urn in classic
@@ -700,10 +755,11 @@ public sealed class Game
                 if ((inp.Slot >= 1 && inp.Slot <= 3) || inp.Confirm)
                 {
                     if (PendingPractice) { PendingPractice = false; StartPractice((PClass)MenuIndex, PendingCourse); }
+                    else if (PendingArena) { PendingArena = false; StartArena((PClass)MenuIndex); }
                     else NewGame((PClass)MenuIndex);
                     PlaySound(Sfx.Teleport, 1);
                 }
-                if (inp.Pause) { PendingPractice = false; GoToTitle(); }
+                if (inp.Pause) { PendingPractice = PendingArena = false; GoToTitle(); }
                 return;
             case GameMode.Victory:
                 // a play-tested map starts over, so you can keep iterating; the hub goes back to the title
@@ -1570,10 +1626,13 @@ public sealed class Game
 
     float PlayerDamageMult(int slot) => Profile.DamageMult * Profile.WeaponMult(P.Class, slot);
 
+    /// <summary>Play-testing a custom map, or on a practice course, earns no experience; the arena does.</summary>
+    bool NoXp => TestingMap && !ArenaMode;
+
     /// <summary>Adds experience, announcing level-ups.</summary>
     public void GainXp(int amount)
     {
-        if (amount <= 0 || TestingMap) return;
+        if (amount <= 0 || NoXp) return;
         RunXp += amount;
         XpPopup = XpPopupTime > 0 ? XpPopup + amount : amount;
         XpPopupTime = 1.6f;
@@ -1589,7 +1648,7 @@ public sealed class Game
 
     void KilledWith(Monster m, int slot)
     {
-        if (TestingMap) return;
+        if (NoXp) return;
         int xp = Xp.Kill(m.Def);
         Profile.TotalKills++;
         GainXp(xp);
@@ -2366,6 +2425,7 @@ public sealed class Game
             Mode = GameMode.Dead;
             SaveProfile();
             PlaySound(Sfx.PlayerDeath, 1);
+            if (ArenaMode) { EndArenaRun(); Say("Press Enter to try again."); return; }
             Say(CanRespawn ? "You have died. Press Enter to return to the checkpoint." : "You have died. Press Enter to try again.");
         }
         else PlaySound(Sfx.PlayerPain, 1);

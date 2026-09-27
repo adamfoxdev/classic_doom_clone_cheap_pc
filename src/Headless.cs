@@ -56,6 +56,8 @@ public static class Headless
         ConsoleChecks(Check);
         Console.WriteLine("Chaos Arena waves:");
         ArenaChecks(Check);
+        Console.WriteLine("Arena mode:");
+        ArenaModeChecks(Check);
 
         Console.WriteLine("Dark Bishop:");
         BishopChecks(Check);
@@ -124,7 +126,7 @@ public static class Headless
     {
         var hub = Maps.BuildHub();
         int qi = Array.FindIndex(hub, l => l.RawName == "Deepdelve Quarry");
-        check(qi == 5 && hub.Count(l => l.FindMark('5') != null) == 2 && hub[0].FindMark('5') != null,
+        check(qi == 4 && hub.Count(l => l.FindMark('5') != null) == 2 && hub[0].FindMark('5') != null,
               "portal 5 in Winnowing Hall's courtyard leads to Deepdelve Quarry");
         var lv = hub[qi];
         var (ax, ay) = lv.ArrivalCell();
@@ -255,7 +257,7 @@ public static class Headless
         var hub = Maps.BuildHub();
         int fi = Array.FindIndex(hub, l => l.Flight), mi = Array.FindIndex(hub, l => l.RawName == "Verdant Moon");
         var lane = hub[fi];
-        check(fi == 8 && mi == 9 && hub.Count(l => l.Flight) == 1, "the Void Crossing is flown, and the Verdant Moon lies beyond it");
+        check(fi == 7 && mi == 8 && hub.Count(l => l.Flight) == 1, "the Void Crossing is flown, and the Verdant Moon lies beyond it");
         check(hub.Count(l => l.FindMark('8') != null) == 2 && lane.FindMark('8') != null && hub[mi].FindMark('8') != null, "portal 8 at the end of the crossing lands on the moon");
         check(hub.Count(l => l.FindMark('9') != null) == 2 && hub[0].FindMark('9') != null && hub[mi].FindMark('9') != null, "portal 9 on the moon leads home to Winnowing Hall");
         var rocks = lane.Things.OfType<Asteroid>().ToList();
@@ -332,7 +334,7 @@ public static class Headless
         var hub = Maps.BuildHub();
         int bi = Array.FindIndex(hub, l => l.RawName == "Barren World");
         var lv = hub[bi];
-        check(bi == 7 && lv.Ship != null && lv.Ship.Stage == 0 && lv.ThemeId == "barren", "the Barren World has a wrecked ship");
+        check(bi == 6 && lv.Ship != null && lv.Ship.Stage == 0 && lv.ThemeId == "barren", "the Barren World has a wrecked ship");
         check(hub[0].FindMark('7') != null && lv.FindMark('7') != null && hub.Count(l => l.FindMark('7') != null) == 2, "portal 7 in Winnowing Hall's courtyard leads to the Barren World");
         for (int k = 0; k < Ship.Need.Length; k++)
         {
@@ -399,8 +401,8 @@ public static class Headless
         var hub = Maps.BuildHub();
         int di = Array.FindIndex(hub, l => l.RawName == "Bedrock Depths");
         var lv = hub[di];
-        check(di == 6 && lv.Dig && hub.Count(l => l.Dig) == 1, "the Bedrock Depths is the hub's only dig map");
-        check(lv.FindMark('6') != null && hub[5].FindMark('6') != null && hub.Count(l => l.FindMark('6') != null) == 2,
+        check(di == 5 && lv.Dig && hub.Count(l => l.Dig) == 1, "the Bedrock Depths is the hub's only dig map");
+        check(lv.FindMark('6') != null && hub[4].FindMark('6') != null && hub.Count(l => l.FindMark('6') != null) == 2,
               "portal 6 in the quarry's strongroom leads to the Bedrock Depths");
         int open = Enumerable.Range(0, lv.Cells.Length).Count(i => lv.Cells[i] == '\0');
         int interior = (lv.W - 2) * (lv.H - 2);
@@ -473,7 +475,7 @@ public static class Headless
         // half a step down, so you can walk back up onto the portal
         p.Pitch = 0; p.Angle = MathF.PI;
         Tick(new Input { Move = 1 }, 40);
-        check(g.Level == g.Hub[5], "walk up out of the hole and back onto the portal to the quarry");
+        check(g.Level == g.Hub[4], "walk up out of the hole and back onto the portal to the quarry");
 
         // floors stop at the bedrock and ceilings at the roof
         d.Floors[e] = 0;
@@ -524,7 +526,7 @@ public static class Headless
     {
         var hub = Maps.BuildHub();
         int si = Array.FindIndex(hub, l => l.RawName == "Windspire");
-        check(si == 4, "the Windspire joins the hub after the Chaos Arena");
+        check(si == 3, "the Windspire joins the hub after Darkmere Crypt");
         var lv = hub[si];
         var (ax, ay) = lv.ArrivalCell();
         var walk = lv.Reachable(ax, ay);
@@ -566,7 +568,7 @@ public static class Headless
         var sp = g.Level;
         var p = g.P;
         check(sp.RawName == "Windspire" && MathF.Abs(p.X - 3.5f) < 0.01f && MathF.Abs(p.Y - 18.5f) < 0.01f, "warping in lands on the arrival portal");
-        sp.Things.RemoveAll(t => t is Monster);
+        sp.Things.RemoveAll(t => t is Monster or Chest); // chests land at random, and one can sit on the flight path
         void Face(float tx, float ty) => p.Angle = MathF.Atan2(ty - p.Y, tx - p.X);
         void WalkTo(float tx, float ty)
         {
@@ -658,7 +660,7 @@ public static class Headless
             MapFiles.Export(dir);
             Console.SetOut(outWriter);
             var files = Directory.GetFiles(dir, "*.hxm");
-            check(files.Length == Maps.Hub.Length && files.All(f => MapDoc.Parse(File.ReadAllText(f)).Rows().Length > 0),
+            check(files.Length == Maps.Builtin.Count() && files.All(f => MapDoc.Parse(File.ReadAllText(f)).Rows().Length > 0),
                   $"--export-maps writes every built-in map ({files.Length})");
 
             // a map to play-test: start, exit, a wall between them with a door
@@ -1092,6 +1094,9 @@ public static class Headless
               "the pause menu's items all fit above its footer");
         check(Renderer.OptionsTop + (opts - 1) * Renderer.OptionsRow + 9 < Renderer.OptionsFooter && Renderer.OptionsFooter + 8 <= Renderer.H,
               $"so do all {opts} Options items");
+        int main = g.Menu.Items(MenuPage.Main).Length;
+        check(Renderer.TitleTop + (main - 1) * Renderer.TitleRow + 9 < Renderer.TitleFooter && Renderer.TitleFooter + 8 <= Renderer.H,
+              $"and all {main} title menu items");
     }
 
     static void CourseChecks(Action<bool, string> check)
@@ -1201,8 +1206,8 @@ public static class Headless
         g.Menu.Show(MenuPage.Leaderboard);
         check(g.Menu.BoardCourse == Courses.Circuit, "on a course, the leaderboard opens on it");
         var seen = new List<string>();
-        for (int k = 0; k < 3; k++) { g.Menu.Update(new Input { Down = true }, 1f / 35f); seen.Add(g.Menu.BoardCourse.Id); }
-        check(seen.SequenceEqual(new[] { "hangar", "descent", "circuit" }), "Up/Down step through the timed courses (Free Roam has no board)");
+        for (int k = 0; k < 4; k++) { g.Menu.Update(new Input { Down = true }, 1f / 35f); seen.Add(g.Menu.BoardArena ? "arena" : g.Menu.BoardCourse.Id); }
+        check(seen.SequenceEqual(new[] { "arena", "hangar", "descent", "circuit" }), "Up/Down step through the timed courses and the arena (Free Roam has no board)");
         g.Menu.Close(); g.Paused = false;
 
         // picking Free Roam from the menus
@@ -2236,12 +2241,9 @@ public static class Headless
         g.P.X -= 1.2f; Tick(default);
         check(g.Level == keepLv, "and brings you back to the vault");
 
-        // portal 3 in the courtyard reaches the arena
-        g.Warp(0);
-        Tick(default); // step off the arrival spot so portals re-arm
-        var p3 = g.Level.FindMark('3').Value;
-        g.P.X = p3.x; g.P.Y = p3.y; Tick(default);
-        check(g.Level == g.Hub[3], "portal 3 leads to the Chaos Arena");
+        // the Chaos Arena has moved to its own title menu item: no portal 3, and no arena, in the hub
+        check(g.Hub.All(l => l.FindMark('3') == null) && g.Hub.All(l => l.Arena == null && l.RawName != "Chaos Arena"),
+              "the Chaos Arena isn't in the hub any more (it's Arena on the title menu)");
     }
 
     static void MovementChecks(Action<bool, string> check)
@@ -2316,18 +2318,110 @@ public static class Headless
         Tick(default, 5);
         check(g.Mode == GameMode.Playing && g.P.Health > 0, "god mode survives a lethal hit");
         foreach (char c in "visit4") Tick(new Input { Typed = c.ToString() });
-        check(g.Level == g.Hub[3], "typing 'visit4' warps to the arena");
+        check(g.Level == g.Hub[3], "typing 'visit4' warps to the fourth map");
         foreach (char c in "mapsco") Tick(new Input { Typed = c.ToString() });
         check(g.Level.Seen.All(s => s), "typing 'mapsco' reveals the map");
+    }
+
+    static void ArenaModeChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        var said = new List<string>();
+        void Tick(Input i, int n = 1) { for (int k = 0; k < n; k++) { g.Update(i, 1f / 35f); said.AddRange(g.Messages.Select(m => m.text)); } }
+        bool Said(string s) => said.Any(m => m.Contains(s));
+
+        // Arena on the title menu, then a class, puts you in the Chaos Arena's armoury
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Main), "Arena");
+        check(g.Menu.Cursor == 2, "Arena sits under Practice on the title menu");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(g.Mode == GameMode.ClassSelect && g.PendingArena, "and asks for a class");
+        Tick(new Input { Slot = 3 });
+        var a = g.Level.Arena;
+        check(g.ArenaMode && g.P.Class == PClass.Mage && g.Level.RawName == "Chaos Arena" && g.Hub.Length == 1 && !g.Relaxed,
+              "picking one starts the Chaos Arena on its own");
+        check(a != null && !a.Started && g.Level.MarkAt(g.P.X, g.P.Y) != '!' && !g.Level.Things.Any(t => t is Chest),
+              "you start in the armoury, with no chests about, and the waves wait for the altar");
+        var pause = g.Menu.Items(MenuPage.Pause);
+        check(pause.Contains("Leaderboard") && !pause.Contains("Watch demo"), "its pause menu has the leaderboard");
+
+        // clear waves: medals at 5, 10 and 15, the same for every class
+        check(ArenaMedals.For(4) == Medal.None && ArenaMedals.For(5) == Medal.Bronze && ArenaMedals.For(10) == Medal.Silver && ArenaMedals.For(15) == Medal.Gold && ArenaMedals.For(30) == Medal.Gold,
+              "medals for clearing 5, 10 and 15 waves");
+        check(ArenaMedals.Next(0) == (Medal.Bronze, 5) && ArenaMedals.Next(7) == (Medal.Silver, 10) && ArenaMedals.Next(15) == (Medal.None, 0), "and the next one to aim for");
+        g.Vars.God = true;
+        var altar = g.Level.FindMark('!').Value;
+        g.P.X = altar.x; g.P.Y = altar.y;
+        void ClearTo(int waves)
+        {
+            for (int f = 0; f < 35 * 60 * 3 && a.BestWave < waves; f++) { Tick(default); g.KillAll(); }
+        }
+        int xp0 = g.Profile.TotalXp;
+        ClearTo(5);
+        check(g.Profile.TotalXp > xp0, "clearing waves earns experience, as it always has");
+        check(a.Started && a.BestWave == 5 && a.ClearedAt > 0 && Said("New medal: BRONZE!"), $"clearing wave 5 earns bronze ({a.BestWave} waves in {a.ClearedAt:0.0}s)");
+
+        // dying ends the run and puts it on the leaderboard
+        g.Vars.God = false;
+        g.P.Kills = 42;
+        g.DamagePlayer(100000);
+        Tick(default);
+        var board = g.Profile.ArenaBoard(PClass.Mage);
+        check(g.Mode == GameMode.Dead && board.Count == 1 && board[0].Waves == 5 && board[0].Kills == 42 && board[0].Name == g.RunnerName && g.LastArenaPlace == 1,
+              "dying ends the run: its waves, time and kills go on the leaderboard");
+        check(Said("Run over: 5 waves") && Said("Your best!"), "and it tells you how you did");
+        check(g.Profile.ArenaBestWave(PClass.Mage) == 5 && g.Profile.ArenaBestWave(PClass.Fighter) == 0, "each class has its own board");
+        for (int f = 0; f < 35 * 3 && g.Mode == GameMode.Dead; f++) Tick(new Input { Confirm = f % 2 == 0 });
+        check(g.Mode == GameMode.Playing && g.ArenaMode && !g.Level.Arena.Started && board.Count == 1, "Enter tries again from the armoury, and the run isn't counted twice");
+
+        // a run that clears nothing isn't recorded; leaving mid-run records it
+        a = g.Level.Arena;
+        g.Paused = true; g.Menu.Show(MenuPage.Pause);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Pause), "Restart");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(board.Count == 1 && g.ArenaMode, "restarting before the altar doesn't record a run");
+        a = g.Level.Arena;
+        g.Vars.God = true;
+        g.P.X = altar.x; g.P.Y = altar.y;
+        ClearTo(2);
+        g.GoToTitle();
+        check(board.Count == 2 && board[0].Waves == 5 && board[1].Waves == 2 && !g.ArenaMode, "quitting to the title ends the run and records it, below a better one");
+
+        // more waves beats fewer; as many waves, the quicker run is ahead
+        var pr = new Profile();
+        pr.AddArenaRun(PClass.Fighter, new ArenaRun { Waves = 3, Time = 90 });
+        pr.AddArenaRun(PClass.Fighter, new ArenaRun { Waves = 6, Time = 300 });
+        int place = pr.AddArenaRun(PClass.Fighter, new ArenaRun { Waves = 3, Time = 80 });
+        var fb = pr.ArenaBoard(PClass.Fighter);
+        check(place == 2 && fb.Select(r => (r.Waves, r.Time)).SequenceEqual(new[] { (6, 300f), (3, 80f), (3, 90f) }), "more waves first, then the quicker");
+        for (int i = 0; i < 12; i++) pr.AddArenaRun(PClass.Fighter, new ArenaRun { Waves = 4, Time = 100 + i });
+        check(fb.Count == Profile.BoardSize && fb[0].Waves == 6, "the board keeps the best ten");
+        var back = System.Text.Json.JsonSerializer.Deserialize<Profile>(pr.ToJson());
+        check(back.ArenaBestWave(PClass.Fighter) == 6 && back.ArenaBoard(PClass.Fighter).Count == Profile.BoardSize, "and it's saved with your profile");
+
+        // the leaderboard: the arena's board is one Up/Down away, and opens on it from the arena's pause menu
+        g.Con.Execute("arena mage");
+        check(g.ArenaMode && g.P.Class == PClass.Mage && g.Level.RawName == "Chaos Arena", "'arena mage' in the console starts it too");
+        g.Paused = true; g.Menu.Show(MenuPage.Pause); g.Menu.Show(MenuPage.Leaderboard);
+        check(g.Menu.BoardArena && g.Menu.BoardClass == PClass.Mage, "in the arena, the leaderboard opens on the arena's board");
+        var r = new Renderer();
+        r.Render(g);
+        check(r.Fb.Count(px => px == Medals.Colour(Medal.Bronze)) > 20, "with a medal by each run and the wave targets");
+        g.Menu.Close(); g.Paused = false;
+
+        // the HUD shows your best and the next medal
+        r.Render(g);
+        int bestPx = Enumerable.Range(10, 10).Sum(y => Enumerable.Range(Renderer.W - 100, 96).Count(x => r.Fb[y * Renderer.W + x] == Col.Rgb(255, 220, 90)));
+        int nextPx = Enumerable.Range(20, 10).Sum(y => Enumerable.Range(Renderer.W - 100, 96).Count(x => r.Fb[y * Renderer.W + x] == Medals.Colour(Medal.Silver)));
+        check(bestPx > 20 && nextPx > 20, "the HUD shows your best, and the next medal to go for");
+        g.GoToTitle();
     }
 
     static void ArenaChecks(Action<bool, string> check)
     {
         var g = new Game { FixedSeed = 1 };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
-        g.NewGame(PClass.Fighter);
+        g.StartArena(PClass.Fighter);
         g.Vars.God = true;
-        g.Warp(3);
         var a = g.Level.Arena;
         check(a != null && !a.Started, "arena waits for the player");
         var altar = g.Level.FindMark('!').Value;
@@ -2463,14 +2557,15 @@ public static class Headless
         keys.Hit.Add(Keys.WheelDown); check(Read().Cycle == 1, "mouse wheel cycles weapons"); keys.Hit.Clear();
         keys.Hit.Add(Keys.Space); check(Read().Jump, "Space jumps"); keys.Hit.Clear();
 
-        // title menu: New game / Practice / Leaderboard / Character / Options / Quit
+        // title menu: New game / Practice / Arena / Leaderboard / Character / Options / Quit
         check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
-        Press(Keys.Down); Press(Keys.Down); Press(Keys.Down); Press(Keys.Down);
+        for (int k = 0; k < 5; k++) Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
         Press(Keys.Escape);
-        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 4, "Esc goes back to the main menu");
-        Press(Keys.Up); Press(Keys.Up); Press(Keys.Up); Press(Keys.Up); Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 5, "Esc goes back to the main menu");
+        for (int k = 0; k < 5; k++) Press(Keys.Up);
+        Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
         Press(Keys.Enter);
         check(g.Mode == GameMode.ClassSelect && g.Style == GameStyle.Classic, "Classic goes to class select");
@@ -2572,7 +2667,7 @@ public static class Headless
         // secrets and lore exist in both modes
         var classic = new Game { FixedSeed = 4 };
         classic.NewGame(PClass.Fighter);
-        check(classic.SecretsTotal == 6 && classic.LoreTotal == 24, $"6 secrets and 24 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.SecretsTotal == 5 && classic.LoreTotal == 21, $"5 secrets and 21 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
         check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
@@ -2675,11 +2770,17 @@ public static class Headless
             lv0.Things.RemoveAll(t => t == c || t is Pickup { Kind: not PickupKind.Relic });
         }
         check(traps == 0, "chests are never traps");
-        g.Warp(3);
-        var altar = g.Level.FindMark('!').Value;
-        g.P.X = altar.x; g.P.Y = altar.y;
-        Tick(default, 35 * 3);
-        check(!g.Level.Arena.Started && !g.Level.Things.Any(t => t is Monster), "the arena stays quiet");
+        {
+            // an arena map played relaxed (a custom map, say) stays quiet; the Arena mode itself is always classic
+            var q = new Game { FixedSeed = 1, Style = GameStyle.Relaxed };
+            q.StartTest(Maps.ChaosArena, PClass.Fighter);
+            var altar = q.Level.FindMark('!').Value;
+            q.P.X = altar.x; q.P.Y = altar.y;
+            for (int k = 0; k < 35 * 3; k++) q.Update(default, 1f / 35f);
+            check(!q.Level.Arena.Started && !q.Level.Things.Any(t => t is Monster), "an arena stays quiet");
+            q.StartArena(PClass.Fighter);
+            check(!q.Relaxed && q.ArenaMode, "but the Arena on the title menu is always a fight");
+        }
 
         // exploring raises the explored percentage
         float e0 = Discovery.Explored(g.Hub);
@@ -2717,7 +2818,7 @@ public static class Headless
         var g = new Game { FixedSeed = 1, MapsDir = dir };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
 
-        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Leaderboard", "Character", "Options", "Quit" }),
+        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Arena", "Leaderboard", "Character", "Options", "Quit" }),
               "the title menu no longer has a level editor (maps are made in tools/editor)");
         g.Con.Execute("edit");
         check(g.Con.Log.Last().Contains("unknown"), "the 'edit' console command is gone");
@@ -2778,7 +2879,7 @@ public static class Headless
         var hub = Maps.BuildHub();
         var wh = hub[0];
         check(wh.HeightAt(14.5f, 5.5f) == 3f, "Winnowing Hall's great hall is 3 tall");
-        check(wh.HeightAt(4.5f, 18.5f) == 3.5f && hub[3].HeightAt(15.5f, 8.5f) == 3.5f, "the boss arena and Chaos Arena tower at 3.5");
+        check(wh.HeightAt(4.5f, 18.5f) == 3.5f && Maps.ChaosArena.Build().HeightAt(15.5f, 8.5f) == 3.5f, "the boss arena and Chaos Arena tower at 3.5");
         check(wh.HeightAt(17.5f, 12.5f) == 1f, "corridors stay one storey");
         check(Enumerable.Range(0, wh.Cells.Length).Where(i => Level.IsDoor(wh.Cells[i])).All(i => wh.Heights[i] == 1f), "doors are always one storey");
         check(hub[2].HeightAt(23.5f, 8.5f) == 1f, "the crypt's block-puzzle room stays one storey");
@@ -3290,9 +3391,8 @@ public static class Headless
         Shot("13_darkmere_crypt");
 
         // Chaos Arena mid-wave
-        g.NewGame(PClass.Cleric);
+        g.StartArena(PClass.Cleric);
         g.Vars.God = true; g.Vars.Freeze = false;
-        g.Warp(3);
         var altar = g.Level.FindMark('!').Value;
         g.P.X = altar.x; g.P.Y = altar.y;
         Tick(default, 1);
@@ -3314,6 +3414,22 @@ public static class Headless
         Shot("15_console");
         g.Con.Open = false;
         g.Vars.Fov = 74;
+
+        // the arena's own records: its leaderboard, and your best and next medal as a run starts
+        {
+            var arenaDay = new DateTime(2026, 9, 20);
+            foreach (var (w, t, k, n, d) in new[] { (16, 612.4f, 391, "ACE-1", 5), (12, 455.0f, 262, "RAIL", 1), (11, 431.7f, 240, "PLAYER", 7), (9, 318.2f, 170, "NOVA", 3), (6, 190.5f, 88, "RAIL", 0), (4, 121.9f, 41, "PLAYER", 2) })
+                g.Profile.AddArenaRun(PClass.Cleric, new ArenaRun { Waves = w, Time = t, Kills = k, Name = n, When = arenaDay.AddDays(d) });
+            g.Paused = true; g.Menu.Show(MenuPage.Pause); g.Menu.Show(MenuPage.Leaderboard);
+            Shot("96_arena_leaderboard");
+            g.Menu.Close(); g.Paused = false; g.Vars.Freeze = false; g.Vars.God = false;
+            g.StartArena(PClass.Cleric);
+            g.Vars.Freeze = true;
+            Tick(default, 2);
+            Shot("97_arena_start");
+            g.Vars.Freeze = false;
+            g.GoToTitle();
+        }
 
         // a chest, closed then opened
         g.FixedSeed = 3;

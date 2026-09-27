@@ -68,7 +68,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 33, OptionsRow = 12, OptionsFooter = 188;
+    public const int TitleTop = 122, TitleRow = 10, TitleFooter = 192, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 33, OptionsRow = 12, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected)
     {
@@ -165,6 +165,7 @@ public sealed class Renderer
         uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
         CenterText("LEADERBOARD", 6, gold, 2);
         var def = ClassDef.All[(int)m.BoardClass];
+        if (m.BoardArena) { DrawArenaBoard(g, def); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
         var (tg, ts, tb) = m.BoardCourse.MedalTimes(m.BoardClass);
         string targets = $"GOLD {tg:0.0}   SILVER {ts:0.0}   BRONZE {tb:0.0}";
@@ -195,7 +196,53 @@ public sealed class Renderer
             }
         }
         CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
-        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: COURSE   ESC: BACK", 186, MenuDim);
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>The arena leaderboard for one class: the runs that cleared the most waves, then the quickest.</summary>
+    void DrawArenaBoard(Game g, ClassDef def)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        CenterText($"{Words.T("CHAOS ARENA")}   < {def.Name.ToUpperInvariant()} >", 26, blue);
+        DrawArenaTargets(36);
+        var runs = g.Profile.ArenaBoard(m.BoardClass);
+        if (runs.Count == 0)
+        {
+            CenterText("NO RUNS YET.", 70, MenuText);
+            CenterText("PICK ARENA ON THE TITLE MENU AND CLEAR A WAVE.", 82, MenuDim);
+        }
+        else
+        {
+            var latest = runs.MaxBy(r => r.When);
+            Text(18, 48, "#", MenuDim); Text(46, 48, "WAVES", MenuDim); Text(82, 48, "TIME", MenuDim); Text(124, 48, "KILLS", MenuDim);
+            Text(160, 48, "NAME", MenuDim); Text(250, 48, "DATE", MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                MedalDot(36, y + 1, ArenaMedals.For(r.Waves));
+                uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
+                Text(18, y, $"{i + 1,2}", c);
+                Text(52, y, $"{r.Waves,2}", c);
+                Text(82, y, $"{r.Time:0.0}", c);
+                Text(130, y, $"{r.Kills}", c);
+                Text(160, y, r.Name, c);
+                Text(250, y, r.When == default ? "-" : r.When.ToString("yyyy-MM-dd"), c);
+            }
+        }
+        CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>The arena's medal targets on one line, each in its medal's colour.</summary>
+    void DrawArenaTargets(int y)
+    {
+        string g1 = $"GOLD WAVE {ArenaMedals.Gold}", s1 = $"SILVER WAVE {ArenaMedals.Silver}", b1 = $"BRONZE WAVE {ArenaMedals.Bronze}";
+        int x = (W - Font.Width($"{g1}   {s1}   {b1}")) / 2;
+        Text(x, y, g1, Medals.Colour(Medal.Gold));
+        Text(x + Font.Width(g1 + "   "), y, s1, Medals.Colour(Medal.Silver));
+        Text(x + Font.Width($"{g1}   {s1}   "), y, b1, Medals.Colour(Medal.Bronze));
     }
 
     /// <summary>For each class on a course: the medal your best time earned, the time, and the targets.</summary>
@@ -869,9 +916,30 @@ public sealed class Renderer
     void DrawArenaHud(Game g)
     {
         var a = g.Level.Arena;
-        if (a == null || !a.Started) return;
-        string status = a.InIntermission ? $"WAVE {a.Wave} CLEARED" : $"WAVE {a.Wave}   ENEMIES {a.Remaining}";
-        if (g.Vars.Hud != HudStyle.Off) Text(W - 4 - Font.Width(status), g.Vars.ShowFps ? 12 : 3, status, Col.Rgb(230, 120, 255));
+        if (a == null) return;
+        int top = g.Vars.ShowFps ? 12 : 3;
+        if (g.ArenaMode && g.Vars.Hud != HudStyle.Off)
+        {
+            // under the wave count: your best, and the next medal you haven't got (by this run or your best)
+            int best = g.Profile.ArenaBestWave(g.P.Class);
+            string line = best > 0 ? $"BEST {best} WAVE{(best == 1 ? "" : "S")}" : "NO BEST YET";
+            Text(W - 4 - Font.Width(line), top + 10, line, Col.Rgb(255, 220, 90));
+            var (next, at) = ArenaMedals.Next(Math.Max(best, a.BestWave));
+            if (next != Medal.None)
+            {
+                string nm = $"{Medals.Name(next)} AT {at}";
+                Text(W - 4 - Font.Width(nm) - 9, top + 20, nm, Medals.Colour(next));
+                MedalDot(W - 9, top + 21, next);
+            }
+            else
+            {
+                Text(W - 4 - Font.Width("GOLD") - 9, top + 20, "GOLD", Medals.Colour(Medal.Gold));
+                MedalDot(W - 9, top + 21, Medal.Gold);
+            }
+        }
+        if (!a.Started) return;
+        string status = a.InIntermission ? $"WAVE {a.Wave} CLEARED" : $"WAVE {a.Wave}  LEFT {a.Remaining}";
+        if (g.Vars.Hud != HudStyle.Off) Text(W - 4 - Font.Width(status), top, status, Col.Rgb(230, 120, 255));
         if (a.BannerTime > 0)
         {
             string big = a.InIntermission ? "WAVE CLEARED!" : $"WAVE {a.Wave}";
@@ -1059,7 +1127,7 @@ public sealed class Renderer
     }
 
     /// <summary>Room for the practice clock in the top-right corner.</summary>
-    const int RunClockW = 84;
+    const int RunClockW = 84, ArenaHudW = 100;
 
     /// <summary>The classic status bar along the bottom of the screen.</summary>
     void DrawStatusBar(Game g, uint label)
@@ -1321,7 +1389,7 @@ public sealed class Renderer
     {
         int y = 3;
         if (g.ShowMap) y = 14;
-        int width = W - 8 - (g.Practicing ? RunClockW : 0);
+        int width = W - 8 - (g.Practicing ? RunClockW : g.ArenaMode ? ArenaHudW : 0);
         foreach (var (text, _) in g.Messages)
             foreach (var line in Wrap(text, width / Font.CharW))
             {
@@ -1350,22 +1418,24 @@ public sealed class Renderer
     {
         StoneBackdrop(g.Time);
         CenterText("HEXEN SHARP", 28, Col.Rgb(230, 170, 50), 4);
-        CenterText(Words.T("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#"), 68, Col.Rgb(210, 200, 180));
+        CenterText(Words.T("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#"), 64, Col.Rgb(210, 200, 180));
         // a few monsters for show
         var e = Art.Monsters["ettin"][(int)(g.Time * 2) % 2];
         var a = Art.Monsters["afrit"][(int)(g.Time * 3) % 2];
         var c = Art.Monsters["centaur"][(int)(g.Time * 2) % 2];
-        Icon(e, 56, 80, 48); Icon(c, 136, 80, 48); Icon(a, 216, 78, 48);
+        Icon(e, 56, 74, 48); Icon(c, 136, 74, 48); Icon(a, 216, 72, 48);
         var items = g.Menu.Items(MenuPage.Main);
-        for (int i = 0; i < items.Length; i++) MenuItem(items[i], 128 + i * 10, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
-        CenterText("ARROWS + ENTER.  CONTROLS ARE IN OPTIONS.", 190, Col.Rgb(150, 140, 120));
+        for (int i = 0; i < items.Length; i++) MenuItem(items[i], TitleTop + i * TitleRow, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
+        CenterText("ARROWS + ENTER.  CONTROLS ARE IN OPTIONS.", TitleFooter, Col.Rgb(150, 140, 120));
     }
 
     void DrawClassSelect(Game g)
     {
         StoneBackdrop(g.Time);
         CenterText("CHOOSE YOUR CLASS", 10, Col.Rgb(230, 170, 50), 2);
-        CenterText(g.Relaxed ? "RELAXED MODE" : "CLASSIC MODE", 28, g.Relaxed ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 150, 120));
+        if (g.PendingArena) CenterText(Words.T("THE CHAOS ARENA: SURVIVE THE WAVES"), 28, Col.Rgb(230, 120, 255));
+        else if (g.PendingPractice) CenterText($"PRACTICE: {g.PendingCourse.Name.ToUpperInvariant()}", 28, Col.Rgb(170, 200, 255));
+        else CenterText(g.Relaxed ? "RELAXED MODE" : "CLASSIC MODE", 28, g.Relaxed ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 150, 120));
         for (int i = 0; i < 3; i++)
         {
             var cd = ClassDef.All[i];

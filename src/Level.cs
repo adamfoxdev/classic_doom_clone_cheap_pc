@@ -736,7 +736,7 @@ public static class Maps
             "#OOOOOOO#,,,,,,,,,,,,,,,,,,,,,,#",
             "#O.....O#,,c,,,,,,,,,,,,,,c,,&,#",
             "#O.....O#,,,,T,,,7,,,,T,,,,,,,,#",
-            "#O.t.t.O#,,,,,,,,,,,,,,,,,,3,,,#",
+            "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
             "#OE.H...S,,,,,,,,,,1,,,,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
             "#O.....O#,,,,T,,,9,,,,T,,,,g,,,#",
@@ -796,27 +796,6 @@ public static class Maps
             "BBBBBBBBBBBBBBBBBBBBBBBBBBBB",
         }),
             (1, 1, 6, 4, '3'), (8, 1, 19, 7, '4'), (21, 1, 26, 4, '3'), (1, 6, 6, 11, '3'), (21, 6, 26, 11, '2'), (8, 9, 19, 12, '5'), (9, 14, 18, 16, '4')),
-        // Chaos Arena: optional wave survival. Step on the golden altar to start; monsters pour out of the
-        // purple spawn runes in ever harder waves. Portal 3 in Winnowing Hall's courtyard leads here.
-        Raise(new("Chaos Arena", "The Chaos Arena - step on the altar to begin", "arena", new[]
-        {
-            "OOOOOOOOOOOOOOOOOOOOOOOOOO",
-            "O.....O,*,,,,,,,,,,,,,,*,O",
-            "O.3...O,,,,,,,,,,,,,,,,,,O",
-            "O.....O,,,p,,,,,,,,,,p,,,O",
-            "O..h..O,,,,,,,,,,,,,,,,,,O",
-            "O.....D,,,,,,,,,,,,,,,,,,O",
-            "O..b..O,*,,,,,,,,,,,,,,*,O",
-            "O....&O,,,,,,,,,,,,,,,,,&O",
-            "OOOZOOO,,,,,,,,!,,,,,,,,,O",
-            "OO...OO,,,,,,,,,,,,,,,,,,O",
-            "OO...OO,*,,,,,,,,,,,,,,*,O",
-            "OO%.&OO,,,p,,,,,,,,,,p,,,O",
-            "OOOOOOO,,,,,,,,,,,,,,,,,,O",
-            "OOOOOOO,*,,,,,,,*,,,,,,*,O",
-            "OOOOOOOOOOOOOOOOOOOOOOOOOO",
-        }),
-            (1, 1, 5, 7, '3'), (7, 1, 24, 13, '7')),
         // Windspire: an open-topped tower whose ledges climb far beyond any jump. Portal 4 in the Frozen Keep's vault
         // leads here. Fly ledge to ledge with the jetpack (a spare waits by the portal) up to the beacon at the top;
         // its lever opens the vault at the foot of the tower, which holds the Steel Key. Each ledge has a checkpoint
@@ -934,7 +913,35 @@ public static class Maps
         }, Height: 2f),
     };
 
+    /// <summary>
+    /// The Chaos Arena: wave survival, its own mode on the title menu (Arena). You start in the armoury; step on the
+    /// golden altar to begin, and monsters pour out of the purple spawn runes in ever harder waves.
+    /// </summary>
+    public static readonly MapDef ChaosArena =
+        Raise(new("Chaos Arena", "The Chaos Arena - step on the altar to begin", "arena", new[]
+        {
+            "OOOOOOOOOOOOOOOOOOOOOOOOOO",
+            "O.....O,*,,,,,,,,,,,,,,*,O",
+            "O.@...O,,,,,,,,,,,,,,,,,,O",
+            "O.....O,,,p,,,,,,,,,,p,,,O",
+            "O..h..O,,,,,,,,,,,,,,,,,,O",
+            "O.....D,,,,,,,,,,,,,,,,,,O",
+            "O..b..O,*,,,,,,,,,,,,,,*,O",
+            "O....&O,,,,,,,,,,,,,,,,,&O",
+            "OOOZOOO,,,,,,,,!,,,,,,,,,O",
+            "OO...OO,,,,,,,,,,,,,,,,,,O",
+            "OO...OO,*,,,,,,,,,,,,,,*,O",
+            "OO%.&OO,,,p,,,,,,,,,,p,,,O",
+            "OOOOOOO,,,,,,,,,,,,,,,,,,O",
+            "OOOOOOO,*,,,,,,,*,,,,,,*,O",
+            "OOOOOOOOOOOOOOOOOOOOOOOOOO",
+        }),
+            (1, 1, 5, 7, '3'), (7, 1, 24, 13, '7'));
+
     public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
+
+    /// <summary>Every built-in map, for exporting and the editor: the hub's, then the Chaos Arena.</summary>
+    public static IEnumerable<MapDef> Builtin => Hub.Append(ChaosArena);
 
     /// <summary>
     /// The strafe-jumping course's platforms (x0, x1, floor) from west to east; the gaps between them are 2, 4, 5 and 6

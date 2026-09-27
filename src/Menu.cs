@@ -21,6 +21,8 @@ public sealed class MenuSystem
     /// <summary>Whose leaderboard the Leaderboard page shows: Left/Right switch class, Up/Down the course.</summary>
     public PClass BoardClass;
     public Course BoardCourse = Courses.Hangar;
+    /// <summary>The Leaderboard page shows the arena's board (waves) rather than a course's (times).</summary>
+    public bool BoardArena;
 
     public MenuSystem(Game g) { _g = g; }
 
@@ -34,6 +36,7 @@ public sealed class MenuSystem
         {
             BoardClass = _g.P?.Class ?? PClass.Fighter;
             BoardCourse = _g.Practicing && _g.Course.Timed ? _g.Course : Courses.Hangar;
+            BoardArena = _g.ArenaMode;
         }
     }
 
@@ -60,9 +63,11 @@ public sealed class MenuSystem
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Practice", "Leaderboard", "Character", "Options", "Quit" },
+        MenuPage.Main => new[] { "New game", "Practice", "Arena", "Leaderboard", "Character", "Options", "Quit" },
         MenuPage.Pause => _g.Practicing
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
+            : _g.ArenaMode
+            ? new[] { "Resume", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Courses => Courses.All.Select(c => c.Name).Append("Back").ToArray(),
@@ -161,9 +166,13 @@ public sealed class MenuSystem
             }
             if (inp.Up || inp.Down)
             {
+                // the timed courses, then the arena, round and round
                 var timed = Courses.Timed;
-                int i = Array.IndexOf(timed, BoardCourse);
-                BoardCourse = timed[(i + (inp.Up ? timed.Length - 1 : 1)) % timed.Length];
+                int n = timed.Length + 1, i = BoardArena ? timed.Length : Array.IndexOf(timed, BoardCourse);
+                i = (i + (inp.Up ? n - 1 : 1)) % n;
+                BoardArena = i == timed.Length;
+                if (!BoardArena) BoardCourse = timed[i];
+                _g.PlaySound(Sfx.Swing, 0.5f);
             }
             Cursor = 0;
             if (inp.Confirm) Back();
@@ -215,21 +224,32 @@ public sealed class MenuSystem
 
         if (!inp.Confirm) return;
         _g.PlaySound(Sfx.Item, 0.8f);
+        if (Page == MenuPage.Main)
+        {
+            switch (items[Cursor])
+            {
+                case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
+                case "Practice": Show(MenuPage.Courses); break;
+                case "Arena":
+                    _g.Style = GameStyle.Classic; _g.PendingArena = true; _g.PendingPractice = false;
+                    Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
+                    break;
+                case "Leaderboard": Show(MenuPage.Leaderboard); break;
+                case "Character": Show(MenuPage.Character); break;
+                case "Options": Show(MenuPage.Options); break;
+                case "Quit": _g.QuitRequested = true; break;
+            }
+            return;
+        }
         switch (Page, Cursor)
         {
-            case (MenuPage.Main, 0): Show(MenuPage.Style); Cursor = (int)_g.Style; break;
-            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.PendingPractice = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
-            case (MenuPage.Main, 1): Show(MenuPage.Courses); break;
+            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.PendingPractice = _g.PendingArena = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
             case (MenuPage.Courses, var c) when c < Courses.All.Length:
-                _g.Style = GameStyle.Classic; _g.PendingPractice = true; _g.PendingCourse = Courses.All[c];
+                _g.Style = GameStyle.Classic; _g.PendingPractice = true; _g.PendingArena = false; _g.PendingCourse = Courses.All[c];
                 Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
                 break;
             case (MenuPage.Courses, _): Back(); break;
-            case (MenuPage.Main, 2): Show(MenuPage.Leaderboard); break;
             case (MenuPage.Style, 2): Back(); break;
-            case (MenuPage.Main, 3): Show(MenuPage.Character); break;
-            case (MenuPage.Main, 4): Show(MenuPage.Options); break;
-            case (MenuPage.Main, 5): _g.QuitRequested = true; break;
             case (MenuPage.Pause, _):
                 switch (items[Cursor])
                 {
