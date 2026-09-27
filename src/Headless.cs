@@ -1106,6 +1106,20 @@ public static class Headless
             }
         }
         check(renders, "every map renders in both styles");
+        g.SetArtStyle(ArtStyle.Fantasy);
+        var fantasyRelics = Art.Relics.ToArray();
+        g.SetArtStyle(ArtStyle.SciFi);
+        check(Art.Relics.Length == 6 && fantasyRelics.Length == 4 && Art.Relics.All(t => !fantasyRelics.Contains(t)),
+              "sci-fi relics are their own six artifact designs");
+        check(Words.T("Relic found: Data Crystal (3/12)") == "Artifact found: Data Crystal (3/12)" && Words.T("RELICS") == "ARTIFACTS",
+            "sci-fi messages call relics artifacts");
+        g.SetArtStyle(ArtStyle.Fantasy);
+        check(Words.T("Relic found: x (1/2)") == "Relic found: x (1/2)", "fantasy messages keep relics");
+        g.SetArtStyle(ArtStyle.SciFi);
+        var relicNames = new Game { FixedSeed = 3, Style = GameStyle.Relaxed };
+        relicNames.NewGame(PClass.Mage);
+        var variants = relicNames.Hub.SelectMany(l => l.Things.OfType<Pickup>()).Where(p => p.Kind == PickupKind.Relic).Select(p => p.Variant % Art.Relics.Length).Distinct().Count();
+        check(variants >= 4, $"a relaxed game shows a spread of artifact designs ({variants} of 6)");
         g.Level = g.Hub[0];
 
         // the Options menu toggles it, and it's saved with your settings
@@ -1523,6 +1537,20 @@ public static class Headless
         Shot("40_editor_floors");
         g.Editor.Mode = Editor.Layer.Tiles;
         g.GoToTitle();
+
+        // the six sci-fi artifacts lined up on a pedestal row
+        g.Style = GameStyle.Relaxed;
+        g.FixedSeed = 1;
+        g.NewGame(PClass.Mage);
+        g.Style = GameStyle.Classic;
+        g.Level.Things.RemoveAll(t => t is Monster || t is Pickup);
+        for (int i = 0; i < 6; i++)
+            g.Level.Things.Add(new Pickup(PickupKind.Relic, 0.42f, i) { X = 12.1f + i * 0.56f, Y = 6.5f, Level = g.Level, Name = "x" });
+        g.P.X = 13.5f; g.P.Y = 8.9f; g.P.FloorZ = 0; g.P.Angle = -MathF.PI / 2; g.P.Pitch = -18;
+        g.Vars.Freeze = true;
+        Tick(default, 50);
+        Shot("43_artifacts");
+        g.Vars.Freeze = false;
 
         // the original fantasy look, kept as an option
         g.SetArtStyle(ArtStyle.Fantasy);

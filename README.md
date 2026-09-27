@@ -9,6 +9,7 @@ There are no asset files.
 ![Hab Ring](docs/scifi_start.png)
 ![Hydroponics Bay](docs/scifi_hydroponics.png)
 ![The Overmind](docs/scifi_overmind.png)
+![Artifacts](docs/scifi_artifacts.png)
 
 <details>
 <summary>More screenshots, including the original fantasy style</summary>
@@ -39,7 +40,9 @@ There are no asset files.
   saved. Each has its own textures, skies, monsters, items, first-person weapons, names and lore; the maps and
   gameplay are identical. In sci-fi, the Fighter, Cleric and Mage become the Marine, Engineer and Psion; Ettins
   become brute mechs, Afrits drones, Centaurs striders, Dark Bishops psi wraiths and the Heresiarch the Overmind;
-  mana becomes energy and plasma cells, keys become keycards, and portcullises become force fields.
+  mana becomes energy and plasma cells, keys become keycards, and portcullises become force fields. Relaxed
+  mode's relics become **alien artifacts** in six designs: data crystals, caged quantum cores, xeno idols,
+  ancient probes, gravity pearls and monolith shards.
 
 - **Two play styles**, chosen when you start a new game:
   - **Classic:** fight through the hub, solve its puzzles and slay the Heresiarch.
@@ -131,7 +134,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 
 Names here are the fantasy ones. In the sci-fi style: Winnowing Hall = Hab Ring, Frozen Keep = Cryo Labs,
 Darkmere Crypt = Hydroponics Bay, Chaos Arena = Combat Sim, Steel/Fire Key = blue/red keycard, lever = switch,
-portcullis = force field, Heresiarch = Overmind.
+portcullis = force field, Heresiarch = Overmind, relic = artifact, lore stone = data terminal.
 
 1. In Winnowing Hall, grab the class weapon piece in the north-east room.
 2. Pull the lever on the great hall's south wall. The portcullis opens to the courtyard.

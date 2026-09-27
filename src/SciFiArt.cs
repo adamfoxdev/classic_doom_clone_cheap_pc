@@ -406,11 +406,81 @@ public static class SciFiArt
         Art.ChestOpen = SupplyCrate(true);
         Art.LoreStone = Terminal(false);
         Art.LoreStoneRead = Terminal(true);
+        Art.Relics = BuildArtifacts();
 
         // HUD background: dark metal
         var hud = Panel(1301, (52, 56, 64), 16, 32);
         Art.HudBack = hud.T;
     }
+
+    /// <summary>
+    /// Six alien artifacts for the sci-fi relics: a data crystal, a quantum core in a cage, a xeno idol,
+    /// an ancient probe, a gravity pearl on a plinth and a glyph-covered monolith shard.
+    /// </summary>
+    static Tex[] BuildArtifacts() => new[]
+    {
+        // data crystal: a faceted prism with scrolling light inside
+        Item(c =>
+        {
+            c.Glow(32, 42, 20, C(90, 220, 255));
+            c.Tri(32, 18, 22, 40, 42, 40, C(120, 220, 255));
+            c.Tri(22, 40, 42, 40, 32, 60, C(60, 150, 220));
+            c.Tri(32, 18, 32, 40, 42, 40, C(80, 180, 240));
+            for (int y = 28; y < 52; y += 5) c.Rect(29, y, 6, 1, C(230, 255, 255));
+            c.Rect(24, 58, 16, 4, C(70, 74, 82));
+        }, 91),
+        // quantum core: a glowing sphere held in a metal cage
+        Item(c =>
+        {
+            c.Glow(32, 42, 22, C(255, 170, 60));
+            c.Circle(32, 42, 9, C(255, 200, 90));
+            c.Circle(30, 40, 4, C(255, 250, 210));
+            c.Rect(20, 28, 24, 3, C(110, 116, 126)); c.Rect(20, 54, 24, 4, C(110, 116, 126));
+            foreach (int x in new[] { 20, 30, 41 }) c.Rect(x, 28, 3, 30, C(90, 96, 106));
+        }, 93),
+        // xeno idol: an elongated alien head carved from dark stone, eyes lit
+        Item(c =>
+        {
+            c.Glow(32, 40, 18, C(170, 90, 255));
+            c.Ellipse(32, 36, 11, 15, C(60, 50, 80));
+            c.Ellipse(32, 28, 8, 7, C(80, 66, 104));
+            c.Ellipse(27, 38, 3, 2, C(200, 140, 255)); c.Ellipse(37, 38, 3, 2, C(200, 140, 255));
+            c.Rect(29, 46, 6, 2, C(40, 30, 56));
+            c.Rect(22, 52, 20, 8, C(70, 74, 82));
+        }, 95),
+        // ancient probe: a scorched pod with an antenna and a blinking lamp
+        Item(c =>
+        {
+            c.Ellipse(32, 46, 14, 10, C(140, 120, 100));
+            c.Ellipse(32, 43, 12, 6, C(170, 150, 120));
+            c.Rect(18, 46, 28, 2, C(90, 70, 50));
+            c.Line(40, 38, 50, 22, 1, C(200, 200, 210));
+            c.Glow(50, 21, 6, C(255, 80, 60));
+            c.Circle(26, 44, 3, C(90, 220, 255));
+            c.Line(14, 52, 8, 60, 2, C(110, 100, 90)); c.Line(50, 52, 56, 60, 2, C(110, 100, 90));
+        }, 97),
+        // gravity pearl: a dark orb floating above a plinth, ringed by light
+        Item(c =>
+        {
+            c.Rect(24, 54, 16, 8, C(80, 86, 96));
+            c.Rect(22, 52, 20, 3, C(120, 126, 136));
+            c.Glow(32, 50, 10, C(120, 255, 200));
+            c.Circle(32, 36, 8, C(24, 30, 40));
+            c.Circle(30, 34, 3, C(120, 140, 170));
+            c.Ellipse(32, 36, 15, 3, C(120, 255, 200));
+            c.Ellipse(32, 36, 12, 2, C(24, 30, 40));
+            c.Circle(32, 36, 8, C(24, 30, 40));
+            c.Circle(30, 34, 3, C(120, 140, 170));
+        }, 99),
+        // monolith shard: a black slab etched with glowing glyphs
+        Item(c =>
+        {
+            c.Glow(32, 42, 18, C(90, 255, 140));
+            c.Tri(24, 60, 40, 60, 38, 22, C(30, 34, 36));
+            c.Tri(24, 60, 26, 26, 38, 22, C(40, 46, 48));
+            for (int i = 0; i < 5; i++) c.Rect(28 + (i % 2) * 2, 30 + i * 6, 5 - (i % 3), 2, C(120, 255, 160));
+        }, 101),
+    };
 
     static Tex Pylon(int frame)
     {
