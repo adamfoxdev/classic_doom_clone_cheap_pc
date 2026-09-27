@@ -3,3 +3,4 @@ obj/
 shots/
 *.png
 !docs/*.png
+sounds/

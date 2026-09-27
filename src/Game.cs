@@ -8,7 +8,7 @@ public struct Input
 {
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
-    public bool Fire, Walk;               // held
+    public bool Fire, Walk, JumpHeld, SlideHeld; // held
     public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public float MouseX, MouseY;          // mouse position in framebuffer pixels (-1 when unknown)
@@ -100,6 +100,10 @@ public sealed class Player
     public float Z, VZ;                                   // height above the floor while jumping
     public float SlideTime, SlideCd, SlideDX, SlideDY, SlideLow;
     public const float SlideLength = 0.55f, Height = 0.55f;
+    /// <summary>Jetpack (Wings of Wrath in the fantasy style): fuel in seconds of hovering; it recharges on the ground.</summary>
+    public bool HasJetpack, Flying;
+    public float Fuel, JetSfx;
+    public const float FuelMax = 6f, ClimbSpeed = 2.6f, SinkSpeed = 3.2f;
     public bool OnGround => Z <= 0f;
     /// <summary>Camera height: eye level, raised by jumps and lowered while sliding.</summary>
     public float ViewZ => EyeZ + Z - SlideLow * 0.25f + StepLag;
@@ -364,7 +368,7 @@ public sealed class Game
         p.DamageFlash = MathF.Max(0, p.DamageFlash - dt * 2);
         p.PickupFlash = MathF.Max(0, p.PickupFlash - dt * 3);
         p.TeleportFlash = MathF.Max(0, p.TeleportFlash - dt * 1.5f);
-        if (Mode == GameMode.Dead) return;
+        if (Mode == GameMode.Dead) { p.Flying = false; p.Z = MathF.Max(0, p.Z - dt * 4f); return; }
 
         // look
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
@@ -384,7 +388,24 @@ public sealed class Game
             p.VZ = Vars.JumpPower;
             PlaySound(Sfx.Jump, 0.8f);
         }
-        if (!p.OnGround || p.VZ > 0)
+        // jetpack: hold Jump in the air to fly. Keep holding to climb, hold Slide to sink, let go of both to hover.
+        if (!p.Flying && p.HasJetpack && !p.OnGround && inp.JumpHeld && p.VZ < 0.6f && (p.Fuel > 0.25f || Vars.InfiniteFuel))
+        {
+            p.Flying = true; p.JetSfx = 0;
+            PlaySound(Sfx.JetStart, 0.9f);
+        }
+        if (p.Flying)
+        {
+            float target = inp.JumpHeld ? Player.ClimbSpeed : inp.SlideHeld ? -Player.SinkSpeed : 0f;
+            p.VZ += (target - p.VZ) * MathF.Min(1, dt * 6);
+            p.Z += p.VZ * dt;
+            if (!Vars.InfiniteFuel) p.Fuel -= (inp.JumpHeld ? 1f : 0.6f) * dt;
+            p.JetSfx -= dt;
+            if (p.JetSfx <= 0) { PlaySound(Sfx.Jet, inp.JumpHeld ? 0.6f : 0.35f); p.JetSfx = 0.1f; }
+            if (p.Fuel <= 0 && !Vars.InfiniteFuel) { p.Fuel = 0; p.Flying = false; PlaySound(Sfx.JetOut, 1); Say("The Wings of Wrath falter!"); }
+            if (p.Z <= 0) { p.Z = 0; p.VZ = 0; p.Flying = false; PlaySound(Sfx.Land, 0.4f); }
+        }
+        else if (!p.OnGround || p.VZ > 0)
         {
             p.VZ -= Vars.Gravity * dt;
             p.Z += p.VZ * dt;
@@ -436,6 +457,8 @@ public sealed class Game
         }
         p.FloorZ = floor;
         p.StepLag *= MathF.Exp(-dt * 14f);
+        if (p.Flying && p.Z <= 0) { p.Z = 0; p.VZ = 0; p.Flying = false; PlaySound(Sfx.Land, 0.4f); } // touched down on a ledge
+        if (p.OnGround && !p.Flying && p.HasJetpack) p.Fuel = MathF.Min(Player.FuelMax, p.Fuel + dt * 1.5f);
         // bump your head on low ceilings
         float headroom = Level.HeightAt(p.X, p.Y) - p.FloorZ - Player.Height - 0.05f;
         if (p.Z > headroom) { p.Z = MathF.Max(0, headroom); if (p.VZ > 0) p.VZ = 0; }
@@ -829,6 +852,11 @@ public sealed class Game
                 PlaySound(Sfx.Relic, 1);
                 Say(msg);
                 return;
+            case PickupKind.Jetpack:
+                if (p.HasJetpack && p.Fuel >= Player.FuelMax) return;
+                msg = p.HasJetpack ? "Wings of Wrath: recharged" : "Wings of Wrath! Jump, then hold Jump to fly. Hold Slide to sink.";
+                p.HasJetpack = true; p.Fuel = Player.FuelMax;
+                break;
             case PickupKind.Armor:
                 if (p.Armor >= 100) return;
                 p.Armor = Math.Min(100, p.Armor + 50); msg = "Mesh Armor"; break;
@@ -847,7 +875,7 @@ public sealed class Game
         }
         pk.Removed = true;
         p.PickupFlash = 1;
-        PlaySound(pk.Kind is PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.SteelKey or PickupKind.FireKey ? Sfx.Item : Sfx.Pickup, 1);
+        PlaySound(pk.Kind is PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.SteelKey or PickupKind.FireKey or PickupKind.Jetpack ? Sfx.Item : Sfx.Pickup, 1);
         Say(msg);
     }
 
@@ -860,7 +888,7 @@ public sealed class Game
             if (dest == null) continue;
             Level = lv;
             P.X = dest.Value.x; P.Y = dest.Value.y;
-            P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0;
+            P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0; P.Flying = false;
             P.PortalLock = true;
             P.TeleportFlash = 1;
             // drop any in-flight projectiles from the level we left

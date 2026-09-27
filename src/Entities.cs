@@ -3,7 +3,7 @@ namespace HexenSharp;
 public enum Sfx
 {
     Swing, Hit, Shoot, Magic, Explode, Sight, Death, Pickup, Item, Door, Lever,
-    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Secret, Lore, Relic, Count
+    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Secret, Lore, Relic, JetStart, Jet, JetOut, Count
 }
 
 public abstract class Thing
@@ -39,7 +39,7 @@ public sealed class Decor : Thing
 
 // ---------------------------------------------------------------- pickups
 
-public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic }
+public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic, Jetpack }
 
 public sealed class Pickup : Thing
 {
@@ -229,6 +229,7 @@ public static class ThingFactory
             '$' => new Chest(),
             '&' => new LoreStone(),
             '%' => new Pickup(PickupKind.Relic, 0.42f),
+            'J' => new Pickup(PickupKind.Jetpack, 0.5f),
             _ => null,
         };
         if (t == null) return null;

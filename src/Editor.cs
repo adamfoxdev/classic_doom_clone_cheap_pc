@@ -115,7 +115,7 @@ public sealed class Editor
         new('b', "Blue mana", "Items"), new('g', "Green mana", "Items"), new('r', "Mesh armor", "Items"),
         new('k', "Steel key", "Items"), new('f', "Fire key", "Items"), new('w', "Weapon piece 2", "Items"),
         new('x', "Weapon piece 3", "Items"), new('$', "Chest", "Items"), new('%', "Secret treasure", "Items"),
-        new('&', "Lore stone", "Items"),
+        new('&', "Lore stone", "Items"), new('J', "Jetpack / Wings of Wrath", "Items"),
         new('t', "Torch", "Decor"), new('p', "Pillar", "Decor"), new('T', "Tree", "Decor"),
     };
 

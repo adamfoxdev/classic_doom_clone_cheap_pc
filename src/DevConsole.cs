@@ -8,7 +8,7 @@ public sealed class GameVars
     public float Speed = 1f, Sens = 1f, Damage = 1f, MonsterDamage = 1f, MonsterSpeed = 1f;
     public float FireRate = 1f, ManaCost = 1f, Fog = 1f, Fov = 74f;
     public float Gravity = 12f, JumpPower = 3.3f, SlideSpeed = 4.5f, Chests = 2f;
-    public bool God, NoClip, NoTarget, Freeze, InfiniteMana, FullBright, ShowFps, InvertMouse;
+    public bool God, NoClip, NoTarget, Freeze, InfiniteMana, InfiniteFuel, FullBright, ShowFps, InvertMouse;
 
     public sealed record Var(string Name, string Help, Func<GameVars, float> Get, Action<GameVars, float> Set, bool IsBool = false);
 
@@ -33,6 +33,7 @@ public sealed class GameVars
         new("notarget", "monsters ignore you", v => B(v.NoTarget), (v, x) => v.NoTarget = x != 0, true),
         new("freeze", "monsters stop moving", v => B(v.Freeze), (v, x) => v.Freeze = x != 0, true),
         new("infinitemana", "weapons cost no mana", v => B(v.InfiniteMana), (v, x) => v.InfiniteMana = x != 0, true),
+        new("infinitefuel", "the jetpack never runs dry", v => B(v.InfiniteFuel), (v, x) => v.InfiniteFuel = x != 0, true),
         new("fullbright", "disable lighting and fog", v => B(v.FullBright), (v, x) => v.FullBright = x != 0, true),
         new("showfps", "show frames per second", v => B(v.ShowFps), (v, x) => v.ShowFps = x != 0, true),
     };
@@ -63,7 +64,7 @@ public sealed class DevConsole
     static readonly (string code, string cmd)[] Cheats =
     {
         ("satan", "god"), ("casper", "noclip"), ("nra", "give all"), ("indiana", "give items"),
-        ("locksmith", "give keys"), ("clubmed", "give health"), ("butcher", "kill"), ("mapsco", "reveal"),
+        ("locksmith", "give keys"), ("icarus", "give jetpack"), ("clubmed", "give health"), ("butcher", "kill"), ("mapsco", "reveal"),
     };
 
     public DevConsole(Game g)
@@ -104,7 +105,7 @@ public sealed class DevConsole
         Add("noclip", "", "toggle walking through walls", _ => Toggle("noclip"));
         Add("notarget", "", "toggle monsters ignoring you", _ => Toggle("notarget"));
         Add("freeze", "", "toggle frozen monsters", _ => Toggle("freeze"));
-        Add("give", "<all|health|mana|weapons|keys|items|armor>", "give yourself things", a => Give(a.Length > 1 ? a[1] : "all"));
+        Add("give", "<all|health|mana|weapons|keys|items|armor|jetpack>", "give yourself things", a => Give(a.Length > 1 ? a[1] : "all"));
         Add("kill", "", "kill every monster on this map", _ =>
         {
             if (!InGame()) return;
@@ -295,7 +296,8 @@ public sealed class DevConsole
         if (all || what == "mana" || what == "weapons") { p.BlueMana = p.GreenMana = 200; any = true; }
         if (all || what == "keys") { p.SteelKey = p.FireKey = true; any = true; }
         if (all || what == "items") { p.Flasks = 9; p.Urns = 3; any = true; }
-        if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor>"); return; }
+        if (all || what == "jetpack") { p.HasJetpack = true; p.Fuel = Player.FuelMax; any = true; }
+        if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor|jetpack>"); return; }
         Print($"given: {what}");
         _g.Say($"Cheater! ({what})");
         _g.PlaySound(Sfx.Item, 1);
@@ -322,7 +324,7 @@ public sealed class DevConsole
     {
         ("ettin", 'e'), ("afrit", 'a'), ("centaur", 'c'), ("slaughtaur", 'C'), ("bishop", 'd'), ("heresiarch", 'H'),
         ("vial", 'h'), ("flask", 'q'), ("urn", 'u'), ("bluemana", 'b'), ("greenmana", 'g'), ("armor", 'r'),
-        ("chest", '$'), ("lore", '&'), ("steelkey", 'k'), ("firekey", 'f'), ("weapon2", 'w'), ("weapon3", 'x'), ("torch", 't'), ("pillar", 'p'), ("tree", 'T'),
+        ("chest", '$'), ("lore", '&'), ("steelkey", 'k'), ("firekey", 'f'), ("weapon2", 'w'), ("weapon3", 'x'), ("jetpack", 'J'), ("torch", 't'), ("pillar", 'p'), ("tree", 'T'),
     };
 
     void Summon(string what)

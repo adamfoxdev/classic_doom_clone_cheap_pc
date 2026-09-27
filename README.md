@@ -10,6 +10,7 @@ There are no asset files.
 ![Hydroponics Bay](docs/scifi_hydroponics.png)
 ![The Overmind](docs/scifi_overmind.png)
 ![Artifacts](docs/scifi_artifacts.png)
+![Jetpack flight](docs/scifi_jetpack.png)
 
 <details>
 <summary>More screenshots, including the original fantasy style</summary>
@@ -78,6 +79,11 @@ There are no asset files.
   screen tallies how many you opened.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
+- **Jetpack** (the **Wings of Wrath** in the fantasy style): pick it up right by the start of the Hab Ring. Jump,
+  then hold Jump to fly. Keep holding to climb (up to the ceiling), hold Slide to sink, or let go of both to
+  hover. Fly up onto ledges and terraces you could never jump to. A gauge in the corner of the view shows the
+  fuel; it burns faster while climbing, and recharges whenever you're on the ground. Run dry in mid-air and
+  you'll drop.
 - **Level editor** (title menu → Level editor): paint your own maps with the mouse using every wall,
   door, puzzle piece, monster and item in the game, then play-test instantly. Maps save as small text files.
 - **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
@@ -97,7 +103,11 @@ There are no asset files.
   towering arenas, high courtyard walls, with wall drawn above doorways where a tall room meets a lower one),
   outdoor sky areas, distance fog (black in the hall, white in the Frozen Keep), rising doors, see-through
   portcullises, mouse look up/down, depth-buffered sprites, an automap and screen flashes.
-- Synthesized sound effects played through Raylib.
+- **Synthesized sound effects**, one bank per visual style. Sci-fi has laser zaps and blaster pews, metallic
+  clangs, pneumatic door hisses, robot chirps and glitches, access-denied buzzers, a boss alarm siren, medical
+  beeps, data-terminal chatter, shimmering artifact bells, a heart monitor that flatlines when you die, and a
+  roaring, sputtering jetpack. Fantasy keeps the original grunts, whooshes and chimes, and the Wings of Wrath
+  beat and flutter. Export either bank as WAV files with `--sounds`.
 
 ## Running
 
@@ -120,8 +130,8 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | Left click / `Ctrl` | Attack |
 | `E` | Use (doors, levers, chests, lore stones, secret walls); push a stone block |
 | `Shift+E` | Pull a stone block toward you |
-| `Space` | Jump |
-| `C` | Slide (while moving) |
+| `Space` | Jump; hold in mid-air to fly with the jetpack |
+| `C` | Slide (while moving); hold while flying to sink |
 | `1` `2` `3` / mouse wheel | Select weapon |
 | `F` | Use a healing item (Quartz Flask, else Mystic Urn) |
 | `Shift` | Walk |
@@ -231,7 +241,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `set <var> <value>` (or just `<var> <value>`) | change a setting, e.g. `speed 1.5`, `fov 90`, `gravity 6` |
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
-| `give all\|health\|mana\|weapons\|keys\|items\|armor` | give yourself things |
+| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
 | `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena) |
 | `chests` | list this map's chests and how many you've opened |
@@ -242,10 +252,10 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
-`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `fullbright`, `showfps`.
+`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`.
 
 Hexen's cheat codes work when typed during play (or in the console):
-`satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys),
+`satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys), `icarus` (jetpack),
 `clubmed` (health), `butcher` (kill all), `mapsco` (reveal map), `visitN` (warp to hub map N).
 
 ## Developer tools
@@ -253,6 +263,7 @@ Hexen's cheat codes work when typed during play (or in the console):
 ```sh
 dotnet run -c Release -- --selftest       # validates maps (reachability) and runs scripted gameplay checks
 dotnet run -c Release -- --shots shots    # renders scripted screenshots headlessly into ./shots
+dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styles, as WAV files into ./sounds
 ```
 
 ## Code layout
@@ -274,9 +285,10 @@ dotnet run -c Release -- --shots shots    # renders scripted screenshots headles
 | `src/Art.cs` | Procedural textures, sprites and first-person weapons (fantasy style), style switching |
 | `src/SciFiArt.cs` | The sci-fi style: station textures, space skies, robots and aliens, gear and guns |
 | `src/Words.cs` | Names and messages in the current style (e.g. Heresiarch → Overmind) |
-| `src/Audio.cs` | Procedural sound effects |
+| `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
+| `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer |
-| `src/Headless.cs` | `--selftest` and `--shots` |
+| `src/Headless.cs` | `--selftest`, `--shots` and `--sounds` |
 
 ### Map legend
 
@@ -291,7 +303,7 @@ Maps are ASCII grids in `src/Level.cs`:
 | `L` | lever (gates open once every lever is pulled and every plate covered) | `e` `a` `c` `C` `d` `H` | Ettin, Afrit, Centaur, Slaughtaur, Dark Bishop, Heresiarch |
 | `h` `q` `u` | Crystal Vial, Quartz Flask, Mystic Urn | `b` `g` | blue / green mana |
 | `k` / `f` | Steel Key / Fire Key | `r` | Mesh Armor |
-| `$` | treasure chest (hand-placed; most are scattered randomly) | | |
+| `$` | treasure chest (hand-placed; most are scattered randomly) | `J` | jetpack / Wings of Wrath |
 | `X` | pushable stone block | `^` | pressure plate |
 | `Z` | secret wall (looks like its neighbours) | `&` | lore stone |
 | `%` | secret treasure (a relic in Relaxed, a Mystic Urn in Classic) | | |

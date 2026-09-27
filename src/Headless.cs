@@ -78,13 +78,131 @@ public static class Headless
         Console.WriteLine("Visual styles:");
         StyleChecks(Check);
 
+        Console.WriteLine("Jetpack:");
+        JetpackChecks(Check);
+
         Console.WriteLine("Audio synthesis:");
-        bool audioOk = true;
-        for (int i = 0; i < (int)Sfx.Count; i++) audioOk &= Audio.Synth((Sfx)i).Length > 1000;
-        Check(audioOk, "all sound effects synthesize");
+        SoundChecks(Check);
 
         Console.WriteLine(failures == 0 ? "All checks passed." : $"{failures} check(s) failed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    static void SoundChecks(Action<bool, string> check)
+    {
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            var bad = new List<string>();
+            for (int i = 0; i < (int)Sfx.Count; i++)
+            {
+                var a = Sounds.Make((Sfx)i, style);
+                int peak = a.Max(x => Math.Abs((int)x));
+                float clipped = a.Count(x => Math.Abs((int)x) >= 29990) / (float)a.Length;
+                if (a.Length < 1000 || peak < 3000 || clipped > 0.05f) bad.Add($"{(Sfx)i} (len {a.Length}, peak {peak}, clipped {clipped:P0})");
+            }
+            check(bad.Count == 0, $"every {style} sound is audible and clean" + (bad.Count > 0 ? ": " + string.Join(", ", bad) : ""));
+        }
+        var same = Enumerable.Range(0, (int)Sfx.Count).Where(i => Sounds.Make((Sfx)i, ArtStyle.SciFi).SequenceEqual(Sounds.Make((Sfx)i, ArtStyle.Fantasy))).Select(i => (Sfx)i).ToList();
+        check(same.Count == 0, "every sci-fi sound differs from its fantasy one" + (same.Count > 0 ? ": " + string.Join(", ", same) : ""));
+        check(Sounds.Make(Sfx.Shoot, ArtStyle.SciFi).SequenceEqual(Sounds.Make(Sfx.Shoot, ArtStyle.SciFi)), "sounds synthesize the same every time");
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            var jet = Sounds.Make(Sfx.Jet, style);
+            check(Math.Abs((int)jet[0]) < 1500 && Math.Abs((int)jet[^1]) < 1500, $"the {style} thrust sound fades at both ends, so it loops without clicks");
+        }
+        var wav = Sounds.Wav(new short[] { 1, -1 });
+        check(wav.Length == 48 && wav[0] == 'R' && wav[8] == 'W' && BitConverter.ToInt32(wav, 24) == Sounds.Rate, "WAV export writes a valid header");
+    }
+
+    static void JetpackChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        var sfx = new List<Sfx>();
+        g.PlaySound = (s, _) => sfx.Add(s);
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        var p = g.P;
+        check(!p.HasJetpack, "you start without a jetpack");
+        var pack = g.Level.Things.OfType<Pickup>().FirstOrDefault(t => t.Kind == PickupKind.Jetpack);
+        check(pack != null && MathF.Abs(pack.X - p.X) + MathF.Abs(pack.Y - p.Y) < 4, "a jetpack waits near the start of the Hab Ring");
+
+        // without it, holding Jump is just a jump
+        float apex = 0;
+        Tick(new Input { Jump = true, JumpHeld = true });
+        for (int k = 0; k < 35 * 2; k++) { Tick(new Input { JumpHeld = true }); apex = MathF.Max(apex, p.Z); }
+        check(!p.Flying && apex < 0.6f && p.OnGround, $"without a jetpack you only hop (apex {apex:0.00})");
+
+        // pick it up
+        p.X = pack.X - 0.6f; p.Y = pack.Y; p.Angle = 0;
+        Tick(new Input { Move = 1 }, 20);
+        check(p.HasJetpack && p.Fuel == Player.FuelMax && pack.Removed, "walking over the jetpack equips it with a full tank");
+        check(g.Messages.Any(m => m.text.StartsWith("Jetpack!")), "the sci-fi pickup message names the jetpack");
+
+        // take off in the great hall (ceiling 3 units up)
+        g.Level.Things.RemoveAll(t => t is Decor or Chest or LoreStone);
+        p.X = 12.5f; p.Y = 6.5f; p.Angle = MathF.PI / 2; p.FloorZ = g.Level.FloorAt(p.X, p.Y);
+        sfx.Clear();
+        Tick(new Input { Jump = true, JumpHeld = true });
+        Tick(new Input { JumpHeld = true }, 35);
+        check(p.Flying && p.Z > 1.2f, $"holding Jump in the air fires the jetpack and climbs (height {p.Z:0.00})");
+        check(sfx.Contains(Sfx.JetStart) && sfx.Count(s => s == Sfx.Jet) >= 5, "the jetpack ignites and roars while it burns");
+        Tick(new Input { JumpHeld = true }, 35 * 2);
+        float top = g.Level.HeightAt(p.X, p.Y) - p.FloorZ;
+        check(p.Z + Player.Height < top && p.Z > top - 0.9f, $"you rise until your head nears the ceiling ({p.Z + Player.Height:0.00} of {top:0.00})");
+
+        // hover, then sink with Slide
+        float fuel = p.Fuel, z0 = p.Z;
+        p.Z -= 0.8f; z0 = p.Z; p.VZ = 0;
+        Tick(default, 35);
+        check(p.Flying && MathF.Abs(p.Z - z0) < 0.15f && p.Fuel < fuel, $"letting go hovers in place, burning fuel ({z0:0.00} -> {p.Z:0.00})");
+        for (int k = 0; k < 35 * 3 && p.Flying; k++) Tick(new Input { SlideHeld = true });
+        check(!p.Flying && p.OnGround && p.SlideTime <= 0, "holding Slide sinks you gently back to the floor");
+
+        // fly up onto a ledge far too tall to jump onto
+        var lv = g.Level;
+        foreach (var (cx, cy) in new[] { (12, 9), (13, 9), (12, 10), (13, 10) }) lv.Floors[cy * lv.W + cx] = 1.5f;
+        p.X = 12.5f; p.Y = 7.5f; p.Angle = MathF.PI / 2; p.FloorZ = 0; p.Fuel = Player.FuelMax;
+        Tick(new Input { Move = 1 }, 35);
+        check(p.Y < 8.8f && p.FloorZ == 0, "a 1.5-unit ledge blocks you on foot");
+        Tick(new Input { Jump = true, JumpHeld = true });
+        Tick(new Input { JumpHeld = true }, 35);
+        Tick(new Input { Move = 1 }, 30);
+        for (int k = 0; k < 35 * 3 && p.Flying; k++) Tick(new Input { SlideHeld = true });
+        check(p.FloorZ == 1.5f && p.OnGround && !p.Flying, $"with the jetpack you fly up and land on the ledge (floor {p.FloorZ})");
+
+        // running dry drops you; the tank refills on the ground
+        p.X = 12.5f; p.Y = 6.5f; p.FloorZ = 0; p.Z = 0; p.Fuel = 0.5f;
+        sfx.Clear();
+        Tick(new Input { Jump = true, JumpHeld = true });
+        bool ranDry = false;
+        for (int k = 0; k < 35 * 3; k++) { Tick(new Input { JumpHeld = true }); ranDry |= p.Fuel == 0 && !p.Flying && !p.OnGround; }
+        check(ranDry && p.OnGround && sfx.Contains(Sfx.JetOut), "when the fuel runs out the jetpack sputters and you fall");
+        Tick(default, 35 * 2);
+        check(p.Fuel > 2.5f && p.Fuel <= Player.FuelMax, $"the tank recharges on the ground ({p.Fuel:0.0})");
+        g.Vars.InfiniteFuel = true; p.Fuel = 0;
+        Tick(new Input { Jump = true, JumpHeld = true });
+        Tick(new Input { JumpHeld = true }, 35);
+        check(p.Flying && p.Fuel == 0, "'infinitefuel' lets you fly on an empty tank");
+        g.Vars.InfiniteFuel = false;
+
+        // console and cheat
+        var g2 = new Game { FixedSeed = 2 };
+        g2.NewGame(PClass.Mage);
+        g2.Con.Execute("give jetpack");
+        check(g2.P.HasJetpack && g2.P.Fuel == Player.FuelMax, "'give jetpack' hands you a full jetpack");
+        var g3 = new Game { FixedSeed = 2 };
+        g3.NewGame(PClass.Cleric);
+        foreach (char c in "icarus") g3.Con.FeedCheat(c);
+        check(g3.P.HasJetpack, "the 'icarus' cheat gives the jetpack");
+        check(Editor.IsKnownGlyph('J') && ThingFactory.Create('J', 1, 1) is Pickup { Kind: PickupKind.Jetpack }, "the editor can place jetpacks ('J')");
+
+        // fantasy style calls it the Wings of Wrath
+        g.SetArtStyle(ArtStyle.Fantasy);
+        check(Words.T("Wings of Wrath") == "Wings of Wrath" && Art.Jetpack != null, "fantasy style keeps the Wings of Wrath");
+        var wings = Art.Jetpack;
+        g.SetArtStyle(ArtStyle.SciFi);
+        check(Words.T("Wings of Wrath") == "Jetpack" && Art.Jetpack != wings, "sci-fi style has its own jetpack sprite and name");
     }
 
     static void GameplayChecks(Action<bool, string> check)
@@ -1234,6 +1352,20 @@ public static class Headless
     }
 
     /// <summary>Drives the game with scripted input and writes PNGs (3x upscaled) to a folder.</summary>
+    /// <summary>Writes every sound effect in both styles as WAV files, for listening outside the game.</summary>
+    public static int ExportSounds(string dir)
+    {
+        foreach (var style in new[] { ArtStyle.SciFi, ArtStyle.Fantasy })
+        {
+            var sub = Path.Combine(dir, style == ArtStyle.SciFi ? "scifi" : "fantasy");
+            Directory.CreateDirectory(sub);
+            for (int i = 0; i < (int)Sfx.Count; i++)
+                File.WriteAllBytes(Path.Combine(sub, ((Sfx)i).ToString().ToLowerInvariant() + ".wav"), Sounds.Wav(Sounds.Make((Sfx)i, style)));
+        }
+        Console.WriteLine($"wrote {(int)Sfx.Count * 2} sounds to {dir}");
+        return 0;
+    }
+
     public static int Screenshots(string dir)
     {
         Directory.CreateDirectory(dir);
@@ -1551,6 +1683,28 @@ public static class Headless
         Tick(default, 50);
         Shot("43_artifacts");
         g.Vars.Freeze = false;
+
+        // the jetpack on its pickup spot, then flying high over the great hall
+        g.FixedSeed = 1;
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.P.X = 2.5f; g.P.Y = 3.5f; g.P.Angle = 0; g.P.Pitch = -12;
+        Tick(default, 5);
+        Shot("44_jetpack_pickup");
+        g.Con.Execute("give jetpack");
+        g.Messages.Clear();
+        g.P.X = 9.5f; g.P.Y = 9.5f; g.P.Angle = -MathF.PI / 4; g.P.Pitch = -20; g.P.FloorZ = 0;
+        Tick(new Input { Jump = true, JumpHeld = true });
+        Tick(new Input { JumpHeld = true }, 30);
+        Tick(default, 10);
+        Shot("45_jetpack_flight");
+        g.SetArtStyle(ArtStyle.Fantasy);
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.P.X = 2.5f; g.P.Y = 3.5f; g.P.Angle = 0; g.P.Pitch = -12;
+        Tick(default, 5);
+        Shot("46_wings_fantasy");
+        g.SetArtStyle(ArtStyle.SciFi);
 
         // the original fantasy look, kept as an option
         g.SetArtStyle(ArtStyle.Fantasy);
