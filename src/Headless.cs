@@ -100,6 +100,8 @@ public static class Headless
         GhostChecks(Check);
         Console.WriteLine("More practice courses:");
         CourseChecks(Check);
+        Console.WriteLine("Medals:");
+        MedalChecks(Check);
         Console.WriteLine("Strafe helper:");
         StrafeHelperChecks(Check);
         Console.WriteLine("HUD styles:");
@@ -1214,6 +1216,82 @@ public static class Headless
         g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
         g.Menu.Update(new Input { Pause = true }, 1f / 35f);
         check(g.Menu.Page == MenuPage.Main, "Esc from the course list goes back to the title");
+    }
+
+    static void MedalChecks(Action<bool, string> check)
+    {
+        // targets: gold, silver and bronze for each timed course and class
+        var hangar = Courses.Hangar;
+        check(hangar.RouteLength == 78 && hangar.MedalTimes(PClass.Fighter) == (11.5f, 14.5f, 19.5f),
+              "the Velocity Hangar's Marine targets: gold 11.5s, silver 14.5s, bronze 19.5s (a 78-unit route at 170%, 135% and 100% of a run)");
+        bool ordered = true, fairer = true, possible = true;
+        foreach (var c in Courses.Timed)
+        {
+            var (fg, fs, fb) = c.MedalTimes(PClass.Fighter);
+            var (mg, ms, mb) = c.MedalTimes(PClass.Mage);
+            ordered &= fg < fs && fs < fb && mg < ms && ms < mb;
+            fairer &= mg > fg && mb > fb;
+            // gold asks for an average of 170% of a run: well under the 300% strafe jumping can reach
+            possible &= fg >= c.RouteLength / (new Game().Vars.MaxHop * 3.6f * ClassDef.All[0].Speed) * 1.5f;
+        }
+        check(ordered, "on every timed course gold is quicker than silver, and silver than bronze");
+        check(fairer, "the slower Psion gets more time than the Marine");
+        check(possible, "gold is well within reach of strafe jumping's top speed");
+        check(Courses.FreeRoam.MedalTimes(PClass.Fighter) == (0f, 0f, 0f) && Courses.FreeRoam.MedalFor(PClass.Fighter, 5) == Medal.None, "Free Roam has no medals");
+        check(hangar.MedalFor(PClass.Fighter, 11.5f) == Medal.Gold && hangar.MedalFor(PClass.Fighter, 11.51f) == Medal.Silver
+              && hangar.MedalFor(PClass.Fighter, 19.5f) == Medal.Bronze && hangar.MedalFor(PClass.Fighter, 19.6f) == Medal.None && hangar.MedalFor(PClass.Fighter, 0) == Medal.None,
+              "a time on the target earns that medal; a hair over drops to the next");
+
+        // finishing: the medal the run earns, a new medal when you beat your old one, and the next one to aim for
+        var g = new Game { FixedSeed = 1 };
+        void Tick(Input i, int n = 1) { for (int k = 0; k < n; k++) g.Update(i, 1f / 35f); }
+        g.StartPractice(PClass.Fighter);
+        var exit = g.Level.FindMark('E').Value;
+        void Finish(float time)
+        {
+            Tick(new Input { Move = 1 }, 10);
+            g.Level.CheckpointsReached.UnionWith(Enumerable.Range(0, g.Level.Checkpoints.Count));
+            g.RunTime = time;
+            var p = g.P;
+            p.X = exit.x - 1; p.Y = exit.y; p.FloorZ = Maps.CoursePlatforms[^1].floor; p.Angle = 0;
+            for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
+        }
+        bool Said(string text) => g.Messages.Any(m => m.text.Contains(text));
+        Finish(25f);
+        check(g.LastMedal == Medal.None && !Said("New medal") && Said("BRONZE is 19.50s."), "a run slower than bronze earns nothing, and says what bronze takes");
+        Finish(18f);
+        check(g.LastMedal == Medal.Bronze && Said("BRONZE.") && Said("New medal: BRONZE!") && Said("SILVER is 14.50s."), "a bronze run earns a new medal, and names the next");
+        Finish(19f);
+        check(g.LastMedal == Medal.Bronze && !Said("New medal"), "another bronze isn't a new medal");
+        Finish(11f);
+        check(g.LastMedal == Medal.Gold && Said("New medal: GOLD!") && !Said(" is "), "gold, and nothing left to aim for");
+        check(hangar.MedalFor(PClass.Fighter, g.Profile.CourseBestTime("Fighter")) == Medal.Gold, "your medal comes from your best time, so it's kept with your profile");
+
+        // during a run, the clock shows the best medal you can still make
+        g.RunStarted = true;
+        g.RunTime = 5; var a = g.NextMedal();
+        g.RunTime = 12; var b = g.NextMedal();
+        g.RunTime = 16; var c2 = g.NextMedal();
+        g.RunTime = 30; var d = g.NextMedal();
+        check(a == (Medal.Gold, 11.5f) && b == (Medal.Silver, 14.5f) && c2 == (Medal.Bronze, 19.5f) && d.medal == Medal.None,
+              "the clock's medal counts down: gold, then silver, then bronze, then none");
+        var r = new Renderer();
+        g.RunTime = 5;
+        r.Render(g);
+        int goldPx = Enumerable.Range(0, 40).Sum(y => Enumerable.Range(Renderer.W - 100, 100).Count(x => r.Fb[y * Renderer.W + x] == Medals.Colour(Medal.Gold)));
+        check(goldPx > 20, "and it's drawn under the clock, in the medal's colour");
+
+        // the course list and leaderboard show medals
+        g.Paused = true; g.Menu.Show(MenuPage.Leaderboard);
+        r.Render(g);
+        int medalPx = r.Fb.Count(px => px == Medals.Colour(Medal.Gold)) ;
+        check(medalPx > 40, "the leaderboard shows the targets and a medal by each time");
+        g.Menu.Close(); g.Paused = false;
+        g.GoToTitle();
+        g.Menu.Show(MenuPage.Courses);
+        r.Render(g);
+        check(r.Fb.Count(px => px == Medals.Colour(Medal.Gold)) > 40 && r.Fb.Count(px => px == Medals.Colour(Medal.Bronze)) > 20,
+              "and the course list shows each class's medal and the targets");
     }
 
     static void StrafeHelperChecks(Action<bool, string> check)

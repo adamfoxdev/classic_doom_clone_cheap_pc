@@ -141,14 +141,13 @@ public sealed class Renderer
                 break;
 
             case MenuPage.Courses:
-                CenterText("PRACTICE", 20, Col.Rgb(230, 190, 80), 2);
-                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 56 + i * 14, i == m.Cursor);
+                CenterText("PRACTICE", 14, Col.Rgb(230, 190, 80), 2);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 44 + i * 14, i == m.Cursor);
                 if (m.Cursor < Courses.All.Length)
                 {
                     var course = Courses.All[m.Cursor];
-                    foreach (var (line, k) in Wrap(course.About, 48).Select((l, k) => (l, k))) CenterText(line, 136 + k * 10, Col.Rgb(170, 200, 255));
-                    float best = course.Timed ? Enum.GetValues<PClass>().Select(c => g.Profile.CourseBestTime(course.Key(c))).Where(t => t > 0).DefaultIfEmpty(0).Min() : 0;
-                    if (best > 0) CenterText($"YOUR BEST: {best:0.00}S", 160, Col.Rgb(255, 220, 90));
+                    foreach (var (line, k) in Wrap(course.About, 50).Select((l, k) => (l, k))) CenterText(line, 116 + k * 10, Col.Rgb(170, 200, 255));
+                    if (course.Timed) DrawMedalTable(g, course, 140);
                 }
                 CenterText("ARROWS + ENTER    ESC: BACK", 186, MenuDim);
                 break;
@@ -167,6 +166,12 @@ public sealed class Renderer
         CenterText("LEADERBOARD", 6, gold, 2);
         var def = ClassDef.All[(int)m.BoardClass];
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
+        var (tg, ts, tb) = m.BoardCourse.MedalTimes(m.BoardClass);
+        string targets = $"GOLD {tg:0.0}   SILVER {ts:0.0}   BRONZE {tb:0.0}";
+        int tx = (W - Font.Width(targets)) / 2;
+        Text(tx, 36, $"GOLD {tg:0.0}", Medals.Colour(Medal.Gold));
+        Text(tx + Font.Width($"GOLD {tg:0.0}   "), 36, $"SILVER {ts:0.0}", Medals.Colour(Medal.Silver));
+        Text(tx + Font.Width($"GOLD {tg:0.0}   SILVER {ts:0.0}   "), 36, $"BRONZE {tb:0.0}", Medals.Colour(Medal.Bronze));
         var runs = g.Profile.Board(m.BoardCourse.Key(m.BoardClass));
         if (runs.Count == 0)
         {
@@ -176,11 +181,12 @@ public sealed class Renderer
         else
         {
             var latest = runs.MaxBy(r => r.When);
-            Text(40, 42, "#", MenuDim); Text(64, 42, "TIME", MenuDim); Text(128, 42, "NAME", MenuDim); Text(224, 42, "DATE", MenuDim);
+            Text(34, 48, "#", MenuDim); Text(64, 48, "TIME", MenuDim); Text(128, 48, "NAME", MenuDim); Text(224, 48, "DATE", MenuDim);
             for (int i = 0; i < runs.Count; i++)
             {
                 var r = runs[i];
-                int y = 54 + i * 11;
+                int y = 59 + i * 11;
+                MedalDot(52, y + 1, m.BoardCourse.MedalFor(m.BoardClass, r.Time));
                 uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
                 Text(34, y, $"{i + 1,2}", c);
                 Text(64, y, $"{r.Time:0.00}", c);
@@ -190,6 +196,26 @@ public sealed class Renderer
         }
         CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
         CenterText("LEFT/RIGHT: CLASS   UP/DOWN: COURSE   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>For each class on a course: the medal your best time earned, the time, and the targets.</summary>
+    void DrawMedalTable(Game g, Course course, int y)
+    {
+        Text(110, y, "BEST", MenuDim); Text(160, y, "GOLD", MenuDim); Text(206, y, "SILVER", MenuDim); Text(252, y, "BRONZE", MenuDim);
+        y += 11;
+        foreach (var cls in Enum.GetValues<PClass>())
+        {
+            float best = g.Profile.CourseBestTime(course.Key(cls));
+            var medal = course.MedalFor(cls, best);
+            var (tg, ts, tb) = course.MedalTimes(cls);
+            MedalDot(30, y + 1, medal);
+            Text(42, y, ClassDef.All[(int)cls].Name.ToUpperInvariant(), MenuText);
+            Text(110, y, best > 0 ? $"{best:0.00}" : "-", best <= 0 ? MenuDim : medal == Medal.None ? MenuText : Medals.Colour(medal));
+            Text(160, y, $"{tg:0.0}", Medals.Colour(Medal.Gold));
+            Text(206, y, $"{ts:0.0}", Medals.Colour(Medal.Silver));
+            Text(252, y, $"{tb:0.0}", Medals.Colour(Medal.Bronze));
+            y += 10;
+        }
     }
 
     void DrawCharacter(Game g)
@@ -985,6 +1011,29 @@ public sealed class Renderer
         int y = g.Vars.ShowFps ? 12 : 3;
         Text(W - 4 - Font.Width(time), y, time, g.RunStarted ? Col.Rgb(240, 236, 220) : Col.Rgb(150, 150, 160));
         if (best > 0) Text(W - 4 - Font.Width(top), y + 10, top, Col.Rgb(255, 220, 90));
+        // the medal this run can still make, counting down through gold, silver and bronze as the clock runs
+        var (medal, at) = g.NextMedal();
+        if (medal != Medal.None)
+        {
+            string next = $"{Medals.Name(medal)} {at:0.00}";
+            int ny = y + (best > 0 ? 20 : 10);
+            Text(W - 4 - Font.Width(next) - 9, ny, next, Medals.Colour(medal));
+            MedalDot(W - 9, ny + 1, medal);
+        }
+    }
+
+    /// <summary>A little medal: a coloured disc with a dark rim (grey and hollow for none).</summary>
+    void MedalDot(int x, int y, Medal m)
+    {
+        uint c = Medals.Colour(m), rim = Col.Rgb(20, 16, 12);
+        void Dot(int px, int py, uint col) { if ((uint)px < W && (uint)py < H) Fb[py * W + px] = col; }
+        for (int j = -1; j <= 6; j++)
+            for (int i = -1; i <= 6; i++)
+            {
+                float d = MathF.Sqrt((i - 2.5f) * (i - 2.5f) + (j - 2.5f) * (j - 2.5f));
+                if (d <= 3.9f) Dot(x + i, y + j, rim);
+                if (d <= 3f && (m != Medal.None || d > 1.9f)) Dot(x + i, y + j, j < 2 && i < 3 ? Col.Lerp(c, Col.Rgb(255, 255, 255), 90) : c);
+            }
     }
 
     /// <summary>Room for the practice clock in the top-right corner.</summary>

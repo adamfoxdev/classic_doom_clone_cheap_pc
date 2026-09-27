@@ -262,6 +262,20 @@ On the timed courses:
 - The run is timed from the moment you set off; the clock sits in the top-right corner, with your best for that
   class under it. Step into the exit at the far end to finish: it tells you your time and where it placed on the
   leaderboard, and puts you back at the start for another go.
+- **Medals:** each timed course has gold, silver and bronze target times for each class.
+  - **How they're set:** each target is the time to cover the course's route at an average of 170%, 135% and 100%
+    of that class's run speed, rounded up to the half second. So the slower Engineer and Psion get more time, and
+    skills don't change the targets.
+  - **Marine targets:** 11.5 / 14.5 / 19.5 s on the Velocity Hangar, 13 / 16.5 / 22 s on Descent and
+    14.5 / 18 / 24 s on the Circuit.
+  - **While you run:** the clock shows the best medal you can still make, counting down from gold to silver to
+    bronze.
+  - **At the finish:** you're told the medal your run earned, when it's a new one, and what the next takes.
+  - **Where to see them:** the course list shows each class's medal and targets, and the leaderboard puts a medal
+    by every time.
+  - **Saving:** medals come from your best times, so they're kept with your profile.
+  - **Estimates:** the targets were set from pace, not from real runs, so they may want tuning once people have
+    played: `Medals.GoldPace` and friends in `src/Practice.cs`.
 - The **leaderboard** (on the title menu, and on the pause menu while you're on a course) keeps the ten fastest
   runs for each course and class (`Up`/`Down` switch course), since they run at different speeds: time, name and date, the best in gold and your latest
   in green. `Left`/`Right` switch class. Runs go under your computer's user name; set another with `name <name>` in
