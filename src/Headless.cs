@@ -58,6 +58,8 @@ public static class Headless
         ArenaChecks(Check);
         Console.WriteLine("Arcade mode:");
         ArcadeChecks(Check);
+        Console.WriteLine("Story mode:");
+        StoryChecks(Check);
         Console.WriteLine("Arena mode:");
         ArenaModeChecks(Check);
 
@@ -535,6 +537,117 @@ public static class Headless
         for (int k = 0; k < 35 * 30; k++) b.Update(1f / 35f);
         check(b.Rank < rank && b.Floaters.Count == 0, "stop fighting and the rank drains away");
         check(Arcade.Ranks.Length == 7 && Arcade.Ranks[^1] == "SSS", "ranks run from D to SSS");
+    }
+
+    static void StoryChecks(Action<bool, string> check)
+    {
+        check(Story.Cases.Length >= 3, $"{Story.Cases.Length} cases around {Story.Town}");
+        foreach (var c in Story.Cases)
+        {
+            var lv = c.Map.Build();
+            var reach = lv.Reachable((int)lv.StartX, (int)lv.StartY);
+            var spots = c.Suspects.Select(s => (s.X, s.Y, s.Name)).Concat(c.Clues.Select(k => (k.X, k.Y, k.Name))).ToList();
+            var bad = spots.Where(p => lv.BlocksPoint(p.X, p.Y) || !reach[(int)p.Y * lv.W + (int)p.X]).Select(p => p.Name).ToList();
+            check(bad.Count == 0, $"{c.Title}: every suspect and clue is on open, reachable floor" + (bad.Count > 0 ? ": " + string.Join(", ", bad) : ""));
+            var ids = c.Clues.Select(k => k.Id).ToHashSet();
+            check(c.Suspects.Count(s => s.Culprit) == 1 && c.Keys.All(ids.Contains) && c.Insights.All(i => ids.Contains(i.A) && ids.Contains(i.B)),
+                  $"{c.Title}: one culprit, and the key evidence and patterns are real clues");
+            var culprit = c.Suspects.First(s => s.Culprit);
+            check(c.Keys.Any(k => culprit.About(k).StartsWith('!')) && c.Suspects.Where(s => !s.Culprit).All(s => ids.All(k => !s.About(k).StartsWith('!'))),
+                  $"{c.Title}: only the culprit lies, and a key clue catches them out");
+            check(c.Suspects.All(s => ids.All(s.OnClue.ContainsKey)), $"{c.Title}: everyone has something to say about every clue");
+        }
+
+        var g = new Game { FixedSeed = 1 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.Menu.Show(MenuPage.Main);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Main), "Story");
+        Tick(new Input { Confirm = true });
+        check(g.StoryMode && g.StoryCase == 0 && g.Story != null && g.ReadingLore != null && g.ReadingLore.Contains("Missing Shipment"),
+              "Story on the title menu opens the first case with its brief");
+        Tick(new Input { Confirm = true });
+        var s = g.Story;
+        var map = g.Level;
+        check(map.Things.OfType<Npc>().Count() == 3 && map.Things.OfType<ClueMark>().Count() == 5 && !map.Things.Any(t => t is Monster or Chest),
+              "the case map has its suspects and clues, and nothing to fight");
+        Tick(new Input { Fire = true }, 10);
+        check(!map.Things.Any(t => t is Projectile), "a private eye keeps the gun holstered");
+
+        // walk up to someone and press E to question them
+        var dex = map.Things.OfType<Npc>().First(n => n.S.Name == "Dex Kollins");
+        g.P.X = dex.X - 1f; g.P.Y = dex.Y; g.P.Angle = 0;
+        Tick(new Input { Use = true });
+        check(s.Talking == dex && s.Line == dex.S.Greeting, "E questions the person you're facing");
+        var opts = Story.Options(s);
+        check(opts.Select(o => o.key).SequenceEqual(new[] { "alibi", "accuse", "bye" }), "with no clues yet you can only ask their alibi, accuse or leave");
+        s.Cursor = 0; Tick(new Input { Confirm = true });
+        check(s.Line == dex.S.Alibi && s.Journal.Any(j => j.text.Contains("Didn't see a thing")), "alibis go in your journal");
+        Tick(new Input { Pause = true });
+        check(s.Talking == null, "Esc ends the conversation");
+
+        // find clues, then press the guard about the gate log
+        foreach (var id in new[] { "gate", "tab" })
+            Story.Examine(g, map.Things.OfType<ClueMark>().First(m => m.C.Id == id));
+        check(s.Found.SetEquals(new[] { "gate", "tab" }) && g.ReadingLore != null, "examining a clue reads it and adds it to the case");
+        g.ReadingLore = null;
+        Story.Talk(g, dex);
+        opts = Story.Options(s);
+        check(opts.Count == 5 && opts.Any(o => o.key == "clue:gate"), "each clue you've found is something to ask about");
+        Story.Choose(g, "clue:gate");
+        check(s.Contradictions.Count == 1 && s.Journal.Any(j => j.flag && j.text.Contains("doesn't add up")), "a lie the evidence gives away is flagged in the journal");
+        Story.Choose(g, "accuse");
+        check(!s.Solved && s.Strikes == 0 && s.Line.Contains("nothing on me"), "accusing the right person without proof gets you nowhere, but costs nothing");
+        Story.Choose(g, "bye");
+
+        // a wrong accusation is a strike
+        var mara = map.Things.OfType<Npc>().First(n => n.S.Name == "Mara Voss");
+        Story.Talk(g, mara);
+        Story.Choose(g, "accuse");
+        check(s.Strikes == 1 && !s.Solved, "accusing the wrong person is a strike");
+        Story.Choose(g, "bye");
+
+        // the journal
+        Tick(new Input { Journal = true });
+        check(s.JournalOpen, "J opens the journal");
+        Tick(new Input { Journal = true });
+        check(!s.JournalOpen, "and closes it");
+
+        // the note completes the pattern: now the accusation sticks
+        Story.Examine(g, map.Things.OfType<ClueMark>().First(m => m.C.Id == "note"));
+        g.ReadingLore = null;
+        check(s.Insights.Count == 1 && s.Journal.Any(j => j.flag && j.text.StartsWith("Pattern:")) && s.HasKeys, "finding both halves of a pattern notes it");
+        Story.Talk(g, dex);
+        Story.Choose(g, "accuse");
+        check(s.Solved && s.Line == Story.Cases[0].Solved, "with the evidence, the culprit confesses");
+        Story.Choose(g, "bye");
+        check(g.StoryCase == 1 && g.Story.Case == Story.Cases[1] && g.Story.Strikes == 0, "closing the case brings the next job");
+        g.ReadingLore = null;
+
+        // three wrong calls and the case goes cold
+        var innocent = g.Level.Things.OfType<Npc>().First(n => !n.S.Culprit);
+        var cold = g.Story;
+        Story.Examine(g, g.Level.Things.OfType<ClueMark>().First());
+        g.ReadingLore = null;
+        for (int k = 0; k < 3; k++) { Story.Talk(g, innocent); Story.Choose(g, "accuse"); }
+        check(g.Story != cold && g.Story.Strikes == 0 && g.Story.Found.Count == 0 && g.StoryCase == 1, "three strikes and the case goes cold: start it over");
+        g.ReadingLore = null;
+
+        // solve the rest and the story ends
+        for (int ci = g.StoryCase; ci < Story.Cases.Length; ci++)
+        {
+            var cs = g.Story;
+            foreach (var m in g.Level.Things.OfType<ClueMark>().ToList()) Story.Examine(g, m);
+            g.ReadingLore = null;
+            var culprit = g.Level.Things.OfType<Npc>().First(n => n.S.Culprit);
+            Story.Talk(g, culprit);
+            Story.Choose(g, "accuse");
+            check(cs.Solved, $"case {ci + 1} ({cs.Case.Title}) can be solved");
+            Story.Choose(g, "bye");
+            g.ReadingLore = null;
+        }
+        check(g.Mode == GameMode.Victory && g.StoryMode, "closing the last case ends the story");
+        Tick(new Input { Confirm = true });
+        check(g.Mode == GameMode.Title && !g.StoryMode, "and Enter goes back to the title");
     }
 
     static void SoundChecks(Action<bool, string> check)
@@ -2598,14 +2711,14 @@ public static class Headless
         keys.Hit.Add(Keys.WheelDown); check(Read().Cycle == 1, "mouse wheel cycles weapons"); keys.Hit.Clear();
         keys.Hit.Add(Keys.Space); check(Read().Jump, "Space jumps"); keys.Hit.Clear();
 
-        // title menu: New game / Practice / Arena / Leaderboard / Character / Options / Quit
+        // title menu: New game / Practice / Arena / Story / Leaderboard / Character / Options / Quit
         check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
-        for (int k = 0; k < 5; k++) Press(Keys.Down);
+        for (int k = 0; k < 6; k++) Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
         Press(Keys.Escape);
-        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 5, "Esc goes back to the main menu");
-        for (int k = 0; k < 5; k++) Press(Keys.Up);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 6, "Esc goes back to the main menu");
+        for (int k = 0; k < 6; k++) Press(Keys.Up);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
         Press(Keys.Enter);
@@ -2859,7 +2972,7 @@ public static class Headless
         var g = new Game { FixedSeed = 1, MapsDir = dir };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
 
-        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Arena", "Leaderboard", "Character", "Options", "Quit" }),
+        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }),
               "the title menu no longer has a level editor (maps are made in tools/editor)");
         g.Con.Execute("edit");
         check(g.Con.Log.Last().Contains("unknown"), "the 'edit' console command is gone");
@@ -3989,6 +4102,30 @@ public static class Headless
         g.Messages.Clear();
         Shot("74_verdant_moon");
         g.Vars.Freeze = false;
+
+        // Story mode: the case brief, the docks at night, questioning the guard, and the journal
+        g.StartStory(0);
+        Shot("75_story_brief");
+        g.ReadingLore = null;
+        PlaceCam(12.5f, 9.5f, 0, 0, -0.35f, 0);
+        Tick(default, 30); PlaceCam(12.5f, 9.5f, 0, 0, -0.35f, 0);
+        g.Messages.Clear();
+        Shot("76_story_dockside");
+        var sl = g.Level;
+        foreach (var id in new[] { "gate", "boots" }) Story.Examine(g, sl.Things.OfType<ClueMark>().First(m => m.C.Id == id));
+        g.ReadingLore = null;
+        var guard = sl.Things.OfType<Npc>().First(n => n.S.Culprit);
+        PlaceCam(guard.X - 0.1f, guard.Y + 1.3f, 0, 0, -MathF.PI / 2, 0);
+        Tick(default, 1); PlaceCam(guard.X - 0.1f, guard.Y + 1.3f, 0, 0, -MathF.PI / 2, 0);
+        Story.Talk(g, guard);
+        Story.Choose(g, "clue:gate");
+        g.Story.Cursor = 2;
+        g.Messages.Clear();
+        Shot("77_story_questioning");
+        Story.Choose(g, "bye");
+        g.Story.JournalOpen = true;
+        Shot("78_story_journal");
+        g.GoToTitle();
 
         // the original fantasy look, kept as an option
         g.SetArtStyle(ArtStyle.Fantasy);

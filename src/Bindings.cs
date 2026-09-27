@@ -4,7 +4,7 @@ namespace HexenSharp;
 public enum Act
 {
     Forward, Back, StrafeLeft, StrafeRight, TurnLeft, TurnRight, Attack, Use, Jump, Jetpack, Slide, Walk, UseItem, Place,
-    Weapon1, Weapon2, Weapon3, NextWeapon, PrevWeapon, Automap, Console, Screenshot, Character, CycleHud,
+    Weapon1, Weapon2, Weapon3, NextWeapon, PrevWeapon, Automap, Console, Screenshot, Character, CycleHud, Journal,
 }
 
 /// <summary>Where key state comes from (Raylib in the real game, a fake in tests).</summary>
@@ -98,6 +98,7 @@ public sealed class Bindings
         new(Act.Screenshot, "screenshot", "Screenshot", Keys.F1 + 11, Keys.None),
         new(Act.Character, "character", "Character / skills", Keys.Letter('K'), Keys.None),
         new(Act.CycleHud, "cyclehud", "Cycle HUD style", Keys.Letter('H'), Keys.None),
+        new(Act.Journal, "journal", "Case journal", Keys.Letter('J'), Keys.None),
     };
 
     readonly int[,] _keys = new int[Count, Slots];
@@ -159,6 +160,7 @@ public sealed class Bindings
         i.Map = Pressed(k, Act.Automap);
         i.Character = Pressed(k, Act.Character);
         i.CycleHud = Pressed(k, Act.CycleHud);
+        i.Journal = Pressed(k, Act.Journal);
         i.ConsoleToggle = Pressed(k, Act.Console);
         i.Screenshot = Pressed(k, Act.Screenshot);
         if (Pressed(k, Act.Weapon1)) i.Slot = 1;

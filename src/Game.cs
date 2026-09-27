@@ -9,7 +9,7 @@ public struct Input
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
     public bool Fire, Walk, JumpHeld, SlideHeld, JetHeld; // held
-    public bool Use, UseItem, Place, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character, CycleHud; // pressed
+    public bool Use, UseItem, Place, Journal, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character, CycleHud; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
@@ -238,6 +238,7 @@ public sealed class Game
         TestingMap = true;
         Practicing = true;
         ArenaMode = false;
+        StoryMode = false;
         Demo = DemoPaused = DemoSteps = false; Pilot = null; DemoTrack = null; PracticeSpeed = 1f;
         NewGame(cls); // sets the course up (SetUpCourse) once the map is built
         if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
@@ -260,6 +261,7 @@ public sealed class Game
         TestingMap = true;
         Practicing = false; Demo = false; PracticeSpeed = 1f;
         ArenaMode = true;
+        StoryMode = false;
         Style = GameStyle.Classic;
         NewGame(cls);
         int best = Profile.ArenaBestWave(cls);
@@ -564,6 +566,7 @@ public sealed class Game
         TestingMap = true;
         Practicing = false;
         ArenaMode = false;
+        StoryMode = false;
         NewGame(cls);
         Say($"Play-testing '{map.Name}'.");
     }
@@ -592,6 +595,7 @@ public sealed class Game
     {
         EndArenaRun();
         ArenaMode = false;
+        StoryMode = false; Story = null;
         SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
         Practicing = false; Demo = false; PracticeSpeed = 1f;
@@ -649,6 +653,96 @@ public sealed class Game
     /// <summary>Score, style rank and damage numbers, shown when Arcade mode is on (always tracked).</summary>
     public readonly Arcade Arcade = new();
 
+    /// <summary>Story mode (Main menu > Story): private-eye cases around Neon Harbor, one map each.</summary>
+    public bool StoryMode;
+    public int StoryCase;
+    /// <summary>The case in progress: clues, statements, strikes, and who you're talking to.</summary>
+    public StoryState Story;
+
+    /// <summary>Takes on a case: its map, its suspects and clues. Always on foot and unarmed.</summary>
+    public void StartStory(int caseIndex)
+    {
+        StoryCase = Math.Clamp(caseIndex, 0, HexenSharp.Story.Cases.Length - 1);
+        var c = HexenSharp.Story.Cases[StoryCase];
+        HubSource = () => new[] { c.Map.Build() };
+        TestingMap = true;
+        Practicing = false; Demo = false; PracticeSpeed = 1f;
+        ArenaMode = false;
+        StoryMode = true;
+        Style = GameStyle.Classic;
+        NewGame(PClass.Fighter); // sets the case up (SetUpCase) once the map is built
+    }
+
+    void SetUpCase()
+    {
+        var c = HexenSharp.Story.Cases[StoryCase];
+        Story = new StoryState(c);
+        foreach (var s in c.Suspects) Level.Things.Add(new Npc(s) { Level = Level });
+        foreach (var clue in c.Clues) Level.Things.Add(new ClueMark(clue) { Level = Level });
+        Level.Things.RemoveAll(t => t is Monster or Chest);
+        Messages.Clear();
+        Say($"Case {StoryCase + 1}: {c.Title}");
+        ReadingLore = $"Case {StoryCase + 1}: {c.Title}\n\n{c.Brief}\n\nE: question people and examine clues.  J: your journal.";
+    }
+
+    /// <summary>The culprit's confessed and you've closed the dialogue: on to the next job, or the end of the story.</summary>
+    public void CaseSolved()
+    {
+        if (StoryCase + 1 >= HexenSharp.Story.Cases.Length) { Mode = GameMode.Victory; PlaySound(Sfx.Relic, 1); return; }
+        StartStory(StoryCase + 1);
+        Say("A new job comes in over the wire.");
+    }
+
+    /// <summary>Three wrong accusations: the trail goes cold and the case starts over.</summary>
+    public void CaseGoesCold()
+    {
+        PlaySound(Sfx.PlayerDeath, 0.6f);
+        StartStory(StoryCase);
+        Say("Three wrong calls. The trail went cold, so you start the case over.");
+    }
+
+    /// <summary>E in story mode: talk to the person or examine the clue you're facing, if any.</summary>
+    bool TryDetective()
+    {
+        if (Story == null) return false;
+        Thing best = null;
+        float bestD = 1.6f;
+        foreach (var t in Level.Things)
+        {
+            if (t is not (Npc or ClueMark)) continue;
+            float d = Dist(t.X, t.Y, P.X, P.Y);
+            if (d >= bestD || MathF.Abs(AngleDiff(MathF.Atan2(t.Y - P.Y, t.X - P.X), P.Angle)) > 0.6f) continue;
+            best = t; bestD = d;
+        }
+        if (best is Npc n) HexenSharp.Story.Talk(this, n);
+        else if (best is ClueMark m) HexenSharp.Story.Examine(this, m);
+        return best != null;
+    }
+
+    /// <summary>Talking or reading the journal pauses play: returns true while it has the input.</summary>
+    bool StoryInput(Input inp)
+    {
+        var s = Story;
+        if (s == null || Mode != GameMode.Playing) return false;
+        if (s.JournalOpen)
+        {
+            if (inp.Journal || inp.Pause || inp.Confirm || inp.Use) s.JournalOpen = false;
+            return true;
+        }
+        if (s.Talking != null)
+        {
+            var opts = HexenSharp.Story.Options(s);
+            if (inp.Up) { s.Cursor = (s.Cursor + opts.Count - 1) % opts.Count; PlaySound(Sfx.Swing, 0.4f); }
+            if (inp.Down) { s.Cursor = (s.Cursor + 1) % opts.Count; PlaySound(Sfx.Swing, 0.4f); }
+            s.Cursor = Math.Clamp(s.Cursor, 0, opts.Count - 1);
+            if (inp.Pause) HexenSharp.Story.Choose(this, "bye");
+            else if (inp.Confirm || inp.Use) HexenSharp.Story.Choose(this, opts[s.Cursor].key);
+            return true;
+        }
+        if (inp.Journal) { s.JournalOpen = true; PlaySound(Sfx.Lore, 0.5f); return true; }
+        return false;
+    }
+
     public void NewGame(PClass cls)
     {
         EndArenaRun(); // Restart, or trying again after dying
@@ -666,7 +760,7 @@ public sealed class Game
         string NextName() => names[nameIndex++ % names.Count];
         foreach (var lv in Hub)
         {
-            if (!Practicing && !ArenaMode) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses and the arena stay clear
+            if (!Practicing && !ArenaMode && !StoryMode) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses, the arena and cases stay clear
             ChestsTotal += lv.Things.Count(t => t is Chest);
 
             // treasure in secret nooks: a relic when relaxed, a Mystic Urn in classic
@@ -704,6 +798,7 @@ public sealed class Game
         }
         else if (!TestingMap) Say($"You are the {P.Def.Name}. Find a way through the hub.");
         if (Practicing) SetUpCourse(); // starting a course, or Restart on one
+        if (StoryMode) SetUpCase();
     }
 
     static Thing Place(Thing t, Thing at, Level lv)
@@ -746,6 +841,7 @@ public sealed class Game
             if (inp.Use || inp.Confirm || inp.Pause || inp.Fire || inp.Jump) ReadingLore = null;
             return;
         }
+        if (StoryInput(inp)) return;
 
         switch (Mode)
         {
@@ -767,7 +863,7 @@ public sealed class Game
                 return;
             case GameMode.Victory:
                 // a play-tested map starts over, so you can keep iterating; the hub goes back to the title
-                if (inp.Confirm) { if (TestingMap) NewGame(P.Class); else GoToTitle(); }
+                if (inp.Confirm) { if (StoryMode) GoToTitle(); else if (TestingMap) NewGame(P.Class); else GoToTitle(); }
                 return;
         }
 
@@ -1129,7 +1225,7 @@ public sealed class Game
 
         p.Cooldown -= dt;
         p.FireAnim = MathF.Max(0, p.FireAnim - dt);
-        if (inp.Fire && !Relaxed && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
+        if (inp.Fire && !Relaxed && !StoryMode && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
     }
 
     void SelectWeapon(int w)
@@ -1329,7 +1425,7 @@ public sealed class Game
     void UseLine(bool pull)
     {
         var p = P;
-        if (TryReadLore() || TryOpenChest() || TryUseShip()) return;
+        if (TryDetective() || TryReadLore() || TryOpenChest() || TryUseShip()) return;
         if (Level.Dig && MineTarget(1.3f) is (var mx, var my, var mf, var ms))
         {
             if (p.Cooldown <= 0) { HitBlock(mx, my, Level.RubbleHp / 3 + 1, mf, slot: ms); p.Cooldown = 0.45f; }

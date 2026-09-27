@@ -55,6 +55,7 @@ public sealed class Renderer
         DrawMessages(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
+        if (g.Story != null) DrawStory(g);
         if (g.Vars.Arcade && !g.ShowMap) DrawArcade(g);
 
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
@@ -69,7 +70,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int TitleTop = 122, TitleRow = 10, TitleFooter = 192, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 28, OptionsRow = 11, OptionsFooter = 188;
+    public const int TitleTop = 118, TitleRow = 9, TitleFooter = 192, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 28, OptionsRow = 11, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected)
     {
@@ -763,7 +764,7 @@ public sealed class Renderer
     {
         var p = g.P;
         if (g.Level.Flight) { DrawCockpit(g); return; }
-        if (g.Mode == GameMode.Dead || g.Relaxed) return; // relaxed mode: weapons stay sheathed
+        if (g.Mode == GameMode.Dead || g.Relaxed || g.StoryMode) return; // relaxed mode and cases: weapons stay sheathed
         int slot = p.Weapon;
         var frames = Art.Weapons[(int)p.Class * 3 + slot];
         var tex = p.FireAnim > 0.06f ? frames[1] : frames[0];
@@ -964,6 +965,62 @@ public sealed class Renderer
         {
             string combo = $"{a.Combo} HITS";
             Text(W - 6 - Font.Width(combo), y + 26, combo, Col.Rgb(230, 220, 200));
+        }
+    }
+
+    /// <summary>
+    /// Story mode: the case and your progress in the top-right corner; the conversation panel while you question
+    /// someone; the journal (J) with everything you've found and heard, lies and patterns picked out.
+    /// </summary>
+    void DrawStory(Game g)
+    {
+        var s = g.Story;
+        uint gold = Col.Rgb(255, 210, 110), dim = Col.Rgb(170, 160, 150), flag = Col.Rgb(255, 120, 90);
+        if (g.ReadingLore == null && s.Talking == null && !s.JournalOpen && g.Vars.Hud != HudStyle.Off)
+        {
+            int top = g.Vars.ShowFps ? 12 : 3;
+            string title = $"CASE {g.StoryCase + 1} OF {Story.Cases.Length}";
+            Text(W - 4 - Font.Width(title), top, title, gold);
+            string prog = $"CLUES {s.Found.Count}/{s.Case.Clues.Length}";
+            Text(W - 4 - Font.Width(prog), top + 10, prog, dim);
+            string strikes = $"STRIKES {s.Strikes}/{StoryState.MaxStrikes}";
+            Text(W - 4 - Font.Width(strikes), top + 20, strikes, s.Strikes > 0 ? flag : dim);
+            Text(W - 4 - Font.Width("J: JOURNAL"), top + 30, "J: JOURNAL", dim);
+        }
+        if (s.Talking != null)
+        {
+            var opts = Story.Options(s);
+            int h = 26 + Wrap(s.Line, 48).Count() * 9 + opts.Count * 9;
+            int y = ViewH - h - 4;
+            Darken(6, y, W - 12, h, 200);
+            Rect(6, y, W - 12, 1, gold);
+            var sus = s.Talking.S;
+            Text(12, y + 4, sus.Name.ToUpperInvariant(), gold);
+            Text(12 + Font.Width(sus.Name) + 8, y + 4, sus.Role.ToUpperInvariant(), dim);
+            int ly = y + 16;
+            foreach (var line in Wrap(s.Line, 48)) { Text(12, ly, line, Col.Rgb(235, 228, 215)); ly += 9; }
+            ly += 4;
+            for (int i = 0; i < opts.Count; i++, ly += 9)
+            {
+                bool sel = i == s.Cursor;
+                uint c = opts[i].key == "accuse" ? flag : sel ? MenuSel : MenuText;
+                Text(14, ly, (sel ? "> " : "  ") + opts[i].label, sel ? MenuSel : c);
+            }
+        }
+        if (s.JournalOpen)
+        {
+            Darken(0, 0, W, H, 225);
+            CenterText("CASE JOURNAL", 6, gold, 2);
+            CenterText(s.Case.Title.ToUpperInvariant(), 24, Col.Rgb(230, 190, 80));
+            int y = 36;
+            var lines = new List<(string text, uint col)>();
+            foreach (var (text, isFlag) in s.Journal)
+                foreach (var l in Wrap(text, 50)) lines.Add((l, isFlag ? flag : Col.Rgb(220, 212, 200)));
+            if (lines.Count == 0) lines.Add(("NOTHING YET. QUESTION PEOPLE AND LOOK FOR CLUES.", dim));
+            int max = (H - 20 - y) / 9;
+            foreach (var (text, col) in lines.Skip(Math.Max(0, lines.Count - max))) { Text(8, y, text, col); y += 9; }
+            string foot = s.HasKeys ? "YOU HAVE THE EVIDENCE. NAME THE CULPRIT." : "J: CLOSE";
+            CenterText(foot, H - 12, s.HasKeys ? Col.Rgb(120, 255, 140) : dim);
         }
     }
 
@@ -1378,7 +1435,8 @@ public sealed class Renderer
 
     void DrawLore(Game g)
     {
-        const int x0 = 28, y0 = 26, w = W - 56, h = 118;
+        // case notes (story mode) get a bigger sheet than a lore stone's few lines
+        int x0 = g.StoryMode ? 12 : 28, y0 = g.StoryMode ? 12 : 26, w = W - 2 * x0, h = g.StoryMode ? 166 : 118;
         Rect(x0 - 2, y0 - 2, w + 4, h + 4, Col.Rgb(40, 26, 14));
         for (int y = y0; y < y0 + h; y++)
             for (int x = x0; x < x0 + w; x++)
@@ -1387,7 +1445,7 @@ public sealed class Renderer
                 Fb[y * W + x] = Col.Rgb(206 + n - 8, 186 + n - 8, 142 + n - 8);
             }
         uint ink = Col.Rgb(60, 36, 20);
-        string title = Words.T("LORE STONE");
+        string title = g.StoryMode ? "CASE NOTES" : Words.T("LORE STONE");
         Font.Draw(Fb, W, H, (W - Font.Width(title)) / 2, y0 + 6, title, Col.Rgb(120, 40, 20), 1, false);
         Rect(x0 + 20, y0 + 16, w - 40, 1, Col.Rgb(150, 110, 70));
         int maxChars = (w - 16) / Font.CharW, ly = y0 + 24;
@@ -1402,13 +1460,17 @@ public sealed class Renderer
 
     static IEnumerable<string> Wrap(string text, int max)
     {
-        var line = "";
-        foreach (var word in text.Split(' '))
+        foreach (var para in text.Split('\n'))
         {
-            if (line.Length > 0 && line.Length + 1 + word.Length > max) { yield return line; line = ""; }
-            line = line.Length == 0 ? word : line + " " + word;
+            if (para.Length == 0) { yield return ""; continue; }
+            var line = "";
+            foreach (var word in para.Split(' '))
+            {
+                if (line.Length > 0 && line.Length + 1 + word.Length > max) { yield return line; line = ""; }
+                line = line.Length == 0 ? word : line + " " + word;
+            }
+            if (line.Length > 0) yield return line;
         }
-        if (line.Length > 0) yield return line;
     }
 
     void ManaBar(int x, int y, string name, int val, uint col)
@@ -1443,7 +1505,7 @@ public sealed class Renderer
     {
         int y = 3;
         if (g.ShowMap) y = 14;
-        int width = W - 8 - (g.Practicing ? RunClockW : g.ArenaMode || g.Vars.Arcade ? ArenaHudW : 0);
+        int width = W - 8 - (g.Practicing ? RunClockW : g.ArenaMode || g.Vars.Arcade || g.StoryMode ? ArenaHudW : 0);
         foreach (var (text, _) in g.Messages)
             foreach (var line in Wrap(text, width / Font.CharW))
             {
@@ -1529,7 +1591,14 @@ public sealed class Renderer
         var p = g.P;
         int t = (int)g.PlayTime;
         uint stat = Col.Rgb(170, 200, 255);
-        if (g.Relaxed)
+        if (g.StoryMode)
+        {
+            CenterText("EVERY CASE CLOSED.", 72, Col.Rgb(230, 220, 200));
+            CenterText($"{Story.Town.ToUpperInvariant()} SLEEPS A LITTLE EASIER TONIGHT.", 84, Col.Rgb(230, 220, 200));
+            CenterText("YOU HANG UP THE COAT, UNTIL THE NEXT CALL.", 96, Col.Rgb(230, 220, 200));
+            CenterText($"CASES: {Story.Cases.Length}    TIME ON THE LAST JOB: {t / 60}:{t % 60:00}", 120, stat);
+        }
+        else if (g.Relaxed)
         {
             CenterText(Words.T("EVERY RELIC IS FOUND."), 72, Col.Rgb(230, 220, 200));
             CenterText($"THE {p.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL, AT PEACE.", 84, Col.Rgb(230, 220, 200));

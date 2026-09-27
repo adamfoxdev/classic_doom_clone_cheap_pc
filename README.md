@@ -219,6 +219,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `Tab` / `M` | Automap |
 | `Esc` | Pause menu (Resume, Options, Restart, Quit) |
 | `K` | Character screen: spend skill points, see your weapons' levels |
+| `J` | Case journal (Story mode) |
 | `H` | Cycle the HUD style: full, compact, minimal, off |
 | `F12` | Save a screenshot |
 | `~` | Developer console |
@@ -408,6 +409,39 @@ exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
 under the crypt's south-west room, at the east end of the Windspire's
 north-east ledge, and at the east end of the quarry's strongroom.
+
+## Story mode
+
+**Story** on the title menu. You're a private eye working jobs around **Neon Harbor**, a rain-slicked sci-fi town
+of neon signs, lit windows and a skyline of towers. Each case has its own map, and you play it on foot, unarmed.
+There's nothing to shoot; this is detective work.
+
+- **The brief** opens each case: who's been hurt, what's gone missing, who to talk to.
+- **Question people:** walk up to someone and press `E`. Ask where they were (their alibi), or ask about any clue
+  you've found; each clue you find adds a question. Use `Up`/`Down` and `Enter`, and `Esc` to walk away.
+- **Find clues:** glowing yellow evidence tags mark them. Press `E` to examine one; it goes in your journal and
+  becomes something to ask about.
+- **Catch the lies:** ask someone about a clue that contradicts their story and your journal flags it in red.
+  Only the culprit lies.
+- **Watch for patterns:** some clues only make sense together, like a staff roster and a list of spiked drinks at
+  other clubs. Find both and the journal notes the pattern.
+- **The journal** (`J`) keeps everything: people met, alibis, what they said about each clue, the clues themselves,
+  lies and patterns. It tells you when you have the evidence you need.
+- **Accuse** from the conversation menu:
+  - Naming the culprit with the key evidence in hand gets a confession, and the next job comes in.
+  - Naming the culprit without enough proof gets you nowhere, but costs nothing.
+  - Naming the wrong person is a strike. Three strikes and the trail goes cold, and the case starts over.
+
+The case, clue count and strikes sit in the top-right corner. The cases:
+
+1. **The Missing Shipment** (Dockside): a crate of medical nanites vanishes from a warehouse overnight.
+2. **Static on Channel 7** (the Chrome Lounge): a holo-news anchor's drink is spiked. It isn't the first time this
+   month.
+3. **The Ghost in the Grid** (the Grid District): every few nights the whole district blacks out.
+
+Close all three to finish the story.
+
+![Questioning a suspect](docs/story_questioning.png)
 
 ## Map editor
 
@@ -650,6 +684,8 @@ in both looks (`76_…`, `77_…`).
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
 | `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's ten maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards, and the arena's medals |
+| `src/Story.cs` | Story mode: the cases (maps, suspects, clues, patterns), questioning, the journal and accusations |
+| `src/Arcade.cs` | Arcade mode: damage numbers, score and the style rank |
 | `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
 | `src/Practice.cs` | The practice courses: Velocity Hangar, Descent, Circuit and Free Roam |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |

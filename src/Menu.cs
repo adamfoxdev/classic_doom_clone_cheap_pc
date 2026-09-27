@@ -63,7 +63,7 @@ public sealed class MenuSystem
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Practice", "Arena", "Leaderboard", "Character", "Options", "Quit" },
+        MenuPage.Main => new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" },
         MenuPage.Pause => _g.Practicing
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : _g.ArenaMode
@@ -234,6 +234,7 @@ public sealed class MenuSystem
             switch (items[Cursor])
             {
                 case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
+                case "Story": Close(); _g.StartStory(0); break;
                 case "Practice": Show(MenuPage.Courses); break;
                 case "Arena":
                     _g.Style = GameStyle.Classic; _g.PendingArena = true; _g.PendingPractice = false;
