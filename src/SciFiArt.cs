@@ -248,6 +248,9 @@ public static class SciFiArt
         Art.SpawnFloor = Pad(C(190, 70, 255));
         Art.AltarFloor = Pad(C(255, 210, 60));
         Art.AltarFloorOff = Pad(C(110, 90, 50));
+        Art.CheckpointFloor = Pad(C(80, 255, 140));
+        Art.CheckpointFloorOff = Pad(C(50, 80, 60));
+        Art.LiftFloor = Pad(C(220, 240, 255));
         {
             var t = Art.FloorStone.Clone(); var c = new Canvas(t);
             c.Rect(8, 8, 48, 48, C(30, 32, 36));

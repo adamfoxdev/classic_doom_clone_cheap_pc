@@ -110,6 +110,17 @@ public sealed class Player
     public WeaponDef CurWeapon => Def.Weapons[Weapon];
 }
 
+/// <summary>
+/// Where you come back after dying: the highest checkpoint pad reached in a map, with the health and armor you
+/// had then (keys, weapons and items stay with you, so nothing on the main route can be lost).
+/// </summary>
+public sealed class Checkpoint
+{
+    public Level Level;
+    public int Index, Health, Armor;
+    public float X, Y, Floor, Angle;
+}
+
 public sealed class Game
 {
     public GameMode Mode = GameMode.Title;
@@ -226,6 +237,10 @@ public sealed class Game
     /// <summary>Seed for chest placement and loot; null picks a fresh random layout every game.</summary>
     public int? FixedSeed;
     public int ChestsTotal, RelicsTotal, LoreTotal, SecretsTotal;
+    /// <summary>The checkpoint you respawn at if you die in its map; null before you reach one.</summary>
+    public Checkpoint Checkpoint;
+    bool _onLift;
+    float _liftMsgCd;
     /// <summary>Classic: fight through the hub. Relaxed: no combat; explore, read lore, find relics and secrets.</summary>
     public GameStyle Style = GameStyle.Classic;
     public bool Relaxed => Style == GameStyle.Relaxed;
@@ -238,6 +253,8 @@ public sealed class Game
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
         ChestsTotal = 0;
+        Checkpoint = null;
+        _onLift = false;
         var names = Discovery.RelicNames.OrderBy(_ => _loot.Next()).ToList();
         int nameIndex = 0;
         string NextName() => names[nameIndex++ % names.Count];
@@ -358,7 +375,11 @@ public sealed class Game
         if (Mode == GameMode.Dead)
         {
             P.EyeZ = MathF.Max(0.12f, P.EyeZ - dt * 0.8f);
-            if ((inp.Confirm || inp.Use) && P.EyeZ <= 0.13f) NewGame(P.Class);
+            if ((inp.Confirm || inp.Use) && P.EyeZ <= 0.13f)
+            {
+                if (CanRespawn) RespawnAtCheckpoint();
+                else NewGame(P.Class);
+            }
         }
     }
 
@@ -465,6 +486,8 @@ public sealed class Game
         float moving = p.OnGround && p.SlideTime <= 0 ? MathF.Min(1, len) : 0f;
         p.BobAmount += (moving - p.BobAmount) * MathF.Min(1, dt * 8);
         p.Bob += dt * 9 * moving;
+
+        UpdateCheckpoints(p, dt);
 
         // portals & exit
         char mark = Level.MarkAt(p.X, p.Y);
@@ -623,6 +646,82 @@ public sealed class Game
             return speed * p.Pitch / proj;
         }
         return null;
+    }
+
+    /// <summary>Dying in the map of your last checkpoint sends you back there instead of restarting the game.</summary>
+    public bool CanRespawn => Checkpoint != null && Checkpoint.Level == Level;
+
+    /// <summary>Landing on a ledge lights its checkpoint pad; the lift pad takes you back up to the highest one.</summary>
+    void UpdateCheckpoints(Player p, float dt)
+    {
+        _liftMsgCd -= dt;
+        var lv = Level;
+        int cx = (int)MathF.Floor(p.X), cy = (int)MathF.Floor(p.Y);
+        if (!lv.InBounds(cx, cy)) return;
+        int cell = cy * lv.W + cx;
+        if (p.OnGround && !p.Flying && MathF.Abs(lv.Floors[cell] - p.FloorZ) < 0.01f)
+        {
+            int zone = lv.CheckpointZone[cell];
+            if (zone >= 0 && lv.CheckpointsReached.Add(zone))
+            {
+                int pad = lv.Checkpoints[zone];
+                float floor = lv.Floors[pad];
+                // respawn at the highest pad you've lit, so dropping back to a lower ledge doesn't lose progress
+                if (Checkpoint == null || Checkpoint.Level != lv || floor > Checkpoint.Floor)
+                    Checkpoint = new Checkpoint
+                    {
+                        Level = lv, Index = zone, X = pad % lv.W + 0.5f, Y = pad / lv.W + 0.5f, Floor = floor, Angle = p.Angle,
+                        Health = Math.Max(p.Health, 50), Armor = p.Armor,
+                    };
+                PlaySound(Sfx.Secret, 0.7f);
+                Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count}).");
+            }
+        }
+
+        bool onLift = lv.Marks[cell] == '=' && p.OnGround;
+        if (onLift && !_onLift)
+        {
+            if (Checkpoint != null && Checkpoint.Level == lv)
+            {
+                MoveTo(Checkpoint.X, Checkpoint.Y, Checkpoint.Angle);
+                PlaySound(Sfx.Teleport, 1);
+                Say("The lift carries you up to your checkpoint.");
+                onLift = false;
+            }
+            else if (_liftMsgCd <= 0)
+            {
+                Say(lv.Checkpoints.Count > 0 ? "The lift pad is dark. Reach a ledge's checkpoint first." : "The lift pad is dark.");
+                _liftMsgCd = 3;
+            }
+        }
+        _onLift = onLift;
+    }
+
+    void MoveTo(float x, float y, float angle)
+    {
+        var p = P;
+        p.X = x; p.Y = y; p.Angle = angle;
+        p.FloorZ = Level.FloorUnder(x, y, p.Radius); p.Z = 0; p.VZ = 0; p.Flying = false;
+        p.StepLag = 0; p.SlideTime = 0; p.SlideLow = 0;
+        p.TeleportFlash = 1;
+    }
+
+    /// <summary>Back on your feet at the checkpoint: its health and armor, a full jetpack, everything else kept.</summary>
+    public void RespawnAtCheckpoint()
+    {
+        var c = Checkpoint;
+        var p = P;
+        foreach (var t in Level.Things) if (t is Projectile or Puff) t.Removed = true;
+        MoveTo(c.X, c.Y, c.Angle);
+        p.Dead = false;
+        p.Health = Math.Max(c.Health, 50);
+        p.Armor = Math.Max(p.Armor, c.Armor);
+        p.EyeZ = 0.5f; p.DamageFlash = 0; p.Pitch = 0;
+        if (p.HasJetpack) p.Fuel = Player.FuelMax;
+        Mode = GameMode.Playing;
+        Messages.Clear();
+        PlaySound(Sfx.Teleport, 1);
+        Say("Back at your checkpoint.");
     }
 
     void UseLine(bool pull)
@@ -1301,7 +1400,7 @@ public sealed class Game
         }
     }
 
-    void DamagePlayer(int dmg)
+    internal void DamagePlayer(int dmg)
     {
         var p = P;
         if (Mode != GameMode.Playing || Vars.God || Relaxed) return;
@@ -1318,7 +1417,7 @@ public sealed class Game
             p.Z = 0; p.VZ = 0; p.SlideTime = 0; p.SlideLow = 0;
             Mode = GameMode.Dead;
             PlaySound(Sfx.PlayerDeath, 1);
-            Say("You have died. Press Enter to try again.");
+            Say(CanRespawn ? "You have died. Press Enter to return to the checkpoint." : "You have died. Press Enter to try again.");
         }
         else PlaySound(Sfx.PlayerPain, 1);
     }

@@ -88,6 +88,7 @@ public static class Words
         ["FIGHT YOUR WAY THROUGH THE HUB,"] = "FIGHT YOUR WAY THROUGH THE STATION,",
         ["SOLVE ITS PUZZLES AND SLAY THE HERESIARCH."] = "SOLVE ITS PUZZLES AND DESTROY THE OVERMIND.",
         ["Secret treasure"] = "Secret cache",
+        ["The lift carries you up to your checkpoint."] = "The lift pad beams you up to your checkpoint.",
         ["Lore stone"] = "Data terminal",
         ["LORE STONE"] = "DATA LOG",
     };
