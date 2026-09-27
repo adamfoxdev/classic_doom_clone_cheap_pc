@@ -363,7 +363,7 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   clears a slot, `Left`/`Right` switch between slots, and **Reset to defaults** restores everything.
   Binding a key that's already in use moves it off the other action and tells you which.
 - **Mouse sensitivity**, **Invert mouse**, **Field of view**, **Show FPS**, **Visual style** (sci-fi or fantasy),
-  **Rendered art** (the Blender art pack over the sci-fi style) and **HUD style**: change with `Left`/`Right` or `Enter`.
+  **Rendered art** (the Blender art pack over the sci-fi style), **HUD style** and **Crosshair**: change with `Left`/`Right` or `Enter`.
 - **HUD style** (also `H` in game, or `hud 0-3` in the console):
   - **Full**: the classic status bar along the bottom.
   - **Compact**: no status bar, so the view fills the screen. Health, armor and healing items sit in the bottom-left
@@ -374,6 +374,9 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   - **Off**: nothing but the view. Messages, menus and wave banners still show.
 
   ![Compact HUD](docs/hud_compact.png)
+- **Crosshair** (or `crosshair 0-3` in the console): off (the default), a dot, a cross or a circle, drawn light with
+  a dark outline at the centre of the view, where your shots go. It follows the horizon when you look up or down,
+  works with any HUD style, and hides on the automap and in the cockpit (which has its own gunsight).
 - `Esc`, `Enter` and the arrow keys always work in menus, and `Esc` can't be bound, so a bad binding can
   never lock you out.
 
@@ -409,7 +412,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
-`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off).
+`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off), `crosshair` (0 off, 1 dot, 2 cross, 3 circle).
 
 Hexen's cheat codes work when typed during play (or in the console):
 `satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys), `icarus` (jetpack),
