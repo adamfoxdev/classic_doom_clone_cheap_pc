@@ -87,6 +87,8 @@ public static class Headless
         VerticalAimChecks(Check);
         Console.WriteLine("Checkpoints:");
         CheckpointChecks(Check);
+        Console.WriteLine("Rendered art pack:");
+        RenderedArtChecks(Check);
 
         Console.WriteLine("Audio synthesis:");
         SoundChecks(Check);
@@ -239,6 +241,61 @@ public static class Headless
         WalkTo(10.5f, 13.5f); WalkTo(9.9f, 16.5f);
         for (int k = 0; k < 35 * 3 && p.FloorZ == 0; k++) { Face(11.5f, 17.5f); Tick(new Input { Move = 1 }); }
         check(p.FloorZ == 8.5f && g.Messages.Any(m => m.text.Contains("beams you up")), "stepping on the lift pad takes you back up to the summit");
+    }
+
+    static void RenderedArtChecks(Action<bool, string> check)
+    {
+        // the PNG reader round-trips what the screenshot writer saves
+        var tmp = Path.Combine(Path.GetTempPath(), $"hexen_png_{Environment.ProcessId}.png");
+        var src = new uint[37 * 23];
+        for (int i = 0; i < src.Length; i++) src[i] = Col.Rgb(i * 7 % 256, i * 13 % 256, i * 29 % 256);
+        Png.Save(tmp, src, 37, 23);
+        var back = Png.Load(File.ReadAllBytes(tmp));
+        File.Delete(tmp);
+        check(back.W == 37 && back.H == 23 && back.Px.SequenceEqual(src), "PNG reader round-trips a saved image");
+
+        var covered = RenderedArt.Covered.ToList();
+        check(RenderedArt.Available && covered.Count == 16, $"the pilot pack covers 11 pickups, 4 textures and the drone ({covered.Count})");
+        bool shapes = true;
+        foreach (var (file, png) in RenderedArt.Files)
+        {
+            var t = Png.Load(png);
+            int clear = t.Px.Count(c => Col.A(c) == 0);
+            shapes &= t.W == 64 && t.H == 64 && (file.StartsWith("textures/") ? clear == 0 : clear > 400 && clear < 64 * 64 - 300);
+        }
+        check(shapes, "every rendered asset is 64x64: sprites cut out, textures solid");
+
+        var g = new Game { FixedSeed = 1 };
+        g.NewGame(PClass.Fighter);
+        var hall = g.Level;
+        check(!Art.Rendered && Art.Style == ArtStyle.SciFi, "rendered art is off by default");
+        var procJet = Art.Jetpack;
+        g.SetRenderedArt(true);
+        check(Art.Jetpack.Px.SequenceEqual(RenderedArt.Load("sprites/jetpack").Px) && !Art.Jetpack.Px.SequenceEqual(procJet.Px),
+              "turning it on swaps in the rendered jetpack");
+        check(hall.Theme.Walls['#'] == Art.Stone && Art.Stone.Px.SequenceEqual(RenderedArt.Load("textures/stone").Px),
+              "maps pick up the rendered wall textures straight away");
+        var drone = Art.Monsters["afrit"];
+        check(drone.Length == 7 && drone[0].Px.SequenceEqual(RenderedArt.Load("monsters/afrit_walk0").Px) && drone[(int)Pose.Dead] != null,
+              "the drone uses its rendered frames, with death frames derived from them");
+        check(Art.Pillar != null && Art.Monsters["ettin"].Length == 7, "art the pack doesn't cover stays procedural");
+        g.SetArtStyle(ArtStyle.Fantasy);
+        check(!Art.Jetpack.Px.SequenceEqual(RenderedArt.Load("sprites/jetpack").Px), "the fantasy style ignores the sci-fi pack");
+        g.SetArtStyle(ArtStyle.SciFi);
+        check(Art.Jetpack.Px.SequenceEqual(RenderedArt.Load("sprites/jetpack").Px), "and it comes back with the sci-fi style");
+        check(Settings.Lines(g).Contains("renderedart 1"), "the choice is saved with the settings");
+
+        // the options menu and console toggle it
+        g.Menu.Show(MenuPage.Options);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "Rendered art");
+        check(g.Menu.Value(g.Menu.Cursor) == "ON", "Options shows Rendered art: ON");
+        g.Menu.Update(new Input { Right = true }, 1f / 35f);
+        check(!Art.Rendered && g.Menu.Value(g.Menu.Cursor) == "OFF" && Art.Jetpack.Px.SequenceEqual(procJet.Px), "Left/Right in Options turns it off");
+        g.Menu.Close();
+        g.Con.Execute("renderedart 1");
+        check(Art.Rendered, "'renderedart 1' turns it on from the console");
+        g.Con.Execute("renderedart 0");
+        check(!Art.Rendered && !Art.Stone.Px.SequenceEqual(RenderedArt.Load("textures/stone").Px), "'renderedart 0' turns it off again");
     }
 
     static void CheckpointChecks(Action<bool, string> check)
@@ -1605,6 +1662,48 @@ public static class Headless
         return 0;
     }
 
+    /// <summary>Procedural art (top row of each pair) against the Blender-rendered pack (bottom row), for reviewing the pack.</summary>
+    static void RenderedArtSheet(string path)
+    {
+        Tex[] Pick() => new[]
+        {
+            Art.Vial, Art.Flask, Art.Urn, Art.BlueMana, Art.GreenMana, Art.SteelKey, Art.FireKey, Art.Armor, Art.Jetpack,
+            Art.WeaponPiece2, Art.WeaponPiece3, Art.Monsters["afrit"][0], Art.Monsters["afrit"][1], Art.Monsters["afrit"][2],
+            Art.Monsters["afrit"][3], Art.Monsters["afrit"][(int)Pose.Die1], Art.Stone, Art.Marble, Art.Brick, Art.FloorStone,
+        };
+        bool was = Art.Rendered;
+        var style = Art.Style;
+        Art.Rendered = false; Art.Init(ArtStyle.SciFi);
+        var before = Pick();
+        Art.Rendered = true; Art.Init(ArtStyle.SciFi);
+        var after = Pick();
+        Art.Rendered = was; Art.Init(style);
+
+        const int cols = 10, cell = 66 * 2, pad = 6;
+        int rows = (before.Length + cols - 1) / cols;
+        int w = cols * cell + pad * 2, h = rows * 2 * cell + pad * 2 + rows * pad;
+        var px = new uint[w * h];
+        for (int i = 0; i < px.Length; i++) px[i] = Col.Rgb(46, 50, 58);
+        void Blit(Tex t, int ox, int oy)
+        {
+            for (int y = 0; y < 128; y++)
+                for (int x = 0; x < 128; x++)
+                {
+                    uint c = t.Px[(y / 2) * t.W + x / 2];
+                    bool checker = ((x / 8) + (y / 8)) % 2 == 0;
+                    px[(oy + y) * w + ox + x] = Col.A(c) == 0 ? (checker ? Col.Rgb(60, 64, 72) : Col.Rgb(70, 74, 82)) : c;
+                }
+        }
+        for (int i = 0; i < before.Length; i++)
+        {
+            int cx = pad + (i % cols) * cell, cy = pad + (i / cols) * (2 * cell + pad);
+            Blit(before[i], cx, cy);
+            Blit(after[i], cx, cy + cell);
+        }
+        Png.Save(path, px, w, h);
+        Console.WriteLine($"wrote {path}");
+    }
+
     public static int Screenshots(string dir)
     {
         Directory.CreateDirectory(dir);
@@ -1971,6 +2070,24 @@ public static class Headless
         g.Messages.RemoveAll(m => !m.text.StartsWith("Checkpoint"));
         Shot("51_spire_checkpoint");
         g.Messages.Clear();
+
+        // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on
+        RenderedArtSheet(Path.Combine(dir, "52_rendered_sheet.png"));
+        g.SetRenderedArt(true);
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.Level.Things.Add(new Pickup(PickupKind.Jetpack, 0.5f) { X = 4.5f, Y = 3.5f, Level = g.Level });
+        g.Level.Things.Add(new Pickup(PickupKind.Flask, 0.4f) { X = 5.3f, Y = 2.3f, Level = g.Level });
+        g.Level.Things.Add(new Pickup(PickupKind.BlueMana, 0.4f) { X = 5.5f, Y = 4.4f, Level = g.Level });
+        g.Level.Things.Add(new Monster(Monster.Afrit) { X = 6.2f, Y = 3.2f, Level = g.Level });
+        g.Vars.Freeze = true;
+        PlaceCam(1.6f, 3.2f, 0, 0, 0.05f, -8);
+        Tick(default, 1); PlaceCam(1.6f, 3.2f, 0, 0, 0.05f, -8);
+        g.Messages.Clear();
+        Shot("53_rendered_hab_ring");
+        g.SetRenderedArt(false);
+        Shot("54_procedural_hab_ring");
+        g.Vars.Freeze = false;
         g.SetArtStyle(ArtStyle.Fantasy);
         PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
         Shot("50_windspire_fantasy");

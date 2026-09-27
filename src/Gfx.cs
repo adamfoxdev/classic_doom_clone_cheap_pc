@@ -300,7 +300,7 @@ public static class Font
     }
 }
 
-/// <summary>Minimal PNG encoder for screenshots.</summary>
+/// <summary>Minimal PNG encoder for screenshots, and a decoder for the rendered-art pack (8-bit RGB/RGBA, not interlaced).</summary>
 public static class Png
 {
     static readonly uint[] CrcTable = BuildCrc();
@@ -361,6 +361,71 @@ public static class Png
         WriteBE(buf, 8 + data.Length, Crc(buf, 4, data.Length + 4));
         s.Write(buf);
     }
+
+    /// <summary>Decodes an 8-bit RGB or RGBA PNG. Alpha is made all-or-nothing, as the renderer expects.</summary>
+    public static Tex Load(byte[] png)
+    {
+        if (png.Length < 8 || png[0] != 137 || png[1] != 80 || png[2] != 78 || png[3] != 71) throw new InvalidDataException("not a PNG");
+        int w = 0, h = 0, type = 0, pos = 8;
+        using var idat = new MemoryStream();
+        while (pos + 8 <= png.Length)
+        {
+            int len = (int)ReadBE(png, pos);
+            string tag = System.Text.Encoding.ASCII.GetString(png, pos + 4, 4);
+            int data = pos + 8;
+            if (tag == "IHDR")
+            {
+                w = (int)ReadBE(png, data); h = (int)ReadBE(png, data + 4);
+                type = png[data + 9];
+                if (png[data + 8] != 8 || (type != 2 && type != 6) || png[data + 12] != 0)
+                    throw new InvalidDataException("only 8-bit RGB/RGBA, non-interlaced PNGs are supported");
+            }
+            else if (tag == "IDAT") idat.Write(png, data, len);
+            else if (tag == "IEND") break;
+            pos = data + len + 4;
+        }
+        int bpp = type == 6 ? 4 : 3, stride = w * bpp;
+        var raw = new byte[(stride + 1) * h];
+        idat.Position = 0;
+        using (var z = new ZLibStream(idat, CompressionMode.Decompress)) z.ReadExactly(raw);
+
+        var cur = new byte[stride];
+        var prev = new byte[stride];
+        var tex = new Tex(w, h);
+        for (int y = 0; y < h; y++)
+        {
+            int f = raw[y * (stride + 1)];
+            Array.Copy(raw, y * (stride + 1) + 1, cur, 0, stride);
+            for (int i = 0; i < stride; i++)
+            {
+                int a = i >= bpp ? cur[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
+                cur[i] = (byte)(cur[i] + f switch
+                {
+                    1 => a,
+                    2 => b,
+                    3 => (a + b) / 2,
+                    4 => Paeth(a, b, c),
+                    _ => 0,
+                });
+            }
+            for (int x = 0; x < w; x++)
+            {
+                int o = x * bpp;
+                int alpha = bpp == 4 ? cur[o + 3] : 255;
+                tex.Px[y * w + x] = alpha < 128 ? 0u : Col.Rgb(cur[o], cur[o + 1], cur[o + 2]);
+            }
+            (prev, cur) = (cur, prev);
+        }
+        return tex;
+    }
+
+    static int Paeth(int a, int b, int c)
+    {
+        int p = a + b - c, pa = Math.Abs(p - a), pb = Math.Abs(p - b), pc = Math.Abs(p - c);
+        return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+    }
+
+    static uint ReadBE(byte[] b, int o) => (uint)(b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]);
 
     static void WriteBE(byte[] b, int o, uint v)
     {

@@ -15,4 +15,9 @@
     <PackageReference Include="Raylib-cs" Version="7.0.2" />
   </ItemGroup>
 
+  <!-- the optional Blender-rendered art pack (tools/blender/build_scifi_assets.py) -->
+  <ItemGroup>
+    <EmbeddedResource Include="assets/scifi/**/*.png" LogicalName="assets/scifi/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>
