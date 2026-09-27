@@ -425,6 +425,15 @@ public sealed class Renderer
                         Put(ox + x * cs + xx, oy + y * cs + yy, c == '\0' || !edge ? col : Col.Shade(col, 150));
                     }
             }
+        // chests you've seen: gold when closed, brown once looted
+        foreach (var t in lv.Things)
+            if (t is Chest ch && lv.Seen[(int)t.Y * lv.W + (int)t.X])
+            {
+                uint cc = ch.Opened ? Col.Rgb(110, 70, 30) : Col.Rgb(255, 210, 60);
+                int cx = ox + (int)(t.X * cs), cy = oy + (int)(t.Y * cs);
+                for (int yy = -1; yy <= 1; yy++) for (int xx = -1; xx <= 1; xx++) Put(cx + xx, cy + yy, cc);
+            }
+
         // player arrow
         float px = ox + g.P.X * cs, py = oy + g.P.Y * cs;
         float ca = MathF.Cos(g.P.Angle), sa = MathF.Sin(g.P.Angle);
@@ -601,7 +610,7 @@ public sealed class Renderer
         CenterText("THE HERESIARCH HAS FALLEN.", 80, Col.Rgb(230, 220, 200));
         CenterText($"THE {g.P.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL...", 94, Col.Rgb(230, 220, 200));
         int t = (int)g.PlayTime;
-        CenterText($"KILLS: {g.P.Kills}    TIME: {t / 60}:{t % 60:00}", 120, Col.Rgb(170, 200, 255));
+        CenterText($"KILLS: {g.P.Kills}    CHESTS: {g.P.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 120, Col.Rgb(170, 200, 255));
         CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
     }
 }

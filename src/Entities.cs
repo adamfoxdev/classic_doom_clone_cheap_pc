@@ -3,7 +3,7 @@ namespace HexenSharp;
 public enum Sfx
 {
     Swing, Hit, Shoot, Magic, Explode, Sight, Death, Pickup, Item, Door, Lever,
-    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Count
+    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Count
 }
 
 public abstract class Thing
@@ -201,6 +201,7 @@ public static class ThingFactory
             't' => new Decor(Art.Torch, 0.5f, 0.75f, true, true),
             'p' => new Decor(new[] { Art.Pillar }, 0.6f, 1.0f, true, false),
             'T' => new Decor(new[] { Art.Tree }, 1.0f, 1.3f, true, false),
+            '$' => new Chest(),
             _ => null,
         };
         if (t == null) return null;

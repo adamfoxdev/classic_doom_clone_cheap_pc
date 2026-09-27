@@ -10,6 +10,7 @@ There are no asset files.
 ![Darkmere Crypt](docs/darkmere_crypt.png)
 ![Chaos Arena](docs/chaos_arena.png)
 ![Console](docs/console.png)
+![Chest](docs/chest.png)
 
 ## Features
 
@@ -27,6 +28,10 @@ There are no asset files.
 - **Chaos Arena waves.** Step on the golden altar to start endless waves. Each wave has more monsters and
   tougher types (Afrits from wave 2, Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed
   scale up every wave, and every fifth wave adds Heresiarchs. Supplies appear at the altar after each wave.
+- **Treasure chests** are scattered randomly through every map each new game. Open one with `E`: it spills
+  1–3 random items (health, mana, armor, flasks, rarely an urn or a weapon piece you're missing). Watch out,
+  roughly one in eight is a trap and a monster bursts out. Seen chests show on the automap, and the victory
+  screen tallies how many you opened.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
 - **Developer console (`~`)** for changing game mechanics, plus Hexen's classic cheat codes.
@@ -55,7 +60,7 @@ dotnet run -c Release
 | `W` `A` `S` `D` / arrow keys | Move / strafe / turn |
 | Mouse | Look (including up/down) |
 | Left click / `Ctrl` | Attack |
-| `E` | Use (doors, levers) |
+| `E` | Use (doors, levers, chests) |
 | `Space` | Jump |
 | `C` | Slide (while moving) |
 | `1` `2` `3` / mouse wheel | Select weapon |
@@ -94,10 +99,12 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `give all\|health\|mana\|weapons\|keys\|items\|armor` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|heresiarch\|flask\|...>` | spawn something in front of you |
 | `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena) |
+| `chests` | list this map's chests and how many you've opened |
+| `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
-`gravity`, `jump`, `slidespeed`, `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `fullbright`, `showfps`.
+`gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `fullbright`, `showfps`.
 
 Hexen's cheat codes work when typed during play (or in the console):
 `satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys),
@@ -118,6 +125,7 @@ dotnet run -c Release -- --shots shots    # renders scripted screenshots headles
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
 | `src/Level.cs` | Map parsing, doors, collision, line of sight, and the hub's four maps |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
+| `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
 | `src/DevConsole.cs` | `~` console, tweakable settings, cheat codes |
 | `src/Entities.cs` | Things: monsters (and their stats), projectiles, pickups, decorations |
 | `src/Renderer.cs` | Software raycaster, sprites, HUD, automap, menus |
@@ -139,5 +147,6 @@ Maps are ASCII grids in `src/Level.cs`:
 | `L` | lever (gates open once every lever in the map is pulled) | `e` `a` `c` `C` `H` | Ettin, Afrit, Centaur, Slaughtaur, Heresiarch |
 | `h` `q` `u` | Crystal Vial, Quartz Flask, Mystic Urn | `b` `g` | blue / green mana |
 | `k` / `f` | Steel Key / Fire Key | `r` | Mesh Armor |
+| `$` | treasure chest (hand-placed; most are scattered randomly) | | |
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |
 | `w` `x` | weapon piece for slot 2 / slot 3 | `t` `p` `T` | torch, pillar, tree |

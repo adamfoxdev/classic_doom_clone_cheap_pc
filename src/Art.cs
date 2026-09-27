@@ -16,7 +16,7 @@ public static class Art
     public static readonly Dictionary<string, Tex[]> Monsters = new();
     public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt;
     public static Tex[] Torch;
-    public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, WeaponPiece2, WeaponPiece3, Tree, Crystal;
+    public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, ChestClosed, ChestOpen, WeaponPiece2, WeaponPiece3, Tree, Crystal;
     // HUD
     public static Tex HudBack;
     // First-person weapons, indexed [class*3 + slot][frame]
@@ -377,6 +377,8 @@ public static class Art
             c.Ellipse(32, 29, 7, 3, Col.Rgb(0, 0, 0) & 0x00FFFFFF);
             for (int y = 32; y < 56; y += 3) for (int x = 18 + (y % 2); x < 46; x += 3) c.T.Set(x, y, Col.Rgb(100, 100, 110));
         });
+        ChestClosed = ChestTex(false);
+        ChestOpen = ChestTex(true);
         WeaponPiece2 = WeaponIcon(Col.Rgb(80, 150, 255));
         WeaponPiece3 = WeaponIcon(Col.Rgb(80, 230, 90));
 
@@ -389,6 +391,44 @@ public static class Art
         var c = new Canvas(TS, TS);
         draw(c);
         c.Noise(new Rng((uint)seed), 12);
+        c.Outline(Dark);
+        return c.T;
+    }
+
+    static Tex ChestTex(bool open)
+    {
+        var c = new Canvas(64, 48);
+        uint wood = Col.Rgb(120, 76, 38), dark = Col.Rgb(70, 42, 20), iron = Col.Rgb(80, 80, 90), gold = Col.Rgb(230, 190, 60);
+        // body
+        c.Rect(4, 22, 56, 25, wood);
+        for (int y = 28; y < 47; y += 6) c.Rect(4, y, 56, 1, dark);
+        if (open)
+        {
+            // lid flung back, glittering treasure inside
+            c.Rect(6, 4, 52, 8, dark);
+            c.Rect(6, 4, 52, 2, wood);
+            c.Rect(6, 16, 52, 7, Col.Rgb(30, 18, 10));
+            c.Glow(32, 18, 20, Col.Rgb(255, 210, 80));
+            for (int i = 0; i < 9; i++) c.Circle(12 + i * 5, 20 - (i % 3), 2.5f, gold);
+            c.Rect(4, 12, 56, 4, wood);
+        }
+        else
+        {
+            // rounded lid
+            c.Ellipse(32, 20, 28, 12, wood);
+            c.Rect(4, 18, 56, 5, wood);
+            c.Rect(4, 22, 56, 2, dark);
+            for (int y = 10; y < 22; y += 5) c.Rect(6, y, 52, 1, dark);
+            c.Rect(26, 20, 12, 12, gold);
+            c.Rect(30, 24, 4, 5, Col.Rgb(40, 30, 10));
+        }
+        // iron bands
+        foreach (int x in new[] { 12, 48 })
+        {
+            c.Rect(x, open ? 12 : 9, 4, open ? 35 : 38, iron);
+            c.Rect(x, open ? 12 : 9, 1, open ? 35 : 38, Col.Rgb(150, 150, 160));
+        }
+        c.Noise(new Rng(open ? 61u : 59u), 14);
         c.Outline(Dark);
         return c.T;
     }

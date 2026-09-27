@@ -7,7 +7,7 @@ public sealed class GameVars
 {
     public float Speed = 1f, Sens = 1f, Damage = 1f, MonsterDamage = 1f, MonsterSpeed = 1f;
     public float FireRate = 1f, ManaCost = 1f, Fog = 1f, Fov = 74f;
-    public float Gravity = 12f, JumpPower = 3.3f, SlideSpeed = 4.5f;
+    public float Gravity = 12f, JumpPower = 3.3f, SlideSpeed = 4.5f, Chests = 2f;
     public bool God, NoClip, NoTarget, Freeze, InfiniteMana, FullBright, ShowFps;
 
     public sealed record Var(string Name, string Help, Func<GameVars, float> Get, Action<GameVars, float> Set, bool IsBool = false);
@@ -26,6 +26,7 @@ public sealed class GameVars
         new("gravity", "gravity (units/s^2)", v => v.Gravity, (v, x) => v.Gravity = Math.Clamp(x, 1f, 60f)),
         new("jump", "jump launch speed", v => v.JumpPower, (v, x) => v.JumpPower = Math.Clamp(x, 0f, 10f)),
         new("slidespeed", "extra speed at the start of a slide", v => v.SlideSpeed, (v, x) => v.SlideSpeed = Math.Clamp(x, 0f, 20f)),
+        new("chests", "chests per 200 floor cells (next game)", v => v.Chests, (v, x) => v.Chests = Math.Clamp(x, 0f, 20f)),
         new("god", "invulnerability", v => B(v.God), (v, x) => v.God = x != 0, true),
         new("noclip", "walk through walls", v => B(v.NoClip), (v, x) => v.NoClip = x != 0, true),
         new("notarget", "monsters ignore you", v => B(v.NoTarget), (v, x) => v.NoTarget = x != 0, true),
@@ -142,6 +143,21 @@ public sealed class DevConsole
             _g.NewGame(_g.P?.Class ?? PClass.Fighter);
             Print("restarted");
         });
+        Add("chests", "", "list the chests on this map", _ =>
+        {
+            if (!InGame()) return;
+            var list = _g.Level.Things.OfType<Chest>().ToList();
+            Print($"{_g.P.ChestsOpened}/{_g.ChestsTotal} chests opened in the hub; {list.Count} on this map:");
+            foreach (var c in list) Print($"  {c.X:0.0},{c.Y:0.0}  {(c.Opened ? "open" : "closed")}");
+        });
+        Add("seed", "[n|random]", "fix the chest layout seed (applies on restart)", a =>
+        {
+            if (a.Length < 2) { Print(_g.FixedSeed is int s ? $"seed = {s}" : "seed = random"); return; }
+            if (a[1] == "random") { _g.FixedSeed = null; Print("seed = random"); return; }
+            if (!int.TryParse(a[1], out int n)) { Print("usage: seed <number|random>"); return; }
+            _g.FixedSeed = n;
+            Print($"seed = {n}; 'restart' to apply");
+        });
         Add("clear", "", "clear the console", _ => { Log.Clear(); Scroll = 0; });
         Add("quit", "", "exit the game", _ => _g.QuitRequested = true);
 
@@ -234,7 +250,7 @@ public sealed class DevConsole
     {
         ("ettin", 'e'), ("afrit", 'a'), ("centaur", 'c'), ("slaughtaur", 'C'), ("heresiarch", 'H'),
         ("vial", 'h'), ("flask", 'q'), ("urn", 'u'), ("bluemana", 'b'), ("greenmana", 'g'), ("armor", 'r'),
-        ("steelkey", 'k'), ("firekey", 'f'), ("weapon2", 'w'), ("weapon3", 'x'), ("torch", 't'), ("pillar", 'p'), ("tree", 'T'),
+        ("chest", '$'), ("steelkey", 'k'), ("firekey", 'f'), ("weapon2", 'w'), ("weapon3", 'x'), ("torch", 't'), ("pillar", 'p'), ("tree", 'T'),
     };
 
     void Summon(string what)

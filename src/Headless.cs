@@ -20,7 +20,7 @@ public static class Headless
             // player start (or arrival portal) reaches every portal/exit/key when doors, gates and key doors are passable
             var arrival = Enumerable.Range(0, lv.Marks.Length).First(i => char.IsDigit(lv.Marks[i]));
             var start = lv == hub[0] ? ((int)lv.StartX, (int)lv.StartY) : (arrival % lv.W, arrival / lv.W);
-            var reach = Flood(lv, start.Item1, start.Item2);
+            var reach = lv.Reachable(start.Item1, start.Item2);
             for (int i = 0; i < lv.Marks.Length; i++)
                 if (lv.Marks[i] != '\0') Check(reach[i], $"mark '{lv.Marks[i]}' at {i % lv.W},{i / lv.W} reachable");
             foreach (var t in lv.Things)
@@ -55,6 +55,9 @@ public static class Headless
         Console.WriteLine("Chaos Arena waves:");
         ArenaChecks(Check);
 
+        Console.WriteLine("Chests:");
+        ChestChecks(Check);
+
         Console.WriteLine("Audio synthesis:");
         bool audioOk = true;
         for (int i = 0; i < (int)Sfx.Count; i++) audioOk &= Audio.Synth((Sfx)i).Length > 1000;
@@ -66,7 +69,7 @@ public static class Headless
 
     static void GameplayChecks(Action<bool, string> check)
     {
-        var g = new Game();
+        var g = new Game { FixedSeed = 1 };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         g.NewGame(PClass.Fighter);
 
@@ -153,7 +156,7 @@ public static class Headless
 
     static void HubChecks(Action<bool, string> check)
     {
-        var g = new Game();
+        var g = new Game { FixedSeed = 1 };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         g.NewGame(PClass.Cleric);
         g.Vars.God = true;
@@ -203,7 +206,7 @@ public static class Headless
 
     static void MovementChecks(Action<bool, string> check)
     {
-        var g = new Game();
+        var g = new Game { FixedSeed = 1 };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         g.NewGame(PClass.Fighter);
         g.Level.Things.RemoveAll(t => t is Monster);
@@ -237,7 +240,7 @@ public static class Headless
 
     static void ConsoleChecks(Action<bool, string> check)
     {
-        var g = new Game();
+        var g = new Game { FixedSeed = 1 };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         g.NewGame(PClass.Mage);
 
@@ -280,7 +283,7 @@ public static class Headless
 
     static void ArenaChecks(Action<bool, string> check)
     {
-        var g = new Game();
+        var g = new Game { FixedSeed = 1 };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         g.NewGame(PClass.Fighter);
         g.Vars.God = true;
@@ -312,35 +315,104 @@ public static class Headless
         check(!ArenaState.Compose(1, new Random(1)).Any(d => d != Monster.Ettin), "wave 1 is only ettins");
     }
 
-    static bool[] Flood(Level lv, int sx, int sy)
+    static void ChestChecks(Action<bool, string> check)
     {
-        var seen = new bool[lv.W * lv.H];
-        var q = new Queue<(int, int)>();
-        q.Enqueue((sx, sy));
-        seen[sy * lv.W + sx] = true;
-        while (q.Count > 0)
+        var g = new Game { FixedSeed = 99 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+
+        foreach (var lv in g.Hub)
         {
-            var (x, y) = q.Dequeue();
-            foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            var chests = lv.Things.OfType<Chest>().ToList();
+            check(chests.Count >= 1, $"{lv.Name}: {chests.Count} chest(s) placed");
+            var (sx, sy) = lv.ArrivalCell();
+            var cells = chests.Select(c => (int)c.Y * lv.W + (int)c.X).ToHashSet();
+            var open = lv.Reachable(sx, sy);
+            var withChests = lv.Reachable(sx, sy, cells);
+            check(open.Count(r => r) - cells.Count == withChests.Count(r => r), $"{lv.Name}: chests never cut off part of the map");
+            check(cells.All(c => open[c]), $"{lv.Name}: every chest is reachable");
+            check(chests.All(c => lv.MarkAt(c.X, c.Y) == '\0' && !lv.BlocksPoint(c.X, c.Y)), $"{lv.Name}: chests avoid walls and runes");
+        }
+        check(g.ChestsTotal == g.Hub.Sum(l => l.Things.Count(t => t is Chest)), $"chest total tracked ({g.ChestsTotal})");
+
+        // many random layouts: chests must never block the way or sit on top of anything
+        int bad = 0, min = int.MaxValue, max = 0;
+        for (int seed = 0; seed < 100; seed++)
+        {
+            var sg = new Game { FixedSeed = seed };
+            sg.NewGame(PClass.Fighter);
+            min = Math.Min(min, sg.ChestsTotal); max = Math.Max(max, sg.ChestsTotal);
+            foreach (var lv in sg.Hub)
             {
-                int nx = x + dx, ny = y + dy;
-                if (!lv.InBounds(nx, ny)) continue;
-                int i = ny * lv.W + nx;
-                if (seen[i]) continue;
-                char c = lv.Cells[i];
-                if (c != '\0' && !Level.IsDoor(c)) continue;
-                seen[i] = true;
-                q.Enqueue((nx, ny));
+                var (sx, sy) = lv.ArrivalCell();
+                var cells = lv.Things.OfType<Chest>().Select(c => (int)c.Y * lv.W + (int)c.X).ToHashSet();
+                if (lv.Reachable(sx, sy).Count(r => r) - cells.Count != lv.Reachable(sx, sy, cells).Count(r => r)) bad++;
+                foreach (var c in lv.Things.OfType<Chest>())
+                    if (lv.Things.Any(t => t != c && Game.Dist(t.X, t.Y, c.X, c.Y) < 0.9f)) bad++;
             }
         }
-        return seen;
+        check(bad == 0, $"100 random layouts: no blocked paths or overlaps ({min}-{max} chests per game)");
+
+        // same seed, same layout; different seed, different layout
+        string Layout(Game gg) => string.Join(";", gg.Hub.SelectMany(l => l.Things.OfType<Chest>()).Select(c => $"{c.X},{c.Y}"));
+        var g2 = new Game { FixedSeed = 99 }; g2.NewGame(PClass.Mage);
+        var g3 = new Game { FixedSeed = 12345 }; g3.NewGame(PClass.Mage);
+        check(Layout(g) == Layout(g2), "same seed gives the same chest layout");
+        check(Layout(g) != Layout(g3), "a different seed moves the chests");
+
+        // opening: face the chest and press Use
+        var lv0 = g.Level;
+        var chest = lv0.Things.OfType<Chest>().First();
+        float ax = chest.X, ay = chest.Y;
+        foreach (var (dx, dy) in new[] { (1f, 0f), (-1f, 0f), (0f, 1f), (0f, -1f) })
+            if (!lv0.BlocksCircle(chest.X + dx, chest.Y + dy, 0.26f)) { ax = chest.X + dx; ay = chest.Y + dy; break; }
+        g.P.X = ax; g.P.Y = ay; g.P.Angle = MathF.Atan2(chest.Y - ay, chest.X - ax);
+        int pickups = lv0.Things.Count(t => t is Pickup);
+        Tick(new Input { Use = true });
+        check(chest.Opened && g.P.ChestsOpened == 1, "Use opens the chest you're facing");
+        check(lv0.Things.Count(t => t is Pickup) > pickups, "the chest spills loot");
+        Tick(new Input { Use = true });
+        check(g.P.ChestsOpened == 1, "an open chest can't be looted twice");
+
+        // loot table and traps over many rolls
+        var rng = new Random(3);
+        var p = new Player();
+        var rolls = Enumerable.Range(0, 2000).Select(_ => Chests.RollLoot(rng, p)).ToList();
+        check(rolls.All(r => r.Count is >= 1 and <= 3), "each chest holds 1-3 items");
+        check(rolls.All(r => r.Count(c => c == 'w') <= 1), "at most one weapon piece of a kind per chest");
+        p.HasWeapon[1] = p.HasWeapon[2] = true;
+        check(Enumerable.Range(0, 500).All(_ => !Chests.RollLoot(rng, p).Any(c => c is 'w' or 'x')), "no weapon pieces once you own the weapons");
+
+        int traps = 0;
+        var tg = new Game { FixedSeed = 5 };
+        tg.NewGame(PClass.Fighter);
+        tg.Vars.God = true;
+        for (int k = 0; k < 200; k++)
+        {
+            int before = tg.Level.Things.Count(t => t is Monster);
+            var c = new Chest { X = 14.5f, Y = 7.5f, Level = tg.Level };
+            tg.Level.Things.Add(c);
+            tg.OpenChest(c);
+            if (tg.Level.Things.Count(t => t is Monster) > before) traps++;
+            tg.Level.Things.RemoveAll(t => t is Monster m && m.State == AiState.Chase || t == c || t is Pickup);
+        }
+        check(traps is > 8 and < 50, $"some chests are traps ({traps}/200)");
+
+        // console: set chests 0 then restart, and summon chest
+        var cg = new Game { FixedSeed = 1 };
+        cg.NewGame(PClass.Cleric);
+        cg.Con.Execute("set chests 0");
+        cg.Con.Execute("restart");
+        check(cg.ChestsTotal == 0, "'set chests 0' + restart removes chests");
+        cg.Con.Execute("summon chest");
+        check(cg.Level.Things.OfType<Chest>().Count() == 1, "'summon chest'");
     }
 
     /// <summary>Drives the game with scripted input and writes PNGs (3x upscaled) to a folder.</summary>
     public static int Screenshots(string dir)
     {
         Directory.CreateDirectory(dir);
-        var g = new Game();
+        var g = new Game { FixedSeed = 1 };
         var r = new Renderer();
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         void Shot(string name)
@@ -450,6 +522,25 @@ public static class Headless
         Shot("15_console");
         g.Con.Open = false;
         g.Vars.Fov = 74;
+
+        // a chest, closed then opened
+        g.FixedSeed = 3;
+        g.NewGame(PClass.Fighter);
+        {
+            var lv = g.Level;
+            var chest = lv.Things.OfType<Chest>().First(c => !lv.Outdoor[(int)c.Y * lv.W + (int)c.X]);
+            foreach (var (dx, dy) in new[] { (1.4f, 0f), (-1.4f, 0f), (0f, 1.4f), (0f, -1.4f) })
+                if (!lv.BlocksCircle(chest.X + dx, chest.Y + dy, 0.26f)) { g.P.X = chest.X + dx; g.P.Y = chest.Y + dy; break; }
+            g.P.Angle = MathF.Atan2(chest.Y - g.P.Y, chest.X - g.P.X);
+            g.P.Pitch = -25;
+            g.Vars.Freeze = true;
+            Tick(default, 50);
+            Shot("16_chest_closed");
+            g.OpenChest(chest);
+            Tick(default, 12);
+            Shot("17_chest_open");
+            g.Vars.Freeze = false;
+        }
 
         // victory screen
         g.Mode = GameMode.Victory;

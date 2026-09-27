@@ -81,7 +81,7 @@ public sealed class Player
     public ClassDef Def => ClassDef.All[(int)Class];
     public float X, Y, Angle, Pitch;
     public float Radius = 0.25f;
-    public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills;
+    public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills, ChestsOpened;
     public bool[] HasWeapon = { true, false, false };
     public int Weapon, PendingWeapon = -1;
     public float Cooldown, FireAnim, Raise, Bob, BobAmount;
@@ -132,9 +132,21 @@ public sealed class Game
         if (v > 0.02f) PlaySound(s, v);
     }
 
+    /// <summary>Seed for chest placement and loot; null picks a fresh random layout every game.</summary>
+    public int? FixedSeed;
+    public int ChestsTotal;
+    Random _loot = new();
+
     public void NewGame(PClass cls)
     {
         Hub = Maps.BuildHub();
+        _loot = new Random(FixedSeed ?? Environment.TickCount);
+        ChestsTotal = 0;
+        foreach (var lv in Hub)
+        {
+            Chests.Scatter(lv, _loot, Vars.Chests);
+            ChestsTotal += lv.Things.Count(t => t is Chest);
+        }
         Level = Hub[0];
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
         Messages.Clear();
@@ -397,6 +409,7 @@ public sealed class Game
     void UseLine()
     {
         var p = P;
+        if (TryOpenChest()) return;
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
         for (float d = 0.1f; d < 1.3f; d += 0.05f)
         {
@@ -436,6 +449,63 @@ public sealed class Game
             }
             return;
         }
+    }
+
+    /// <summary>Opens the closed chest the player is facing, if any.</summary>
+    bool TryOpenChest()
+    {
+        Chest best = null;
+        float bestD = 1.5f;
+        foreach (var t in Level.Things)
+        {
+            if (t is not Chest c || c.Opened) continue;
+            float d = Dist(c.X, c.Y, P.X, P.Y);
+            if (d >= bestD) continue;
+            if (MathF.Abs(AngleDiff(MathF.Atan2(c.Y - P.Y, c.X - P.X), P.Angle)) > 0.6f) continue;
+            best = c; bestD = d;
+        }
+        if (best == null) return false;
+        OpenChest(best);
+        return true;
+    }
+
+    public void OpenChest(Chest c)
+    {
+        c.Opened = true;
+        P.ChestsOpened++;
+        PlaySound(Sfx.Chest, 1);
+
+        // spill loot toward the player so it's easy to grab
+        float dx = P.X - c.X, dy = P.Y - c.Y, l = MathF.Max(0.01f, MathF.Sqrt(dx * dx + dy * dy));
+        dx /= l; dy /= l;
+        var loot = Chests.RollLoot(_loot, P);
+        for (int i = 0; i < loot.Count; i++)
+        {
+            float side = (i - (loot.Count - 1) / 2f) * 0.35f;
+            float x = c.X + dx * 0.6f - dy * side, y = c.Y + dy * 0.6f + dx * side;
+            if (Level.BlocksPoint(x, y)) { x = c.X + dx * 0.5f; y = c.Y + dy * 0.5f; }
+            var t = ThingFactory.Create(loot[i], x, y);
+            t.Level = Level;
+            Level.Things.Add(t);
+        }
+        SpawnPuff(Art.Fireball[1], c.X, c.Y, 0.35f, 0.3f);
+
+        bool trap = Level.Arena == null && _loot.NextDouble() < Chests.TrapChance;
+        if (trap)
+        {
+            // a monster bursts out beside the chest
+            var def = _loot.Next(3) switch { 0 => Monster.Ettin, 1 => Monster.Afrit, _ => Monster.Centaur };
+            for (int k = 0; k < 8; k++)
+            {
+                float a = MathF.Atan2(dy, dx) + MathF.PI / 2 + k * MathF.PI / 4;
+                float x = c.X + MathF.Cos(a) * 0.8f, y = c.Y + MathF.Sin(a) * 0.8f;
+                if (Blocked(x, y, def.Radius, c)) continue;
+                SpawnMonster(def, x, y, 1f, 1f, 1f);
+                Say($"It's a trap! A {def.Name} bursts out!");
+                break;
+            }
+        }
+        else Say("Chest: " + string.Join(", ", loot.Select(g => Chests.LootNames[g]).Distinct()));
     }
 
     public static void OpenGates(Level lv)

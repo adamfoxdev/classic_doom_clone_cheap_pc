@@ -126,6 +126,39 @@ public sealed class Level
         return InBounds(cx, cy) ? Marks[cy * W + cx] : '\0';
     }
 
+    /// <summary>Where the player first appears: the start spot, else the first portal.</summary>
+    public (int x, int y) ArrivalCell()
+    {
+        if (StartX > 0) return ((int)StartX, (int)StartY);
+        int i = Array.FindIndex(Marks, char.IsDigit);
+        return i >= 0 ? (i % W, i / W) : (1, 1);
+    }
+
+    /// <summary>Flood fill of cells reachable on foot, treating every door and gate as passable.</summary>
+    public bool[] Reachable(int sx, int sy, HashSet<int> blocked = null)
+    {
+        var seen = new bool[W * H];
+        var q = new Queue<int>();
+        seen[sy * W + sx] = true;
+        q.Enqueue(sy * W + sx);
+        while (q.Count > 0)
+        {
+            int c = q.Dequeue(), x = c % W, y = c / W;
+            foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                int nx = x + dx, ny = y + dy;
+                if (!InBounds(nx, ny)) continue;
+                int i = ny * W + nx;
+                if (seen[i] || (blocked != null && blocked.Contains(i))) continue;
+                char ch = Cells[i];
+                if (ch != '\0' && !IsDoor(ch)) continue;
+                seen[i] = true;
+                q.Enqueue(i);
+            }
+        }
+        return seen;
+    }
+
     public (float x, float y)? FindMark(char m)
     {
         for (int i = 0; i < Marks.Length; i++)
