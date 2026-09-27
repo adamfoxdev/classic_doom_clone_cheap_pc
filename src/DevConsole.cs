@@ -147,6 +147,15 @@ public sealed class DevConsole
             _g.NewGame(_g.P?.Class ?? PClass.Fighter);
             Print($"new {style.ToLowerInvariant()} game");
         });
+        Add("artstyle", "[scifi|fantasy]", "switch the visual style", a =>
+        {
+            if (a.Length < 2) { Print("artstyle = " + (Art.Style == ArtStyle.SciFi ? "scifi" : "fantasy")); return; }
+            var style = a[1].ToLowerInvariant() switch { "scifi" or "sci-fi" or "sf" => (ArtStyle?)ArtStyle.SciFi, "fantasy" or "doom" or "hexen" => ArtStyle.Fantasy, _ => null };
+            if (style == null) { Print("usage: artstyle <scifi|fantasy>"); return; }
+            _g.SetArtStyle(style.Value);
+            Print("artstyle = " + a[1].ToLowerInvariant());
+            _g.SaveSettings();
+        });
         Add("edit", "", "open the level editor", _ => { _g.OpenEditor(); Open = false; });
         Add("playmap", "<name>", "play a saved custom map", a =>
         {

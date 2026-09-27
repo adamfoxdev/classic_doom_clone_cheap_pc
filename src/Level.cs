@@ -17,7 +17,9 @@ public sealed class Theme
 /// </summary>
 public sealed class Level
 {
-    public readonly string Name;
+    /// <summary>The map's name as written; Name is how it reads in the current style.</summary>
+    public readonly string RawName;
+    public string Name => Words.T(RawName);
     public readonly int W, H;
     public readonly char[] Cells;      // '\0' for empty, otherwise the wall glyph
     public readonly bool[] Outdoor;
@@ -26,7 +28,8 @@ public sealed class Level
     public readonly float[] DoorOpen;  // 0 closed .. 1 open
     public readonly sbyte[] DoorMove;  // +1 opening, -1 closing
     public readonly float[] DoorWait;  // seconds until an open door starts closing
-    public readonly Theme Theme;
+    public Theme Theme;
+    public string ThemeId = "hall";
     public readonly List<Thing> Things = new();
     public float StartX, StartY, StartAngle;
     public bool BossDead;
@@ -53,7 +56,8 @@ public sealed class Level
 
     /// <summary>Gates open once every lever is pulled and every pressure plate is weighed down.</summary>
     public bool PuzzleSolved => (LeverCount > 0 || PlateCount > 0) && PulledLevers.Count >= LeverCount && PlatesCovered >= PlateCount;
-    public readonly string EntryMessage;
+    readonly string _entry;
+    public string EntryMessage => Words.T(_entry);
     public ArenaState Arena;   // non-null on wave-survival maps
 
     public const string DoorGlyphs = "DSFP";
@@ -114,8 +118,8 @@ public sealed class Level
 
     public Level(string name, string entry, string[] rows, Theme theme, string[] heightRows = null, float defaultHeight = 1f, string[] floorRows = null)
     {
-        Name = name;
-        EntryMessage = entry;
+        RawName = name;
+        _entry = entry;
         Theme = theme;
         H = rows.Length;
         W = rows[0].Length;
@@ -185,11 +189,9 @@ public sealed class Level
         }
 
         // lore stones get their text in reading order
-        if (Discovery.Lore.TryGetValue(Name, out var lore))
         {
             int k = 0;
-            foreach (var stone in Things.OfType<LoreStone>())
-                if (k < lore.Length) stone.Text = lore[k++];
+            foreach (var stone in Things.OfType<LoreStone>()) { stone.Map = RawName; stone.Index = k++; }
         }
 
         // Cells holding things or markers inherit "outdoor" from their neighbours.
@@ -402,7 +404,7 @@ public sealed class Level
 /// <summary>A map's source: its name, arrival message, theme and ASCII rows. The level editor reads and writes these.</summary>
 public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null)
 {
-    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors);
+    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId };
 }
 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
@@ -411,6 +413,23 @@ public static class Maps
     public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena" };
 
     public static Theme ThemeById(string id)
+    {
+        var t = FantasyTheme(id);
+        if (Art.Style == ArtStyle.SciFi)
+        {
+            // same texture slots (already swapped by the sci-fi art), station-appropriate fog and light
+            (t.FogColor, t.FogDist, t.Light) = id switch
+            {
+                "ice" => (Col.Rgb(150, 196, 210), 12f, 250),
+                "crypt" => (Col.Rgb(6, 26, 18), 12f, 236),
+                "arena" => (Col.Rgb(30, 6, 12), 18f, 256),
+                _ => (Col.Rgb(4, 8, 16), 15f, 256),
+            };
+        }
+        return t;
+    }
+
+    static Theme FantasyTheme(string id)
     {
         switch (id)
         {
@@ -459,7 +478,7 @@ public static class Maps
                 return t;
             }
             default:
-                return ThemeById("hall");
+                return FantasyTheme("hall");
         }
     }
 

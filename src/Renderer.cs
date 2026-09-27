@@ -110,8 +110,8 @@ public sealed class Renderer
                 for (int i = 0; i < items.Length; i++) MenuItem(items[i], 64 + i * 16, i == m.Cursor);
                 string[] about = m.Cursor switch
                 {
-                    0 => new[] { "FIGHT YOUR WAY THROUGH THE HUB,", "SOLVE ITS PUZZLES AND SLAY THE HERESIARCH." },
-                    1 => new[] { "NO COMBAT: THE CREATURES ARE PEACEFUL.", "EXPLORE, READ LORE STONES, UNCOVER SECRETS", "AND FIND THE HIDDEN RELICS." },
+                    0 => new[] { Words.T("FIGHT YOUR WAY THROUGH THE HUB,"), Words.T("SOLVE ITS PUZZLES AND SLAY THE HERESIARCH.") },
+                    1 => new[] { Words.T("NO COMBAT: THE CREATURES ARE PEACEFUL."), "EXPLORE, READ LORE STONES, UNCOVER SECRETS", "AND FIND THE HIDDEN RELICS." },
                     _ => Array.Empty<string>(),
                 };
                 for (int i = 0; i < about.Length; i++) CenterText(about[i], 128 + i * 10, Col.Rgb(170, 200, 255));
@@ -595,8 +595,11 @@ public sealed class Renderer
         }
     }
 
+    int _artVersion = -1;
+
     void DrawEditor(Game g)
     {
+        if (_artVersion != Art.Version) { _themes.Clear(); _icons.Clear(); _artVersion = Art.Version; }
         var ed = g.Editor;
         var doc = ed.Doc;
         int cs = ed.CellSize;
@@ -695,7 +698,7 @@ public sealed class Renderer
         }
         int iy = Editor.PaletteY + ((Editor.Palette.Length + Editor.PaletteCols - 1) / Editor.PaletteCols) * Editor.PaletteCell + 2;
         if (ed.Mode == Editor.Layer.Tiles)
-            foreach (var line in Wrap(ed.Current.Label.ToUpperInvariant(), 12)) { Text(Editor.PaletteX, iy, line, Col.Rgb(255, 230, 120)); iy += 9; }
+            foreach (var line in Wrap(Words.T(ed.Current.Label).ToUpperInvariant(), 12)) { Text(Editor.PaletteX, iy, line, Col.Rgb(255, 230, 120)); iy += 9; }
         Text(Editor.PaletteX, 160, ed.FillTool ? "TOOL: FILL" : "TOOL: BRUSH", Col.Rgb(170, 200, 255));
         Text(Editor.PaletteX, 170, ed.PlayClass.ToString().ToUpperInvariant(), Col.Rgb(150, 140, 120));
         Text(Editor.PaletteX, 179, g.Style.ToString().ToUpperInvariant(), Col.Rgb(150, 140, 120));
@@ -822,7 +825,7 @@ public sealed class Renderer
         {
             string big = a.InIntermission ? "WAVE CLEARED!" : $"WAVE {a.Wave}";
             CenterText(big, 40, a.InIntermission ? Col.Rgb(120, 255, 140) : Col.Rgb(255, 90, 60), 3);
-            if (!a.InIntermission && a.Wave % 5 == 0) CenterText("A HERESIARCH APPROACHES", 68, Col.Rgb(230, 120, 255));
+            if (!a.InIntermission && a.Wave % 5 == 0) CenterText(Words.T("A HERESIARCH APPROACHES"), 68, Col.Rgb(230, 120, 255));
         }
         if (a.InIntermission) CenterText($"NEXT WAVE IN {MathF.Ceiling(a.Timer):0}", 80, Col.Rgb(240, 225, 170));
     }
@@ -920,8 +923,8 @@ public sealed class Renderer
         Text(54, by + 11, p.Armor.ToString(), Col.Rgb(170, 190, 230), 2);
 
         // mana bars
-        ManaBar(96, by + 1, "BLUE", p.BlueMana, Col.Rgb(60, 120, 255));
-        ManaBar(96, by + 14, "GREEN", p.GreenMana, Col.Rgb(60, 210, 80));
+        ManaBar(96, by + 1, Words.T("BLUE"), p.BlueMana, Col.Rgb(60, 120, 255));
+        ManaBar(96, by + 14, Words.T("GREEN"), p.GreenMana, Col.Rgb(60, 210, 80));
 
         // weapon slots, underlined with the mana colour the current weapon uses
         Text(202, by, "ARMS", label);
@@ -978,7 +981,7 @@ public sealed class Renderer
                 Fb[y * W + x] = Col.Rgb(206 + n - 8, 186 + n - 8, 142 + n - 8);
             }
         uint ink = Col.Rgb(60, 36, 20);
-        string title = "LORE STONE";
+        string title = Words.T("LORE STONE");
         Font.Draw(Fb, W, H, (W - Font.Width(title)) / 2, y0 + 6, title, Col.Rgb(120, 40, 20), 1, false);
         Rect(x0 + 20, y0 + 16, w - 40, 1, Col.Rgb(150, 110, 70));
         int maxChars = (w - 16) / Font.CharW, ly = y0 + 24;
@@ -1062,14 +1065,14 @@ public sealed class Renderer
     {
         StoneBackdrop(g.Time);
         CenterText("HEXEN SHARP", 28, Col.Rgb(230, 170, 50), 4);
-        CenterText("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#", 68, Col.Rgb(210, 200, 180));
+        CenterText(Words.T("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#"), 68, Col.Rgb(210, 200, 180));
         // a few monsters for show
         var e = Art.Monsters["ettin"][(int)(g.Time * 2) % 2];
         var a = Art.Monsters["afrit"][(int)(g.Time * 3) % 2];
         var c = Art.Monsters["centaur"][(int)(g.Time * 2) % 2];
         Icon(e, 40, 82, 64); Icon(c, 128, 82, 64); Icon(a, 216, 80, 64);
         var items = g.Menu.Items(MenuPage.Main);
-        for (int i = 0; i < items.Length; i++) MenuItem(items[i], 150 + i * 12, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
+        for (int i = 0; i < items.Length; i++) MenuItem(items[i], 148 + i * 10, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
         CenterText("ARROWS + ENTER.  CONTROLS ARE IN OPTIONS.", 190, Col.Rgb(150, 140, 120));
     }
 
@@ -1091,7 +1094,7 @@ public sealed class Renderer
         for (int i = 0; i < 3; i++)
         {
             var w = d.Weapons[i];
-            string mana = w.Mana == 0 ? "" : w.Mana == 1 ? " (BLUE MANA)" : " (GREEN MANA)";
+            string mana = w.Mana == 0 ? "" : Words.T(w.Mana == 1 ? " (BLUE MANA)" : " (GREEN MANA)");
             Text(18, 142 + i * 10, $"{i + 1}. {w.Name}{mana}", Col.Rgb(200, 190, 170));
         }
         var wt = Art.Weapons[g.MenuIndex * 3 + ((int)(g.Time) % 3)][((int)(g.Time * 3) % 3 == 0) ? 1 : 0];
@@ -1126,7 +1129,7 @@ public sealed class Renderer
         }
         else
         {
-            CenterText("THE HERESIARCH HAS FALLEN.", 80, Col.Rgb(230, 220, 200));
+            CenterText(Words.T("THE HERESIARCH HAS FALLEN."), 80, Col.Rgb(230, 220, 200));
             CenterText($"THE {p.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL...", 94, Col.Rgb(230, 220, 200));
             CenterText($"KILLS: {p.Kills}    CHESTS: {p.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 116, stat);
             CenterText($"SECRETS: {p.Secrets}/{g.SecretsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}", 128, stat);

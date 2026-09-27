@@ -19,7 +19,8 @@ public struct Input
 
 public sealed class WeaponDef
 {
-    public string Name;
+    string _name;
+    public string Name { get => Words.T(_name); init => _name = value; }
     public int Mana;          // 0 none, 1 blue, 2 green
     public int Cost;
     public bool ManaOptional; // usable (weaker) without mana
@@ -35,7 +36,9 @@ public sealed class WeaponDef
 
 public sealed class ClassDef
 {
-    public string Name, Blurb;
+    string _name, _blurb;
+    public string Name { get => Words.T(_name); init => _name = value; }
+    public string Blurb { get => Words.T(_blurb); init => _blurb = value; }
     public float Speed, ArmorSave;
     public WeaponDef[] Weapons;
 
@@ -133,14 +136,29 @@ public sealed class Game
         Menu.Show(MenuPage.Main);
     }
 
+    bool _loadingSettings;
+
     public void SaveSettings()
     {
-        if (ConfigPath != null) Settings.Save(this, ConfigPath);
+        // commands replayed from the settings file must not rewrite it halfway through loading
+        if (ConfigPath != null && !_loadingSettings) Settings.Save(this, ConfigPath);
     }
 
     public void LoadSettings()
     {
-        if (ConfigPath != null) Settings.Load(this, ConfigPath);
+        if (ConfigPath == null) return;
+        _loadingSettings = true;
+        try { Settings.Load(this, ConfigPath); }
+        finally { _loadingSettings = false; }
+    }
+
+    /// <summary>Switches the look (sci-fi or fantasy) at any time, including mid-game.</summary>
+    public void SetArtStyle(ArtStyle style)
+    {
+        if (style == Art.Style) return;
+        Art.Init(style);
+        if (Hub != null)
+            foreach (var lv in Hub) lv.Theme = Maps.ThemeById(lv.ThemeId);
     }
 
     /// <summary>Raw key state (the editor reads keys directly rather than through bindings).</summary>
@@ -190,7 +208,7 @@ public sealed class Game
 
     public void Say(string s)
     {
-        Messages.Add((s, 3.5f));
+        Messages.Add((Words.T(s), 3.5f));
         if (Messages.Count > 4) Messages.RemoveAt(0);
     }
 
@@ -228,7 +246,7 @@ public sealed class Game
             foreach (var r in lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).ToList())
             {
                 lv.Things.Remove(r);
-                lv.Things.Add(Relaxed ? Discovery.MakeRelic(r.X, r.Y, lv, NextName()) : Place(new Pickup(PickupKind.Urn, Art.Urn, 0.45f), r, lv));
+                lv.Things.Add(Relaxed ? Discovery.MakeRelic(r.X, r.Y, lv, NextName()) : Place(new Pickup(PickupKind.Urn, 0.45f), r, lv));
             }
             if (Relaxed)
             {
@@ -681,7 +699,7 @@ public sealed class Game
                 break;
             }
         }
-        else Say("Chest: " + string.Join(", ", loot.Select(g => Chests.LootNames[g]).Distinct()));
+        else Say(Words.T("Chest: ") + string.Join(", ", loot.Select(g => Words.T(Chests.LootNames[g])).Distinct()));
     }
 
     // ================================================================ puzzles
