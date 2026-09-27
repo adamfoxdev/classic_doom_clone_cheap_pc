@@ -271,6 +271,7 @@ public sealed class Game
     /// <summary>A wave is cleared in arena mode: a medal when it reaches one, and a new best past your old one.</summary>
     public void ArenaWaveCleared(int wave)
     {
+        if (Vars.Arcade) Say($"Wave bonus: +{Arcade.Bonus(wave * 1000)}");
         int best = Profile.ArenaBestWave(P.Class);
         var medal = ArenaMedals.For(wave);
         if (medal != ArenaMedals.For(wave - 1) && medal > ArenaMedals.For(best)) { Say($"New medal: {Medals.Name(medal)}!"); PlaySound(Sfx.BossSight, 0.6f); }
@@ -645,10 +646,13 @@ public sealed class Game
     /// <summary>Text of the lore stone being read (the game pauses while it's open).</summary>
     public string ReadingLore;
     Random _loot = new();
+    /// <summary>Score, style rank and damage numbers, shown when Arcade mode is on (always tracked).</summary>
+    public readonly Arcade Arcade = new();
 
     public void NewGame(PClass cls)
     {
         EndArenaRun(); // Restart, or trying again after dying
+        Arcade.Reset();
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
         ChestsTotal = 0;
@@ -784,6 +788,7 @@ public sealed class Game
         PlayTime += dt;
         UpdatePlayer(inp, dt);
         UpdateWorld(dt);
+        Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
 
         if (Mode == GameMode.Dead)
@@ -2383,7 +2388,10 @@ public sealed class Game
     void DamageMonster(Monster m, int dmg, int slot = -1)
     {
         if (!m.Alive || dmg <= 0 || m.Blurring) return;
+        int dealt = Math.Min(Math.Max(1, (int)MathF.Round(dmg * Vars.Damage)), Math.Max(1, m.Health));
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
+        if (slot >= 0)
+            Arcade.Hit(m.X, m.Y, Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH, dealt, slot, m.Health <= 0, m.Def.Health, m.Def.Boss, !P.OnGround);
         if (m.State == AiState.Idle) Wake(m);
         if (m.Health <= 0)
         {
@@ -2417,6 +2425,7 @@ public sealed class Game
         p.Armor -= saved;
         p.Health -= dmg - saved;
         p.DamageFlash = MathF.Min(1, p.DamageFlash + 0.4f + dmg / 40f);
+        Arcade.Hurt();
         if (p.Health <= 0)
         {
             p.Health = 0;

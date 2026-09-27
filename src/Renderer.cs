@@ -55,6 +55,7 @@ public sealed class Renderer
         DrawMessages(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
+        if (g.Vars.Arcade && !g.ShowMap) DrawArcade(g);
 
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
             CenterText("YOU DIED", 60, Col.Rgb(220, 40, 30), 3);
@@ -68,7 +69,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int TitleTop = 122, TitleRow = 10, TitleFooter = 192, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 33, OptionsRow = 12, OptionsFooter = 188;
+    public const int TitleTop = 122, TitleRow = 10, TitleFooter = 192, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 28, OptionsRow = 11, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected)
     {
@@ -913,6 +914,59 @@ public sealed class Renderer
         if (con.Scroll > 0) Text(W - 30, 2, "^^^", Col.Rgb(200, 150, 60));
     }
 
+    /// <summary>
+    /// Arcade mode: damage numbers floating up out of what you hit, the score across the top, and the style rank on
+    /// the right: a big letter, its title, the meter to the next rank, the multiplier and the combo count.
+    /// </summary>
+    void DrawArcade(Game g)
+    {
+        var a = g.Arcade;
+        float invDet = 1f / (_plX * _dirY - _dirX * _plY);
+        foreach (var f in a.Floaters)
+        {
+            float rx = f.X - _px, ry = f.Y - _py;
+            float depth = invDet * (-_plY * rx + _plX * ry);
+            if (depth < 0.2f) continue;
+            float tX = invDet * (_dirY * rx - _dirX * ry);
+            int sx = (int)(W / 2f * (1 + tX / depth)), sy = (int)(_horizon - (f.Z - _eyeZ) * Proj / depth);
+            if (sx < 0 || sx >= W || sy < 0 || sy >= ViewH - 8 || depth > _depth[sy * W + sx] + 0.6f) continue; // behind a wall
+            float life = f.Life / f.MaxLife;
+            uint c = Col.Shade(f.Colour, (int)(120 + 136 * MathF.Min(1, life * 2)));
+            int tw = Font.Width(f.Text) * f.Scale;
+            Text(sx - tw / 2 + 1, sy + 1, f.Text, Col.Rgb(10, 8, 8), f.Scale);
+            Text(sx - tw / 2, sy, f.Text, c, f.Scale);
+        }
+
+        if (g.Vars.Hud == HudStyle.Off) return;
+        int top = (g.Vars.ShowFps ? 12 : 3) + (g.ArenaMode && g.Level.Arena != null ? 32 : 0) + (g.Level.Ship != null ? 50 : 0);
+        string score = $"SCORE {a.Score:000000}";
+        Text(W - 6 - Font.Width(score), top, score, Col.Rgb(255, 240, 200));
+        if (!a.Active) return;
+        top += 12;
+        int r = a.Rank;
+        uint rc = Arcade.Colours[r];
+        if (a.RankFlash > 0) rc = Col.Lerp(rc, Col.Rgb(255, 255, 255), (int)(a.RankFlash * 200));
+        string letter = Arcade.Ranks[r];
+        int scale = 3 + (a.RankFlash > 0.5f ? 1 : 0);
+        int lx = W - 6 - Font.Width(letter) * scale;
+        Text(lx + 1, top + 1, letter, Col.Rgb(10, 8, 8), scale);
+        Text(lx, top, letter, rc, scale);
+        int y = top + 8 * scale + 2;
+        string title = Arcade.Titles[r];
+        Text(W - 6 - Font.Width(title), y, title, rc);
+        // the meter towards the next rank
+        const int mw = 60;
+        Rect(W - 6 - mw, y + 10, mw, 3, Col.Rgb(30, 26, 26));
+        Rect(W - 6 - mw, y + 10, (int)(mw * a.Meter), 3, rc);
+        string mult = $"x{a.Multiplier}";
+        Text(W - 6 - Font.Width(mult), y + 16, mult, Col.Rgb(255, 230, 120));
+        if (a.Combo > 1)
+        {
+            string combo = $"{a.Combo} HITS";
+            Text(W - 6 - Font.Width(combo), y + 26, combo, Col.Rgb(230, 220, 200));
+        }
+    }
+
     void DrawArenaHud(Game g)
     {
         var a = g.Level.Arena;
@@ -1389,7 +1443,7 @@ public sealed class Renderer
     {
         int y = 3;
         if (g.ShowMap) y = 14;
-        int width = W - 8 - (g.Practicing ? RunClockW : g.ArenaMode ? ArenaHudW : 0);
+        int width = W - 8 - (g.Practicing ? RunClockW : g.ArenaMode || g.Vars.Arcade ? ArenaHudW : 0);
         foreach (var (text, _) in g.Messages)
             foreach (var line in Wrap(text, width / Font.CharW))
             {

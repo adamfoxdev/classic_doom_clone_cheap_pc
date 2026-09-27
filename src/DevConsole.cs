@@ -24,6 +24,8 @@ public sealed class GameVars
     public bool Ghost = true;
     /// <summary>The on-screen strafe helper: 0 off, 1 on the practice course, 2 everywhere.</summary>
     public int StrafeHelp = 1;
+    /// <summary>Arcade mode: damage numbers, a score and a style rank for every hit.</summary>
+    public bool Arcade;
     public bool God, NoClip, NoTarget, Freeze, InfiniteMana, InfiniteFuel, FullBright, ShowFps, InvertMouse;
     public HudStyle Hud;
     public CrosshairStyle Crosshair;
@@ -61,6 +63,7 @@ public sealed class GameVars
         new("infinitefuel", "the jetpack never runs dry", v => B(v.InfiniteFuel), (v, x) => v.InfiniteFuel = x != 0, true),
         new("fullbright", "disable lighting and fog", v => B(v.FullBright), (v, x) => v.FullBright = x != 0, true),
         new("showfps", "show frames per second", v => B(v.ShowFps), (v, x) => v.ShowFps = x != 0, true),
+        new("arcade", "arcade mode: damage numbers, score and style rank", v => B(v.Arcade), (v, x) => v.Arcade = x != 0, true),
         new("hud", "HUD style: 0 full, 1 compact, 2 minimal, 3 off", v => (int)v.Hud, (v, x) => v.Hud = (HudStyle)Math.Clamp((int)MathF.Round(x), 0, 3)),
         new("crosshair", "crosshair: 0 off, 1 dot, 2 cross, 3 circle", v => (int)v.Crosshair, (v, x) => v.Crosshair = (CrosshairStyle)Math.Clamp((int)MathF.Round(x), 0, 3)),
     };

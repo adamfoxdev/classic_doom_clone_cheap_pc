@@ -56,6 +56,8 @@ public static class Headless
         ConsoleChecks(Check);
         Console.WriteLine("Chaos Arena waves:");
         ArenaChecks(Check);
+        Console.WriteLine("Arcade mode:");
+        ArcadeChecks(Check);
         Console.WriteLine("Arena mode:");
         ArenaModeChecks(Check);
 
@@ -494,6 +496,45 @@ public static class Headless
         var relics = rd.Things.OfType<Pickup>().Where(t => t.Kind == PickupKind.Relic).ToList();
         check(relics.Count == 2 && relics.All(r => new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.All(o => rd.Cell((int)r.X + o.Item1, (int)r.Y + o.Item2) == Level.Rubble)),
               "relaxed mode buries relics deep in the rock");
+    }
+
+    static void ArcadeChecks(Action<bool, string> check)
+    {
+        var opts = new Game().Menu.Items(MenuPage.Options);
+        check(opts.Contains("Arcade mode"), "Options has an Arcade mode toggle");
+        var g = new Game { FixedSeed = 1 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.Con.Execute("arcade 1", quiet: true);
+        check(g.Vars.Arcade && Settings.Lines(g).Contains("arcade 1"), "it's saved with your settings");
+        g.StartArena(PClass.Fighter);
+        var a = g.Arcade;
+        check(a.Score == 0 && a.Rank == 0 && !a.Active, "a run starts with no score and no rank");
+
+        // punch a monster: a damage number pops out and it scores
+        g.Vars.God = true;
+        var m = new Monster(Monster.Ettin) { X = g.P.X + 0.9f, Y = g.P.Y, Level = g.Level };
+        g.Level.Things.Add(m);
+        g.P.Angle = 0;
+        for (int k = 0; k < 35 && a.Floaters.Count == 0; k++) Tick(new Input { Fire = true });
+        check(a.Score > 0 && a.Floaters.Count > 0 && int.TryParse(a.Floaters[0].Text, out int shown) && shown > 0, "hits pop up their damage and score");
+        long first = a.Score;
+        for (int k = 0; k < 35 * 6 && m.Alive; k++) Tick(new Input { Fire = true });
+        check(!m.Alive && a.Floaters.Any(f => f.Text.StartsWith("+")) && a.Score > first, "a kill pays a bonus");
+
+        // a flurry climbs the style ranks, which multiply the score
+        var b = new Arcade();
+        for (int k = 0; k < 40; k++) b.Hit(0, 0, 0, 30, k % 3, k % 4 == 3, 100, false, k % 5 == 0);
+        check(b.Rank >= 4 && b.Multiplier == b.Rank + 1, $"keep it up and the rank climbs ({Arcade.Ranks[b.Rank]}, x{b.Multiplier})");
+        long before = b.Score;
+        b.Hit(0, 0, 0, 10, 0, false, 100, false, false);
+        check(b.Score - before == 10 * 10 * b.Multiplier, "points are multiplied by the rank");
+        int rank = b.Rank;
+        b.Hurt();
+        check(b.Rank == rank - 1 && b.Combo == 0, "getting hurt drops a rank and breaks the combo");
+        rank = b.Rank;
+        for (int k = 0; k < 35 * 30; k++) b.Update(1f / 35f);
+        check(b.Rank < rank && b.Floaters.Count == 0, "stop fighting and the rank drains away");
+        check(Arcade.Ranks.Length == 7 && Arcade.Ranks[^1] == "SSS", "ranks run from D to SSS");
     }
 
     static void SoundChecks(Action<bool, string> check)
@@ -3402,6 +3443,14 @@ public static class Headless
         g.P.X = altar.x + 2; g.P.Y = altar.y; g.P.Angle = MathF.PI;
         Tick(default, 2);
         Shot("14_arena_wave");
+        g.Vars.Arcade = true;
+        foreach (var m in g.Level.Things.OfType<Monster>().Where(m => m.Alive)
+                     .OrderBy(m => MathF.Abs(Game.AngleDiff(MathF.Atan2(m.Y - g.P.Y, m.X - g.P.X), g.P.Angle))).Take(4))
+            for (int k = 0; k < 3; k++)
+                g.Arcade.Hit(m.X, m.Y, g.Level.FloorAt(m.X, m.Y) + m.SpriteH, 18 + k * 7, k % 2, k == 2, m.Def.Health, false, false);
+        Shot("14b_arena_arcade");
+        g.Vars.Arcade = false;
+        g.Arcade.Reset();
 
         // jumping (camera raised) with the console open
         g.P.VZ = 3.3f;

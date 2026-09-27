@@ -517,6 +517,18 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   - **Off**: nothing but the view. Messages, menus and wave banners still show.
 
   ![Compact HUD](docs/hud_compact.png)
+- **Arcade mode** (or `arcade 0|1` in the console), off by default, keeps your spirits up in a fight, the Chaos
+  Arena especially:
+  - **Damage numbers** pop out of every monster you hit, rising and fading, and a kill adds a `+bonus` on top.
+  - **Score** in the top-right corner: each hit scores ten points per point of damage, times your style multiplier.
+    A kill pays a bonus based on the monster's toughness, and clearing an arena wave pays 1000 per wave number.
+  - **Style rank** under it, from **D** (DULL) through C, B, A and S up to **SS** and **SSS** (STYLISH!!!). It shows
+    the rank, its title, a meter towards the next rank, the multiplier (x1 at D up to x7 at SSS) and your combo of
+    hits. Keep hitting to climb. Kills, switching weapons between hits and hitting from the air all climb faster.
+    The higher ranks take more to climb and drain faster. Stop fighting and the rank drains away; take a hit and it
+    drops a whole grade and your combo breaks.
+
+  ![Arcade mode in the Chaos Arena](docs/arcade_mode.png)
 - **Crosshair** (or `crosshair 0-3` in the console): off (the default), a dot, a cross or a circle, drawn light with
   a dark outline at the centre of the view, where your shots go. It follows the horizon when you look up or down,
   works with any HUD style, and hides on the automap and in the cockpit (which has its own gunsight).
