@@ -66,7 +66,47 @@ public sealed class Level
     public ArenaState Arena;   // non-null on wave-survival maps
 
     public const string DoorGlyphs = "DSFP";
-    public const string WallGlyphs = "#BWMIODSFPLXZ";
+    public const string WallGlyphs = "#BWMIODSFPLXZKNQU";
+
+    /// <summary>Rubble ('K'): solid until you smash it apart, a few hits at a time.</summary>
+    public const char Rubble = 'K';
+    /// <summary>Ore veins break like rubble and give you a resource: iron ('N'), crystal ('Q') and fuel ('U').</summary>
+    public const string OreGlyphs = "NQU";
+    public static int OreIndex(char c) => c == '\0' ? -1 : OreGlyphs.IndexOf(c);
+    /// <summary>Anything you can smash through: rubble and ore.</summary>
+    public static bool IsRubble(char c) => c == Rubble || OreIndex(c) >= 0;
+    /// <summary>The wrecked ship on a stranded map; its teleporter stays dead until the ship is repaired.</summary>
+    public Ship Ship;
+    public const int RubbleHp = 60, RubbleStages = 4;
+    /// <summary>Hit points left in each rubble block.</summary>
+    public readonly int[] BlockHp;
+    /// <summary>How cracked a rubble block looks: 0 (whole) .. RubbleStages-1 (about to give).</summary>
+    public int CrackStage(int i) => Stage(BlockHp[i]);
+    static int Stage(int hp) => Math.Clamp((RubbleHp - hp) * RubbleStages / RubbleHp, 0, RubbleStages - 1);
+
+    /// <summary>Which side of a cell a block is on: the rubble filling it, the rock under its floor, or over its ceiling.</summary>
+    public enum Face { Wall, Floor, Ceiling }
+    /// <summary>Dig maps are solid rock you can also dig down into and up through, a DigStep at a time.</summary>
+    public bool Dig;
+    /// <summary>Flight maps are flown in your ship: it cruises forward (east) and you steer, climb, dive and shoot.</summary>
+    public bool Flight;
+    public const float DigStep = 0.5f;
+    /// <summary>Hit points left in the block under each cell's floor and over its ceiling (dig maps).</summary>
+    public readonly int[] FloorHp, CeilHp;
+    public int CrackStage(int i, Face f) => f switch { Face.Floor => Stage(FloorHp[i]), Face.Ceiling => Stage(CeilHp[i]), _ => CrackStage(i) };
+
+    /// <summary>Can this block be dug? Rubble always; floors down to the ground and ceilings up to the top only on dig maps.</summary>
+    public bool CanDig(int x, int y, Face f)
+    {
+        if (!InBounds(x, y)) return false;
+        int i = y * W + x;
+        return f switch
+        {
+            Face.Wall => IsRubble(Cells[i]),
+            Face.Floor => Dig && Cells[i] == '\0' && Marks[i] == '\0' && Floors[i] >= DigStep - 0.001f,
+            _ => Dig && Cells[i] == '\0' && Heights[i] <= MaxHeight - DigStep + 0.001f,
+        };
+    }
 
     /// <summary>Ceiling height of each cell (1 = the original one-storey rooms). Doors are always 1 tall.</summary>
     public readonly float[] Heights;
@@ -155,13 +195,24 @@ public sealed class Level
         DoorOpen = new float[W * H];
         DoorMove = new sbyte[W * H];
         DoorWait = new float[W * H];
+        BlockHp = new int[W * H];
+        FloorHp = new int[W * H];
+        CeilHp = new int[W * H];
+        Array.Fill(FloorHp, RubbleHp);
+        Array.Fill(CeilHp, RubbleHp);
 
         for (int y = 0; y < H; y++)
             for (int x = 0; x < W; x++)
             {
                 char ch = rows[y][x];
                 int i = y * W + x;
-                if (WallGlyphs.IndexOf(ch) >= 0) { Cells[i] = ch; if (ch == 'L') LeverCount++; continue; }
+                if (WallGlyphs.IndexOf(ch) >= 0)
+                {
+                    Cells[i] = ch;
+                    if (ch == 'L') LeverCount++;
+                    if (IsRubble(ch)) BlockHp[i] = RubbleHp;
+                    continue;
+                }
                 Outdoor[i] = ch == ',';
                 if (ch == '.' || ch == ',') continue;
                 if (char.IsDigit(ch) || ch is 'E' or '*' or '!' or '^' or '+' or '=')
@@ -179,6 +230,7 @@ public sealed class Level
             }
 
         if (Array.IndexOf(Marks, '*') >= 0) Arena = new ArenaState(this);
+        Ship = Things.OfType<Ship>().FirstOrDefault();
         // a map without a Heresiarch (e.g. a custom map) has its exit open from the start
         BossDead = !Things.Any(t => t is Monster { Def.Boss: true });
 
@@ -194,7 +246,7 @@ public sealed class Level
                 Heights[i] = IsDoor(Cells[i]) ? Floors[i] + MinHeight
                     : MathF.Max(HeightFromGlyph(hg, Math.Clamp(defaultHeight, MinHeight, MaxHeight)), Floors[i] + MinHeight);
                 var look = new[] { Cell(x + 1, y), Cell(x - 1, y), Cell(x, y + 1), Cell(x, y - 1) }
-                    .Where(c => c != '\0' && !IsDoor(c) && c != 'L' && c != 'X')
+                    .Where(IsPlainWall)
                     .GroupBy(c => c).OrderByDescending(gr => gr.Count()).Select(gr => gr.Key).FirstOrDefault();
                 UpperLook[i] = look == '\0' ? '#' : look;
             }
@@ -231,7 +283,7 @@ public sealed class Level
             if (Cells[i] != 'Z') continue;
             int x = i % W, y = i / W;
             var look = new[] { Cell(x + 1, y), Cell(x - 1, y), Cell(x, y + 1), Cell(x, y - 1) }
-                .Where(c => c != '\0' && !IsDoor(c) && c != 'L' && c != 'X')
+                .Where(IsPlainWall)
                 .GroupBy(c => c).OrderByDescending(gr => gr.Count()).Select(gr => gr.Key).FirstOrDefault();
             SecretLook[i] = look == '\0' ? '#' : look;
         }
@@ -261,6 +313,79 @@ public sealed class Level
     public bool InBounds(int x, int y) => (uint)x < (uint)W && (uint)y < (uint)H;
     public char Cell(int x, int y) => InBounds(x, y) ? Cells[y * W + x] : '#';
     public static bool IsDoor(char c) => c == 'D' || c == 'S' || c == 'F' || c == 'P' || c == 'Z';
+    /// <summary>A wall that is just a wall: not a door, lever, block or rubble (what secret walls and lintels copy).</summary>
+    static bool IsPlainWall(char c) => c != '\0' && !IsDoor(c) && c != 'L' && c != 'X' && !IsRubble(c);
+    /// <summary>Cells a route can go through, given time: open floor, doors and gates, and rubble you can smash.</summary>
+    static bool Passable(char c) => c == '\0' || IsDoor(c) || IsRubble(c);
+
+    /// <summary>
+    /// Can a block be placed here? Into an empty cell (Wall: it fills with rubble), or on a dig map onto a floor
+    /// (raising it a DigStep) or under a ceiling (lowering it), as long as a storey of headroom is left.
+    /// </summary>
+    public bool CanPlace(int x, int y, Face f)
+    {
+        if (!InBounds(x, y)) return false;
+        int i = y * W + x;
+        if (Cells[i] != '\0' || Marks[i] != '\0') return false;
+        return f switch
+        {
+            Face.Wall => !Things.Any(t => !t.Removed && t is not (Projectile or Puff) && (int)MathF.Floor(t.X) == x && (int)MathF.Floor(t.Y) == y),
+            _ => Dig && Heights[i] - Floors[i] >= MinHeight + DigStep - 0.001f,
+        };
+    }
+
+    /// <summary>Places a rubble block: fills an empty cell, raises a floor or lowers a ceiling.</summary>
+    public bool PlaceBlock(int x, int y, Face f)
+    {
+        if (!CanPlace(x, y, f)) return false;
+        int i = y * W + x;
+        switch (f)
+        {
+            case Face.Wall: Cells[i] = Rubble; BlockHp[i] = RubbleHp; break;
+            case Face.Floor: Floors[i] += DigStep; FloorHp[i] = RubbleHp; break;
+            default: Heights[i] -= DigStep; CeilHp[i] = RubbleHp; break;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Chips at a block; true when it breaks. Rubble opens its cell (on a dig map, as a tunnel one storey tall with
+    /// its floor at `tunnelFloor`); a floor drops, or a ceiling rises, by a DigStep.
+    /// </summary>
+    public bool DamageBlock(int x, int y, int dmg, Face face = Face.Wall, float? tunnelFloor = null)
+    {
+        if (!CanDig(x, y, face) || dmg <= 0) return false;
+        int i = y * W + x;
+        if (face == Face.Floor)
+        {
+            if ((FloorHp[i] -= dmg) > 0) return false;
+            FloorHp[i] = RubbleHp;
+            Floors[i] = MathF.Max(0f, Floors[i] - DigStep);
+            return true;
+        }
+        if (face == Face.Ceiling)
+        {
+            if ((CeilHp[i] -= dmg) > 0) return false;
+            CeilHp[i] = RubbleHp;
+            Heights[i] = MathF.Min(MaxHeight, Heights[i] + DigStep);
+            return true;
+        }
+        BlockHp[i] -= dmg;
+        if (BlockHp[i] > 0) return false;
+        BlockHp[i] = 0;
+        Cells[i] = '\0';
+        if (Dig && tunnelFloor is float tf)
+        {
+            Floors[i] = Math.Clamp(MathF.Round(tf / DigStep) * DigStep, 0f, MaxHeight - MinHeight);
+            Heights[i] = Floors[i] + MinHeight;
+        }
+        // the hole is open to the sky if most of its open neighbours are
+        int open = 0, sky = 0;
+        foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            if (InBounds(x + dx, y + dy) && Cells[(y + dy) * W + x + dx] == '\0') { open++; if (Outdoor[(y + dy) * W + x + dx]) sky++; }
+        Outdoor[i] = open > 0 && sky * 2 > open;
+        return true;
+    }
 
     /// <summary>True when a cell blocks movement (walls, and doors that are not fully open).</summary>
     public bool Blocks(int x, int y)
@@ -325,8 +450,7 @@ public sealed class Level
                 if (!InBounds(nx, ny)) continue;
                 int i = ny * W + nx;
                 if (d[i] >= 0) continue;
-                char ch = Cells[i];
-                if (ch != '\0' && !IsDoor(ch)) continue;
+                if (!Passable(Cells[i])) continue;
                 if (!CanMove(c, i, move)) continue;
                 d[i] = d[c] + 1;
                 q.Enqueue(i);
@@ -344,11 +468,11 @@ public sealed class Level
             if (_walkable != null) return _walkable;
             var (sx, sy) = ArrivalCell();
             var r = Reachable(sx, sy, move: Move.Fly);
-            return _walkable = Enumerable.Range(0, r.Length).Where(i => r[i] && (Cells[i] == '\0' || Cells[i] == 'X')).ToArray();
+            return _walkable = Enumerable.Range(0, r.Length).Where(i => r[i] && (Cells[i] == '\0' || Cells[i] == 'X' || IsRubble(Cells[i]))).ToArray();
         }
     }
 
-    /// <summary>Flood fill of cells reachable on foot (or by jumping or flying), treating every door and gate as passable.</summary>
+    /// <summary>Flood fill of cells reachable on foot (or by jumping or flying), treating every door, gate and rubble block as passable.</summary>
     public bool[] Reachable(int sx, int sy, HashSet<int> blocked = null, Move move = Move.Walk)
     {
         var seen = new bool[W * H];
@@ -364,8 +488,7 @@ public sealed class Level
                 if (!InBounds(nx, ny)) continue;
                 int i = ny * W + nx;
                 if (seen[i] || (blocked != null && blocked.Contains(i))) continue;
-                char ch = Cells[i];
-                if (ch != '\0' && !IsDoor(ch)) continue;
+                if (!Passable(Cells[i])) continue;
                 if (!CanMove(c, i, move)) continue;
                 seen[i] = true;
                 q.Enqueue(i);
@@ -458,15 +581,15 @@ public sealed class Level
 
 /// <summary>The hub's maps. Legend: see README.</summary>
 /// <summary>A map's source: its name, arrival message, theme and ASCII rows. Map files (.hxm) and the HTML editor use the same format.</summary>
-public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null)
+public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null, bool Dig = false, bool Flight = false)
 {
-    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId };
+    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId, Dig = Dig, Flight = Flight };
 }
 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
 public static class Maps
 {
-    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire" };
+    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire", "barren", "void", "meadow" };
 
     public static Theme ThemeById(string id)
     {
@@ -480,6 +603,9 @@ public static class Maps
                 "crypt" => (Col.Rgb(6, 26, 18), 12f, 236),
                 "arena" => (Col.Rgb(30, 6, 12), 18f, 256),
                 "spire" => (Col.Rgb(8, 10, 26), 24f, 256),
+                "barren" => (Col.Rgb(96, 52, 34), 18f, 256),
+                "void" => (Col.Rgb(2, 2, 8), 22f, 256),
+                "meadow" => (Col.Rgb(40, 70, 60), 18f, 256),
                 _ => (Col.Rgb(4, 8, 16), 15f, 256),
             };
         }
@@ -546,6 +672,42 @@ public static class Maps
                 t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
                 return t;
             }
+            case "meadow":
+            {
+                // a green world: lush turf under open sky, and an old outpost overgrown with moss
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorWood, CeilIn = Art.CeilWood, FloorOut = Art.Meadow, Sky = Art.SkyNight,
+                    FogColor = Col.Rgb(50, 80, 64), FogDist = 18f, Light = 256,
+                };
+                t.Walls['#'] = Art.Moss; t.Walls['M'] = Art.Moss; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick;
+                t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
+            case "void":
+            {
+                // open space: stars below, beside and above, and the next world hanging in the sky ahead
+                var t = new Theme
+                {
+                    FloorIn = Art.Starfield, CeilIn = Art.Starfield, FloorOut = Art.Starfield, Sky = Art.SkyVoid,
+                    FogColor = Col.Rgb(4, 4, 12), FogDist = 22f, Light = 256,
+                };
+                t.Walls['#'] = Art.Starfield; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick; t.Walls['M'] = Art.Moss;
+                t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
+            case "barren":
+            {
+                // a dead world under open sky: dust, cliffs and rock outcrops veined with ore
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorStone, CeilIn = Art.CeilStone, FloorOut = Art.Dust, Sky = Art.SkyBarren,
+                    FogColor = Col.Rgb(110, 84, 60), FogDist = 18f, Light = 256,
+                };
+                t.Walls['#'] = Art.Cliff; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick; t.Walls['M'] = Art.Moss;
+                t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
             default:
                 return FantasyTheme("hall");
         }
@@ -573,12 +735,12 @@ public static class Maps
             "#################.#######Z######",
             "#OOOOOOO#,,,,,,,,,,,,,,,,,,,,,,#",
             "#O.....O#,,c,,,,,,,,,,,,,,c,,&,#",
-            "#O.....O#,,,,T,,,,,,,,T,,,,,,,,#",
+            "#O.....O#,,,,T,,,7,,,,T,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,3,,,#",
             "#OE.H...S,,,,,,,,,,1,,,,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
-            "#O.....O#,,,,T,,,,,,,,T,,,,g,,,#",
-            "#O..u..O#,,e,,,,,,,,,,,,,,,e,,,#",
+            "#O.....O#,,,,T,,,9,,,,T,,,,g,,,#",
+            "#O..u..O#,,e,,,,,,,5,,,,,,,e,,,#",
             "#OOOOOOO#,,,,,,b,,,,,,,h,,,,,,,#",
             "################################",
         }),
@@ -688,9 +850,129 @@ public static class Maps
             (1, 1, 20, 14, 'k'), (9, 15, 10, 15, '4'), (1, 16, 13, 20, '4'), (15, 16, 20, 20, '3'), (22, 1, 23, 3, 'a')),
             (16, 11, 20, 14, '6'), (19, 7, 20, 8, 'a'), (15, 1, 20, 3, 'e'), (10, 1, 11, 2, 'i'), (1, 1, 5, 3, 'm'),
             (1, 7, 2, 8, 'q'), (1, 12, 5, 14, 'u'), (9, 7, 12, 10, 'y'), (21, 2, 23, 3, 'e'), (22, 1, 23, 1, 'e')),
+        // Deepdelve Quarry: optional, through portal 5 in Winnowing Hall's courtyard. The miners sealed every tunnel
+        // with rubble ('K'), so you smash your way through, a block at a time: into the gallery, down through the rock
+        // field (with loot in its pockets and a drone's cave), and on to the quarrymen's strongroom and its secret.
+        Raise(new("Deepdelve Quarry", "Deepdelve Quarry. The miners sealed every tunnel with rubble - smash your way through.", "hall", new[]
+        {
+            "##############################",
+            "#.....###...........###......#",
+            "#.5...KKK..p.....p..KKK..b...#",
+            "#...t.KKK...........KKK......#",
+            "#.&...###.....e.....###..e...#",
+            "#.....###..p.....p..###......#",
+            "##KK#########KKK#########KK###",
+            "#KKKKKKKKKKKKKKKKKKKKKKKKKKKK#",
+            "#KKKhKKKKKK#..a...#KKKKKgKKKK#",
+            "#KKKKKKKKKKK......KKKKKKKKKKK#",
+            "#KKKKKKbKKK#..t...#KKKKKKKhKK#",
+            "#KKKKKKKKKK########KKKKKKKKKK#",
+            "#KKKKKKKKKKKKKKKKKKKKKKKKKKKK#",
+            "####KKKK##########KKKKKK######",
+            "#.......#.......6.#KKKKK#....#",
+            "#..e.q..D....&....KKKKKKZ.%..#",
+            "#.......#..r...u..#KKKKK#....#",
+            "##############################",
+        }),
+            (9, 1, 19, 5, '5'), (12, 8, 17, 10, '4'), (9, 14, 17, 16, '3')),
+        // Bedrock Depths: through portal 6 in the quarry's strongroom. Solid rock in every direction but the cell you
+        // arrive in: tunnel ahead, dig down toward the bedrock or up toward the roof, and make your own way.
+        SolidRock("Bedrock Depths", "The Bedrock Depths. Solid rock all around - dig ahead, below or above.", 25, 25, '6'),
+        // Barren World: through portal 7 in Winnowing Hall's courtyard, which burns out behind you. Mine the ore veins in
+        // the outcrops (iron 'N', crystal 'Q', fuel 'U') and carry them to your wrecked ship ('V'). Once it's repaired,
+        // use it to fly home (the teleporter pad beside it wakes up too).
+        new("Barren World", "Barren World. The portal burnt out behind you - mine ore to repair your wrecked skyship and fly home.", "barren", new[]
+        {
+            "################################",
+            "#,,,,,,,,,,,,######,,,,,,,,,,,,#",
+            "#,,KKNK,,,,,,,####,,,,,,,KKQK,,#",
+            "#,,KNNKK,,a,,,,##,,,,,,,KQQKK,,#",
+            "#,,,KKK,,,,,,,,,,,,,,,,,,KKK,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "###,,,,,,KK,,,,,,,,,,,,,,KK,,###",
+            "##,,,,,,KUKK,,,,,,,,,,,,KNUK,,##",
+            "#,,,,,,,,KK,,,,,,,,,,,,,,KK,,,,#",
+            "#,,,,,,,,,,,,,,&,,,,,,,,,,,,,,,#",
+            "#,,KKK,,,,,,,,V,,7,,,,,,,,KKK,,#",
+            "#,KNQNK,,,,,,,,,,,,,,,,,,KUQUK,#",
+            "#,,KNK,,,,,,,,,,,,,,,,,,,,KKK,,#",
+            "#,,,,,,,,,,,,h,,,,,,,,,,,,,,,,,#",
+            "###,,,,,,,,,,,,,,,,,,,,,,,,,,###",
+            "##,,,,KKK,,,,,,,c,,,,,,,KKKK,,##",
+            "#,,,,KNQKK,,,,,,,,,,,,,KQNUK,,,#",
+            "#,,,,,KKK,,,,,,,,,,,,,,,KKK,,,,#",
+            "#,,e,,,,,,,,,,b,,,,g,,,,,,,,,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,,,,a,,#",
+            "#,,,,,,,####,,,,,,,,,,,####,,,,#",
+            "################################",
+        }, Height: 2.5f),
+        // Void Crossing: flown, not walked. Launching the repaired ship from the Barren World puts you at the start ('@');
+        // dodge (or shoot) the drifting asteroids ('A') and the flyers that come at you, all the way east to portal 8.
+        AsteroidBelt("Void Crossing", "The Void Crossing. Steer the skyship through the drifting rocks to the green moon ahead. Jump climbs, Slide dives, Fire shoots.", 110, 13, '8'),
+        // Verdant Moon: where the crossing ends. A meadow with an old outpost; portal 9 leads home to Winnowing Hall,
+        // and the landing pad (portal 8) takes off into the crossing again.
+        new("Verdant Moon", "The Verdant Moon. You made it across! Portal 9 in the meadow leads home.", "meadow", new[]
+        {
+            "##########################",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "#,,T,,,,,,,,,,,,,,,T,,,,,#",
+            "#,,,,,,,,####D####,,,,,,,#",
+            "#,,,,,,,,#.......#,,,e,,,#",
+            "#,,8,,,,,#...&...#,,,,,,,#",
+            "#,,,,,,,,#..q....#,,,,T,,#",
+            "#,,,,T,,,#########,,,,,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "#,,,,,,,,,,,c,,,,,,,,,,,,#",
+            "#,,T,,,,,,,,,,,,,,,,,,T,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "#,,,,,a,,,,,,,,,,,,9,,,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "#,,,T,,,,,,,,,,,,,T,,,,,,#",
+            "#,,,,,,,,,,b,,,,g,,,,,,,,#",
+            "#,,,,,,,,,,,,,,,,,,,,,,,,#",
+            "##########################",
+        }, Height: 2f),
     };
 
     public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
+
+    /// <summary>
+    /// A flight lane: open space between two walls of stars, the ship's start ('@') at the west end and a column of
+    /// `portal` at the east end. Asteroids thicken along the way, with flyers (drones, then wraiths) and repair vials.
+    /// </summary>
+    static MapDef AsteroidBelt(string name, string entry, int w, int h, char portal)
+    {
+        static float Hash(int x, int y) => (uint)((x * 73856093) ^ (y * 19349663) ^ 0x5bd1e995) % 1000 / 1000f;
+        var rows = new char[h][];
+        for (int y = 0; y < h; y++)
+        {
+            rows[y] = new char[w];
+            for (int x = 0; x < w; x++)
+            {
+                char c = x == 0 || y == 0 || x == w - 1 || y == h - 1 ? '#' : ',';
+                if (c == ',' && x >= w - 4) c = portal;
+                else if (c == ',' && x >= 7 && x < w - 6)
+                {
+                    float along = (x - 7f) / (w - 13f), roll = Hash(x, y);
+                    if (roll < 0.05f + 0.13f * along) c = 'A';
+                    else if (y == 1 + (x * 7) % (h - 2) && x % 11 == 5) c = x > w / 2 && x % 22 == 5 ? 'd' : 'a';
+                    else if (x % 19 == 9 && y == h / 2) c = 'h';
+                }
+                rows[y][x] = c;
+            }
+        }
+        rows[h / 2][2] = '@';
+        return new MapDef(name, entry, "void", rows.Select(r => new string(r)).ToArray(), Height: 4.5f, Flight: true);
+    }
+
+    /// <summary>A dig map: a walled square of rubble, all of it 4 units above the bedrock and 6 below the roof,
+    /// with a single open cell in the middle holding the arrival portal.</summary>
+    static MapDef SolidRock(string name, string entry, int w, int h, char portal)
+    {
+        var rows = Enumerable.Range(0, h).Select(y => new string(Enumerable.Range(0, w).Select(x =>
+            x == 0 || y == 0 || x == w - 1 || y == h - 1 ? '#' : x == w / 2 && y == h / 2 ? portal : Level.Rubble).ToArray())).ToArray();
+        return Elevate(Raise(new(name, entry, "hall", rows), (1, 1, w - 2, h - 2, 'a')), (1, 1, w - 2, h - 2, 'g')) with { Dig = true };
+    }
 
     /// <summary>Adds a floor grid to a map: rectangles (inclusive) of floor-height glyphs over ground level.</summary>
     static MapDef Elevate(MapDef d, params (int x0, int y0, int x1, int y1, char f)[] regions)

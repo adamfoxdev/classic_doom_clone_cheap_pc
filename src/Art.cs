@@ -11,7 +11,22 @@ public static class Art
     public const int TS = 64; // wall/floor texture size
 
     // Walls
-    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble, Block, StepRiser;
+    public static Tex Stone, Brick, Wood, Moss, Ice, Door, SteelDoor, FireDoor, Portcullis, LeverOff, LeverOn, Marble, Block, StepRiser, Rubble;
+    /// <summary>Rubble at each crack stage (Level.RubbleStages), and a chip of it for the debris when it breaks.</summary>
+    public static Tex[] RubbleCracked;
+    public static Tex RubbleChunk;
+    /// <summary>Ore blocks by Level.OreGlyphs index, each with its crack stages.</summary>
+    public static Tex[] Ores;
+    public static Tex[][] OreCracked;
+    /// <summary>The stranded ship: wrecked, half repaired, ready to fly.</summary>
+    public static Tex[] Ship;
+    /// <summary>The barren planet: dusty ground, layered cliffs and its sky.</summary>
+    public static Tex Dust, Cliff, SkyBarren;
+    /// <summary>Open space for flight maps: a tiling starfield, the sky with the next world ahead, and asteroid spin frames.</summary>
+    public static Tex Starfield, SkyVoid;
+    /// <summary>The green moon's turf.</summary>
+    public static Tex Meadow;
+    public static Tex[] Asteroid;
     // Flats
     public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor,
         CheckpointFloor, CheckpointFloorOff, LiftFloor;
@@ -45,6 +60,13 @@ public static class Art
         BuildWeapons();
         if (style == ArtStyle.SciFi) SciFiArt.Apply();
         if (style == ArtStyle.SciFi && Rendered) RenderedArt.Apply();
+        RubbleCracked = CrackStages(Rubble);
+        RubbleChunk = Chunk(Rubble);
+        Ores = OreColors.Select((c, k) => Veins(Rubble, c, 300 + (uint)k)).ToArray();
+        OreCracked = Ores.Select(CrackStages).ToArray();
+        Ship = Enumerable.Range(0, 3).Select(s => BuildShip(s, style == ArtStyle.SciFi)).ToArray();
+        BuildBarren(style == ArtStyle.SciFi);
+        BuildVoid(style == ArtStyle.SciFi);
         PillarFrames = new[] { Pillar };
         TreeFrames = new[] { Tree };
         Version++;
@@ -70,6 +92,280 @@ public static class Art
 
     // ------------------------------------------------------------------ walls
 
+    /// <summary>Tileable cobblestone: rounded stones (a wrapped Voronoi pattern) lit from the top left, in dark grit.</summary>
+    internal static Tex Cobble(uint seed, (int r, int g, int b) baseCol, int varAmt, (int r, int g, int b) gap, int stones = 13)
+    {
+        var rng = new Rng(seed);
+        var pts = new (float x, float y, uint col)[stones];
+        for (int i = 0; i < stones; i++)
+        {
+            int v = rng.Range(-varAmt, varAmt), warm = rng.Range(-6, 6);
+            pts[i] = (rng.Range(0f, TS), rng.Range(0f, TS), Col.Rgb(baseCol.r + v + warm, baseCol.g + v, baseCol.b + v - warm));
+        }
+        static float Wrap(float d) => d > TS / 2f ? d - TS : d < -TS / 2f ? d + TS : d;
+        var c = new Canvas(TS, TS);
+        for (int y = 0; y < TS; y++)
+            for (int x = 0; x < TS; x++)
+            {
+                float d1 = float.MaxValue, d2 = float.MaxValue, ox = 0, oy = 0;
+                int best = 0;
+                for (int i = 0; i < stones; i++)
+                {
+                    float dx = Wrap(x + 0.5f - pts[i].x), dy = Wrap(y + 0.5f - pts[i].y);
+                    float d = MathF.Sqrt(dx * dx + dy * dy);
+                    if (d < d1) { d2 = d1; d1 = d; best = i; ox = dx; oy = dy; }
+                    else if (d < d2) d2 = d;
+                }
+                float edge = (d2 - d1) * 0.5f;
+                if (edge < 1.1f) { c.T.Set(x, y, Col.Rgb(gap.r, gap.g, gap.b)); continue; }
+                // rounded: brighter toward the top-left of each stone, darker toward its lower-right rim
+                int s = 256 - (int)Math.Clamp((ox + oy) * 3.2f, -70, 80);
+                if (edge < 2.4f) s = s * 200 / 256;
+                c.T.Set(x, y, Col.Shade(pts[best].col, s));
+            }
+        c.Noise(rng, 22);
+        return c.T;
+    }
+
+    /// <summary>A texture cracking up in stages: stage 0 is whole, each later stage adds to the last one's cracks.</summary>
+    static Tex[] CrackStages(Tex whole)
+    {
+        var stages = new Tex[Level.RubbleStages];
+        stages[0] = whole;
+        long r = 0, g = 0, b = 0;
+        foreach (uint px in whole.Px) { r += Col.R(px); g += Col.G(px); b += Col.B(px); }
+        int n = whole.Px.Length;
+        uint avg = Col.Rgb((int)(r / n), (int)(g / n), (int)(b / n));
+        uint dark = Col.Shade(avg, 50), lip = Col.Shade(avg, 360);
+        var rng = new Rng(97);
+        var t = whole;
+        for (int s = 1; s < stages.Length; s++)
+        {
+            t = t.Clone();
+            var c = new Canvas(t);
+            for (int k = 0; k < 1 + s * 2; k++)
+            {
+                float x = rng.Range(14f, 50f), y = rng.Range(14f, 50f), a = rng.Range(0f, MathF.Tau);
+                for (int seg = 0; seg < 3 + s; seg++)
+                {
+                    a += rng.Range(-0.9f, 0.9f);
+                    float len = rng.Range(4f, 8f), nx = x + MathF.Cos(a) * len, ny = y + MathF.Sin(a) * len;
+                    c.Line(x + 1, y + 1, nx + 1, ny + 1, 1, lip);
+                    c.Line(x, y, nx, ny, s == stages.Length - 1 ? 2 : 1, dark);
+                    x = nx; y = ny;
+                }
+            }
+            stages[s] = t;
+        }
+        return stages;
+    }
+
+    /// <summary>Ore vein colours: iron, crystal, fuel.</summary>
+    static readonly (int r, int g, int b)[] OreColors = { (200, 128, 78), (176, 112, 255), (120, 255, 96) };
+
+    /// <summary>A rock texture studded with clusters of ore: dark-rimmed nuggets with a bright glint (crystal and fuel glow).</summary>
+    static Tex Veins(Tex rock, (int r, int g, int b) ore, uint seed)
+    {
+        var t = rock.Clone();
+        var c = new Canvas(t);
+        var rng = new Rng(seed);
+        uint col = Col.Rgb(ore.r, ore.g, ore.b), rim = Col.Shade(col, 90), glint = Col.Lerp(col, Col.Rgb(255, 255, 255), 170);
+        bool glows = ore.g > 200 || ore.b > 200;
+        for (int k = 0; k < 5; k++)
+        {
+            float cx = rng.Range(8f, 56f), cy = rng.Range(8f, 56f);
+            if (glows) c.Glow(cx, cy, 11, Col.Shade(col, 200));
+            for (int n = 0; n < 5; n++)
+            {
+                float x = cx + rng.Range(-6f, 6f), y = cy + rng.Range(-6f, 6f), s = rng.Range(1.8f, 3.2f);
+                c.Tri(x - s - 1, y + s + 1, x + s + 1, y + s + 1, x, y - s - 2, rim);
+                c.Tri(x - s, y + s, x + s, y + s, x, y - s - 1, col);
+                c.T.Set((int)x, (int)(y - s + 1), glint);
+            }
+        }
+        return t;
+    }
+
+    /// <summary>
+    /// The stranded ship, side on: a sleek shuttle in sci-fi, a brass-trimmed skyship with a sail in fantasy.
+    /// Stage 0 is the wreck (nose in the dust, holed, fin torn off, smoking), 1 patched up, 2 fixed with its engine lit.
+    /// </summary>
+    static Tex BuildShip(int stage, bool scifi)
+    {
+        var c = new Canvas(96, 64);
+        uint hull = scifi ? Col.Rgb(206, 210, 218) : Col.Rgb(134, 88, 46), trim = scifi ? Col.Rgb(232, 122, 40) : Col.Rgb(214, 172, 70);
+        uint dark = scifi ? Col.Rgb(52, 56, 64) : Col.Rgb(56, 34, 18), glass = scifi ? Col.Rgb(80, 180, 255) : Col.Rgb(255, 196, 110);
+        int sink = stage == 0 ? 12 : 0;
+        float cy = 44 + sink;
+        if (!scifi)
+        {
+            c.Rect(46, 8 + sink, 3, 26, dark);                                                  // mast
+            if (stage > 0) c.Tri(49, 10 + sink, 49, 32 + sink, 72, 30 + sink, Col.Rgb(222, 212, 186));
+            else c.Tri(49, 18 + sink, 49, 30 + sink, 60, 30 + sink, Col.Rgb(150, 140, 120)); // torn sail
+        }
+        // legs, then the hull
+        c.Line(30, cy + 8, 24, 63, 3, dark);
+        if (stage > 0) c.Line(66, cy + 8, 72, 63, 3, dark);
+        c.Ellipse(46, cy, 34, 11, hull);
+        c.Tri(76, cy - 8, 76, cy + 8, 94, cy + 2, hull);                                      // nose
+        c.Rect(12, (int)cy - 3, 64, 3, trim);
+        c.Ellipse(66, cy - 5, 8, 4, stage == 2 ? glass : Col.Shade(glass, 110));              // cockpit
+        c.Rect(6, (int)cy - 5, 8, 10, dark);                                                   // engine
+        if (stage > 0) c.Tri(12, cy - 8, 26, cy - 8, 14, cy - 24, trim);                      // tail fin
+        if (stage == 0)
+        {
+            var dust = scifi ? Col.Rgb(150, 82, 54) : Col.Rgb(118, 110, 100);
+            c.Ellipse(52, 63, 40, 7, dust);                                                     // ploughed into the ground
+            c.Ellipse(52, 60, 30, 3, Col.Shade(dust, 290));
+            foreach (var (x, y, r) in new[] { (34f, cy + 2, 5f), (54f, cy - 4, 4f), (22f, cy - 2, 3f) }) c.Ellipse(x, y, r, r * 0.8f, Col.Rgb(20, 16, 14));
+            for (int i = 0; i < 4; i++) c.Circle(30 + i * 6, cy - 16 - i * 7, 5 + i * 1.5f, Col.Rgb(90 - i * 8, 86 - i * 8, 84 - i * 8));
+            c.Line(62, cy - 8, 70, cy - 3, 1, Col.Rgb(20, 20, 24));                            // cracked canopy
+        }
+        if (stage == 1)
+            foreach (var (x, y) in new[] { (32, (int)cy), (52, (int)cy - 6), (20, (int)cy - 3) })
+            {
+                c.Rect(x - 4, y - 3, 8, 6, Col.Shade(hull, 170));
+                c.T.Set(x - 3, y - 2, Col.Shade(hull, 280)); c.T.Set(x + 2, y + 1, Col.Shade(hull, 280));
+            }
+        if (stage == 2)
+        {
+            c.Glow(4, cy, 9, scifi ? Col.Rgb(120, 220, 255) : Col.Rgb(255, 170, 60));
+            c.Glow(66, cy - 5, 6, glass);
+        }
+        c.Outline(Dark);
+        return c.T;
+    }
+
+    /// <summary>The barren planet: ash and scree in fantasy, rust-red regolith in sci-fi.</summary>
+    static void BuildBarren(bool scifi)
+    {
+        var ground = scifi ? (r: 150, g: 82, b: 54) : (r: 118, g: 110, b: 100);
+        {
+            var r = new Rng(1301); var c = new Canvas(TS, TS);
+            for (int i = 0; i < TS * TS; i++) { int v = r.Range(-14, 14); c.T.Px[i] = Col.Rgb(ground.r + v, ground.g + v, ground.b + v); }
+            for (int i = 0; i < 5; i++)
+            {
+                float x = r.Range(0f, 64f), y = r.Range(0f, 64f), rad = r.Range(3f, 7f);
+                c.Ellipse(x, y, rad, rad * 0.6f, Col.Rgb(ground.r - 34, ground.g - 30, ground.b - 26));
+                c.Ellipse(x + 1, y + 1, rad * 0.7f, rad * 0.4f, Col.Rgb(ground.r + 16, ground.g + 12, ground.b + 10));
+            }
+            for (int i = 0; i < 26; i++) c.Circle(r.Range(0f, 64f), r.Range(0f, 64f), r.Range(0.6f, 1.4f), Col.Rgb(ground.r - 50, ground.g - 46, ground.b - 40));
+            Dust = c.T;
+        }
+        {
+            // layered cliff: strata of slightly different rock, split by dark cracks
+            var rock = scifi ? (r: 122, g: 68, b: 46) : (r: 108, g: 98, b: 86);
+            var r = new Rng(1303); var c = new Canvas(TS, TS);
+            int y0 = 0;
+            while (y0 < TS)
+            {
+                int h = r.Range(5, 11), v = r.Range(-16, 16);
+                for (int y = y0; y < Math.Min(TS, y0 + h); y++)
+                    for (int x = 0; x < TS; x++)
+                        c.T.Set(x, y, Col.Rgb(rock.r + v, rock.g + v, rock.b + v));
+                c.Rect(0, y0, TS, 1, Col.Rgb(rock.r - 44, rock.g - 40, rock.b - 34));
+                y0 += h;
+            }
+            for (int i = 0; i < 8; i++) { int x = r.Int(TS), y = r.Int(TS); c.Line(x, y, x + r.Range(-3, 3), y + r.Range(6, 14), 1, Col.Rgb(rock.r - 50, rock.g - 46, rock.b - 40)); }
+            c.Noise(r, 18);
+            Cliff = c.T;
+        }
+        SkyBarren = scifi
+            ? SciFiArt.Space(2207, (18, 6, 4), (196, 96, 52), (74, 32, 22), Col.Rgb(236, 206, 160), false)
+            : BuildSky(207, (72, 42, 30), (214, 136, 72), (62, 38, 28), false);
+    }
+
+    /// <summary>Open space: stars everywhere, a nebula wash, the green moon on the horizon, and tumbling asteroids.</summary>
+    static void BuildVoid(bool scifi)
+    {
+        {
+            var r = new Rng(1401); var c = new Canvas(TS, TS);
+            c.Clear(Col.Rgb(4, 4, 12));
+            for (int i = 0; i < 70; i++)
+            {
+                int v = r.Range(60, 255), x = r.Int(TS), y = r.Int(TS);
+                c.T.Set(x, y, Col.Rgb(v, v, Math.Min(255, v + r.Range(0, 40))));
+                if (v > 220) { c.T.Set(x + 1, y, Col.Rgb(v / 3, v / 3, v / 2)); c.T.Set(x, y + 1, Col.Rgb(v / 3, v / 3, v / 2)); }
+            }
+            Starfield = c.T;
+        }
+        {
+            var r = new Rng(1402);
+            var t = new Tex(256, 128);
+            var neb = scifi ? (r: 60, g: 20, b: 90) : (r: 30, g: 40, b: 90);
+            for (int y = 0; y < 128; y++)
+                for (int x = 0; x < 256; x++)
+                {
+                    float n = MathF.Sin(x * 0.05f + MathF.Sin(y * 0.09f) * 2) * MathF.Sin(y * 0.07f + x * 0.013f);
+                    int k = (int)(Math.Max(0, n) * 60);
+                    t.Px[y * 256 + x] = Col.Rgb(4 + neb.r * k / 60, 4 + neb.g * k / 60, 12 + neb.b * k / 60);
+                }
+            var c = new Canvas(t);
+            for (int i = 0; i < 320; i++) { int v = r.Range(90, 255); c.T.Set(r.Int(256), r.Int(128), Col.Rgb(v, v, Math.Min(255, v + 25))); }
+            // the green moon dead ahead: rays heading east land on the sky's left edge, so draw it across the seam
+            foreach (int ox in new[] { 0, 256 })
+            {
+                c.Circle(ox + 2, 92, 22, Col.Rgb(40, 90, 50));
+                c.Circle(ox - 2, 88, 18, Col.Rgb(70, 150, 80));
+                c.Ellipse(ox + 6, 84, 7, 4, Col.Rgb(110, 190, 120));
+                c.Ellipse(ox - 10, 98, 6, 3, Col.Rgb(50, 110, 150));
+            }
+            SkyVoid = t;
+        }
+        Asteroid = Enumerable.Range(0, 6).Select(f => AsteroidFrame(f * MathF.Tau / 6)).ToArray();
+        {
+            // lush turf: blades of green, with flowers (or, in sci-fi, glowing spore caps)
+            var r = new Rng(1403); var c = new Canvas(TS, TS);
+            for (int i = 0; i < TS * TS; i++) { int v = r.Range(-18, 18); c.T.Px[i] = Col.Rgb(46 + v / 2, 118 + v, 52 + v / 2); }
+            for (int i = 0; i < 140; i++) { int x = r.Int(64), y = r.Int(64); c.Rect(x, y, 1, 2, Col.Rgb(90 + r.Int(40), 170 + r.Int(50), 80)); }
+            uint bloom = scifi ? Col.Rgb(120, 255, 230) : Col.Rgb(250, 230, 120);
+            for (int i = 0; i < 9; i++) { float x = r.Range(2f, 62f), y = r.Range(2f, 62f); c.Circle(x, y, 1.2f, bloom); }
+            Meadow = c.T;
+        }
+    }
+
+    /// <summary>One frame of a tumbling asteroid: a lumpy disc lit from the top left, pocked with craters, turned by `rot`.</summary>
+    static Tex AsteroidFrame(float rot)
+    {
+        const int S = 48;
+        float R = S * 0.44f;
+        var t = new Tex(S, S);
+        (float a, float d, float r)[] craters = { (0.4f, 0.45f, 3.5f), (2.2f, 0.55f, 2.6f), (3.9f, 0.3f, 4.2f), (5.1f, 0.6f, 2.2f) };
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float dx = x + 0.5f - S / 2f, dy = y + 0.5f - S / 2f, d = MathF.Sqrt(dx * dx + dy * dy);
+                float th = MathF.Atan2(dy, dx) - rot;
+                float edge = R * (1 + 0.14f * MathF.Sin(3 * th + 0.7f) + 0.08f * MathF.Sin(5 * th + 2.1f) + 0.05f * MathF.Sin(9 * th));
+                if (d > edge) continue;
+                float round = 1 - (d / edge) * (d / edge);
+                int s = 150 + (int)(round * 110) - (int)((dx + dy) / R * 45);
+                foreach (var (ca, cd, cr) in craters)
+                {
+                    float cx = MathF.Cos(ca + rot) * cd * R, cy = MathF.Sin(ca + rot) * cd * R;
+                    float q = MathF.Sqrt((dx - cx) * (dx - cx) + (dy - cy) * (dy - cy));
+                    if (q < cr) s = s * 150 / 256;
+                    else if (q < cr + 1.2f && dx + dy > cx + cy) s = s * 290 / 256;
+                }
+                t.Px[y * S + x] = Col.Shade(Col.Rgb(122, 110, 98), Math.Clamp(s, 40, 330));
+            }
+        new Canvas(t).Outline(Dark);
+        return t;
+    }
+
+    /// <summary>A small rough chip of a texture, for flying debris.</summary>
+    static Tex Chunk(Tex from)
+    {
+        var c = new Canvas(16, 16);
+        for (int y = 0; y < 16; y++)
+            for (int x = 0; x < 16; x++)
+            {
+                bool corner = (x < 3 || x > 12) && (y < 3 || y > 12);
+                if (!corner) c.T.Set(x, y, Col.Shade(from.Get(24 + x, 24 + y), y < 5 ? 300 : y > 11 ? 190 : 256));
+            }
+        c.Outline(Dark);
+        return c.T;
+    }
     static Tex Blocks(uint seed, int bw, int bh, (int r, int g, int b) baseCol, int varAmt, (int r, int g, int b) mortar)
     {
         var rng = new Rng(seed);
@@ -101,6 +397,7 @@ public static class Art
 
     static void BuildWalls()
     {
+        Rubble = Cobble(61, (118, 112, 104), 20, (30, 28, 26));
         Stone = Blocks(11, 32, 16, (104, 100, 96), 14, (40, 38, 36));
         Brick = Blocks(23, 16, 8, (120, 58, 44), 16, (50, 34, 28));
         Ice = Blocks(37, 32, 32, (150, 180, 210), 14, (70, 90, 120));

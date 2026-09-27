@@ -9,7 +9,7 @@ public struct Input
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
     public bool Fire, Walk, JumpHeld, SlideHeld; // held
-    public bool Use, UseItem, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character; // pressed
+    public bool Use, UseItem, Place, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
@@ -86,6 +86,13 @@ public sealed class Player
     public float X, Y, Angle, Pitch;
     public float Radius = 0.25f;
     public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills, ChestsOpened, Relics, LoreRead, Secrets;
+    /// <summary>The ship's forward speed on a flight map.</summary>
+    public float ShipSpeed;
+    /// <summary>Rubble blocks you've broken loose and carry, ready to place (up to a stack of BlockStack).</summary>
+    public int Blocks;
+    public const int BlockStack = 64;
+    /// <summary>Ore you're carrying, by Level.OreGlyphs index (iron, crystal, fuel).</summary>
+    public readonly int[] Ore = new int[Level.OreGlyphs.Length];
     public bool[] HasWeapon = { true, false, false };
     public int Weapon, PendingWeapon = -1;
     public float Cooldown, FireAnim, Raise, Bob, BobAmount;
@@ -389,6 +396,7 @@ public sealed class Game
         PlayTime += dt;
         UpdatePlayer(inp, dt);
         UpdateWorld(dt);
+        DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
 
         if (Mode == GameMode.Dead)
         {
@@ -409,6 +417,7 @@ public sealed class Game
         p.PickupFlash = MathF.Max(0, p.PickupFlash - dt * 3);
         p.TeleportFlash = MathF.Max(0, p.TeleportFlash - dt * 1.5f);
         if (Mode == GameMode.Dead) { p.Flying = false; p.Z = MathF.Max(0, p.Z - dt * 4f); return; }
+        if (Level.Flight) { UpdateFlight(inp, dt); return; }
 
         // look
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
@@ -512,6 +521,12 @@ public sealed class Game
         char mark = Level.MarkAt(p.X, p.Y);
         if (char.IsDigit(mark))
         {
+            if (!p.PortalLock && Level.Ship is { Built: false })
+            {
+                p.PortalLock = true;
+                Say(Words.T("The portal is burnt out. Repair your skyship to get home."));
+                PlaySound(Sfx.Locked, 0.8f);
+            }
             if (!p.PortalLock) Teleport(mark);
         }
         else p.PortalLock = false;
@@ -542,6 +557,7 @@ public sealed class Game
         // actions
         if (inp.Use) UseLine(pull: inp.Walk);
         if (inp.UseItem) UseItem();
+        if (inp.Place) PlaceBlock();
 
         // weapons
         if (inp.Slot >= 1 && inp.Slot <= 3) SelectWeapon(inp.Slot - 1);
@@ -615,6 +631,12 @@ public sealed class Game
                 else SpawnPuff(Art.Fireball[1], best.X, best.Y, bz, 0.25f);
                 DamageMonster(best, dmg, p.Weapon);
                 PlaySound(Sfx.Hit, 1);
+            }
+            else
+            {
+                var target = MineTarget(w.Range + 0.3f);
+                int dmg = Rand(w.DmgMin, w.DmgMax);
+                if (target is (var bx, var by, var face, var slot)) HitBlock(bx, by, powered ? dmg : dmg / 2, face, slot: slot);
             }
             return;
         }
@@ -745,12 +767,18 @@ public sealed class Game
         Messages.Clear();
         PlaySound(Sfx.Teleport, 1);
         Say("Back at your checkpoint.");
+        if (Level.Flight) { p.Z = FlightStartZ; p.ShipSpeed = FlightCruise; p.Health = p.MaxHealth; }
     }
 
     void UseLine(bool pull)
     {
         var p = P;
-        if (TryReadLore() || TryOpenChest()) return;
+        if (TryReadLore() || TryOpenChest() || TryUseShip()) return;
+        if (Level.Dig && MineTarget(1.3f) is (var mx, var my, var mf, var ms))
+        {
+            if (p.Cooldown <= 0) { HitBlock(mx, my, Level.RubbleHp / 3 + 1, mf, slot: ms); p.Cooldown = 0.45f; }
+            return;
+        }
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
         for (float d = 0.1f; d < 1.3f; d += 0.05f)
         {
@@ -803,6 +831,13 @@ public sealed class Game
                 case 'X':
                     MoveBlock(cx, cy, pull);
                     break;
+                case Level.Rubble:
+                case 'N':
+                case 'Q':
+                case 'U':
+                    // prying at it by hand works too, slowly (and it's the only way in relaxed mode)
+                    if (p.Cooldown <= 0) { HitBlock(cx, cy, Level.RubbleHp / 3 + 1); p.Cooldown = 0.45f; }
+                    break;
             }
             return;
         }
@@ -825,6 +860,43 @@ public sealed class Game
         ReadingLore = best.Text;
         PlaySound(Sfx.Lore, 1);
         return true;
+    }
+
+    /// <summary>Ore names by Level.OreGlyphs index, as written (Words.T gives the sci-fi ones).</summary>
+    public static readonly string[] OreNames = { "iron ore", "moonstone", "brimstone" };
+
+    /// <summary>What the ship still needs, e.g. "2 iron ore, 3 brimstone".</summary>
+    static string ShipNeeds(Ship s) => string.Join(", ", Enumerable.Range(0, Ship.Need.Length)
+        .Where(k => s.Delivered[k] < Ship.Need[k]).Select(k => $"{Ship.Need[k] - s.Delivered[k]} {Words.T(OreNames[k])}"));
+
+    /// <summary>Use on the wrecked ship: hand over the ore it needs; once repaired, Use it again to fly home.</summary>
+    bool TryUseShip()
+    {
+        var s = Level.Ship;
+        if (s == null || Dist(s.X, s.Y, P.X, P.Y) > s.Radius + 1.2f) return false;
+        if (MathF.Abs(AngleDiff(MathF.Atan2(s.Y - P.Y, s.X - P.X), P.Angle)) > 0.7f) return false;
+        if (s.Built) { Launch(); return true; }
+        int given = 0;
+        for (int k = 0; k < Ship.Need.Length; k++)
+        {
+            int n = Math.Min(P.Ore[k], Ship.Need[k] - s.Delivered[k]);
+            P.Ore[k] -= n; s.Delivered[k] += n; given += n;
+        }
+        if (s.Built) { Say(Words.T("The skyship is repaired! Use it again to take off.")); PlaySound(Sfx.Item, 1); }
+        else if (given > 0) { Say($"{Words.T("Repairs under way.")} {Words.T("Still needed:")} {ShipNeeds(s)}"); PlaySound(Sfx.Lever, 1); }
+        else { Say($"{Words.T("The skyship needs")} {ShipNeeds(s)}. {Words.T("Mine the ore veins in the rocks.")}"); PlaySound(Sfx.Locked, 0.6f); }
+        return true;
+    }
+
+    /// <summary>Take off in the repaired ship: out into the flight lane if the hub has one, else home through the portal link.</summary>
+    void Launch()
+    {
+        P.Health = Math.Max(P.Health, P.MaxHealth);
+        int lane = Array.FindIndex(Hub, l => l.Flight);
+        if (lane >= 0) { Warp(lane); return; }
+        Teleport(Level.Marks.FirstOrDefault(char.IsDigit));
+        Messages.Clear();
+        Say(Words.T("Lift-off! You leave the barren world behind and make it home."));
     }
 
     /// <summary>Opens the closed chest the player is facing, if any.</summary>
@@ -1133,8 +1205,123 @@ public sealed class Game
             foreach (var t in Hub.SelectMany(l => l.Things)) if (t is Projectile or Puff) t.Removed = true;
             PlaySound(Sfx.Teleport, 1);
             Say(lv.EntryMessage);
+            if (lv.Flight) EnterFlight();
             return;
         }
+    }
+
+    // ================================================================ flight
+
+    public const float FlightSlow = 3f, FlightCruise = 5f, FlightFast = 8f, FlightTop = 3.4f, FlightStartZ = 1.3f;
+    const float ShipHalfHeight = 0.28f;
+
+    /// <summary>
+    /// Arriving on a flight map: into the pilot's seat at the start of the lane, which is also where you come back
+    /// if the hull gives out. Pickups float up into the lanes and flyers take to the air around you.
+    /// </summary>
+    void EnterFlight()
+    {
+        var lv = Level;
+        MoveTo(lv.StartX, lv.StartY, 0);
+        P.Z = FlightStartZ; P.Flying = true; P.ShipSpeed = FlightCruise; P.Pitch = 0; P.PortalLock = true;
+        P.Health = Math.Max(P.Health, P.MaxHealth);
+        Checkpoint = new Checkpoint { Level = lv, X = lv.StartX, Y = lv.StartY, Floor = 0, Angle = 0, Health = P.MaxHealth, Armor = P.Armor };
+        foreach (var t in lv.Things)
+        {
+            float h = (MathF.Sin(t.X * 1.7f + t.Y * 3.1f) + 1) * 0.5f;
+            if (t is Pickup && t.Z < 0.01f) t.Z = 0.5f + h * 1.8f;
+            if (t is Monster { Def.FlyZ: > 0 } m && m.Z < 0.5f) m.Z = 0.6f + h * 2.0f;
+        }
+    }
+
+    /// <summary>
+    /// Piloting: the ship cruises east on its own. Forward/back speed it up or slow it down, strafe (and a little yaw
+    /// from the mouse or turn keys) slides it across the lane, Jump climbs and Slide dives, Fire shoots twin lasers.
+    /// </summary>
+    void UpdateFlight(Input inp, float dt)
+    {
+        var p = P;
+        p.Flying = true;
+        p.Angle = Math.Clamp(p.Angle + inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 1.4f * dt, -0.45f, 0.45f);
+        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), -70f, 70f);
+        float target = inp.Move > 0.1f ? FlightFast : inp.Move < -0.1f ? FlightSlow : FlightCruise;
+        p.ShipSpeed += (target - p.ShipSpeed) * MathF.Min(1, dt * 2.5f);
+        float side = inp.Strafe * 4.5f + MathF.Sin(p.Angle) * p.ShipSpeed;
+        float dx = p.ShipSpeed * dt, dy = side * dt;
+        float climb = inp.JumpHeld ? 2.6f : inp.SlideHeld ? -2.6f : 0f;
+        p.VZ += (climb - p.VZ) * MathF.Min(1, dt * 6);
+        p.Z = Math.Clamp(p.Z + p.VZ * dt, 0.1f, FlightTop);
+        if (!Level.BlocksCircle(p.X + dx, p.Y, p.Radius)) p.X += dx;
+        if (!Level.BlocksCircle(p.X, p.Y + dy, p.Radius)) p.Y += dy;
+        else if (MathF.Abs(side) > 1f) { p.DamageFlash = MathF.Max(p.DamageFlash, 0.2f); }   // scraping the edge of the lane
+        p.FloorZ = 0;
+        p.JetSfx -= dt;
+        if (p.JetSfx <= 0) { PlaySound(Sfx.Jet, 0.2f + 0.05f * p.ShipSpeed); p.JetSfx = 0.12f; }
+
+        // collisions: rocks and flyers in 3D, around the middle of the ship
+        float sz = p.Z + ShipHalfHeight;
+        foreach (var t in Level.Things.ToList())
+        {
+            if (t.Removed) continue;
+            if (t is Asteroid a && Dist(a.X, a.Y, p.X, p.Y) < a.Radius + p.Radius && MathF.Abs(a.MidZ - sz) < a.SpriteH * 0.45f + ShipHalfHeight)
+            {
+                Shatter(a);
+                DamagePlayer(18);
+                p.ShipSpeed = FlightSlow;
+                Say(Words.T("Hull breach! Watch the rocks."));
+            }
+            else if (t is Monster { Alive: true } m && Dist(m.X, m.Y, p.X, p.Y) < m.Radius + p.Radius
+                     && MathF.Abs(m.Z + m.SpriteH * 0.5f - sz) < m.SpriteH * 0.5f + ShipHalfHeight)
+            {
+                DamageMonster(m, 80);
+                DamagePlayer(12);
+                p.ShipSpeed = FlightSlow;
+            }
+            else if (t is Pickup pk && Dist(pk.X, pk.Y, p.X, p.Y) < 0.6f && MathF.Abs(pk.Z + pk.SpriteH * 0.5f - sz) < 0.7f)
+                TryPickup(pk);
+        }
+        if (Mode != GameMode.Playing) return;
+
+        // the far end of the lane
+        char mark = Level.MarkAt(p.X, p.Y);
+        if (char.IsDigit(mark)) { if (!p.PortalLock) { Teleport(mark); return; } }
+        else p.PortalLock = false;
+
+        p.Cooldown -= dt;
+        p.FireAnim = MathF.Max(0, p.FireAnim - dt);
+        if (inp.Fire && !Relaxed && p.Cooldown <= 0) FireShipGuns();
+    }
+
+    /// <summary>Twin lasers from the wingtips, straight along your view.</summary>
+    void FireShipGuns()
+    {
+        var p = P;
+        p.Cooldown = 0.22f;
+        p.FireAnim = 0.12f;
+        PlaySound(Sfx.Shoot, 0.7f);
+        float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f), speed = 22f + p.ShipSpeed;
+        float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle), z = p.Z + ShipHalfHeight;
+        foreach (float wing in new[] { -0.22f, 0.22f })
+            Level.Things.Add(new Projectile
+            {
+                Kind = ProjKind.Bolt, FromPlayer = true, DmgMin = 14, DmgMax = 22, Level = Level, Life = 1.2f,
+                X = p.X + ca * 0.4f - sa * wing, Y = p.Y + sa * 0.4f + ca * wing, Z = z,
+                VX = ca * speed, VY = sa * speed, VZ = speed * p.Pitch / proj, Aimed = true,
+            });
+    }
+
+    /// <summary>An asteroid bursts into drifting rubble.</summary>
+    void Shatter(Asteroid a)
+    {
+        a.Removed = true;
+        Sound(Sfx.Break, a.X, a.Y);
+        SpawnPuff(Art.Fireball[1], a.X, a.Y, a.MidZ, a.SpriteW * 0.8f);
+        for (int k = 0; k < 6; k++)
+            Level.Things.Add(new Puff(Art.RubbleChunk, 0.1f + RandF() * 0.12f, 0.5f + RandF() * 0.4f, 0f)
+            {
+                X = a.X + (RandF() - 0.5f) * a.SpriteW, Y = a.Y + (RandF() - 0.5f) * a.SpriteW, Z = a.MidZ + (RandF() - 0.5f) * a.SpriteH,
+                Level = Level, FullBright = false, VZ = (RandF() - 0.5f) * 1.5f, Gravity = 0.3f,
+            });
     }
 
     // ================================================================ world
@@ -1156,6 +1343,7 @@ public sealed class Game
                     break;
                 case Projectile pr: UpdateProjectile(pr, dt); break;
                 case Puff pf: pf.Tick(dt); break;
+                case Asteroid a: a.Z = MathF.Max(0.05f, a.BaseZ + MathF.Sin(PlayTime * a.Bob + a.Phase) * 0.5f); break;
             }
         }
         lv.Things.RemoveAll(t => t.Removed);
@@ -1431,9 +1619,25 @@ public sealed class Game
             pr.X += sx; pr.Y += sy;
             // walls, the face of a ledge, or a low ceiling
             if (Level.BlocksPoint(pr.X, pr.Y) || pr.Z < Level.FloorAt(pr.X, pr.Y) - 0.02f || pr.Z > Level.HeightAt(pr.X, pr.Y))
-            { pr.X -= sx; pr.Y -= sy; Explode(pr, null); return; }
+            {
+                int hx = (int)MathF.Floor(pr.X), hy = (int)MathF.Floor(pr.Y);
+                var face = Level.Cell(hx, hy) == Level.Rubble ? Level.Face.Wall : pr.Z < Level.FloorAt(pr.X, pr.Y) ? Level.Face.Floor : Level.Face.Ceiling;
+                pr.X -= sx; pr.Y -= sy;
+                (int, Level.Face)? direct = null;
+                if (pr.FromPlayer && Level.CanDig(hx, hy, face)) { direct = (hy * Level.W + hx, face); HitBlock(hx, hy, Rand(pr.DmgMin, pr.DmgMax), face, slot: SlotAt(pr.Z)); }
+                Explode(pr, null, direct);
+                return;
+            }
             if (pr.FromPlayer)
             {
+                foreach (var t in Level.Things)
+                    if (t is Asteroid a && !a.Removed && Dist(a.X, a.Y, pr.X, pr.Y) < a.Radius + pr.Radius && MathF.Abs(a.MidZ - pr.Z) < a.SpriteH * 0.5f)
+                    {
+                        a.Health -= Rand(pr.DmgMin, pr.DmgMax);
+                        if (a.Health <= 0) Shatter(a); else Sound(Sfx.Hit, a.X, a.Y);
+                        Explode(pr, null);
+                        return;
+                    }
                 foreach (var t in Level.Things)
                     if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
                     {
@@ -1458,7 +1662,7 @@ public sealed class Game
         return z >= feet - 0.05f && z <= top;
     }
 
-    void Explode(Projectile pr, Monster direct)
+    void Explode(Projectile pr, Monster direct, (int cell, Level.Face face)? directBlock = null)
     {
         pr.Removed = true;
         SpawnPuff(pr.Frames[1], pr.X, pr.Y, pr.Z, pr.Splash > 0 ? 0.7f : 0.35f);
@@ -1470,6 +1674,150 @@ public sealed class Game
                 float d = Dist(m.X, m.Y, pr.X, pr.Y);
                 if (d < pr.Splash) DamageMonster(m, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), pr.FromPlayer ? pr.Slot : -1);
             }
+        if (!pr.FromPlayer) return;
+        // a blast chips the rubble around it, and on a dig map the rock above and below too
+        // (measured to the nearest point of each block)
+        int r = (int)MathF.Ceiling(pr.Splash);
+        for (int cy = (int)pr.Y - r; cy <= (int)pr.Y + r; cy++)
+            for (int cx = (int)pr.X - r; cx <= (int)pr.X + r; cx++)
+            {
+                if (!Level.InBounds(cx, cy)) continue;
+                int i = cy * Level.W + cx;
+                float flat = Dist(Math.Clamp(pr.X, cx, cx + 1), Math.Clamp(pr.Y, cy, cy + 1), pr.X, pr.Y);
+                foreach (var face in new[] { Level.Face.Wall, Level.Face.Floor, Level.Face.Ceiling })
+                {
+                    if (!Level.CanDig(cx, cy, face) || directBlock == (i, face)) continue;
+                    float up = face == Level.Face.Floor ? MathF.Max(0, pr.Z - Level.Floors[i]) : face == Level.Face.Ceiling ? MathF.Max(0, Level.Heights[i] - pr.Z) : 0;
+                    float d = MathF.Sqrt(flat * flat + up * up);
+                    if (d < pr.Splash) HitBlock(cx, cy, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), face, quiet: true, slot: SlotAt(pr.Z));
+                }
+            }
+    }
+
+    /// <summary>The block your next swing (or Use) would hit, highlighted in the view; null if none.
+    /// For rubble on a dig map, Slot is the floor of the one-storey opening it would leave.</summary>
+    public (int x, int y, Level.Face face, float slot)? DigTarget;
+
+    /// <summary>On a dig map, rubble opens as a one-storey slot around where you hit it (aim high for a step up).</summary>
+    static float SlotAt(float z) => Math.Clamp(MathF.Floor((z - 0.2f) / Level.DigStep) * Level.DigStep, 0f, Level.MaxHeight - Level.MinHeight);
+
+    /// <summary>
+    /// Where a block you place would go: into the open cell in front of the wall you're looking at (or at the end of
+    /// your reach), or, on a dig map, onto the floor or under the ceiling you're looking at. Null if nowhere fits.
+    /// </summary>
+    public (int x, int y, Level.Face face)? PlaceTarget()
+    {
+        var p = P;
+        float reach = Level.Dig ? 2f : 1.6f;
+        float pitch = Level.Dig ? Math.Clamp(p.Pitch / 70f, -1f, 1f) * 85f * MathF.PI / 180f : 0f;
+        float flat = MathF.Cos(pitch), dz = MathF.Sin(pitch);
+        float dx = MathF.Cos(p.Angle) * flat, dy = MathF.Sin(p.Angle) * flat, eye = p.FloorZ + p.ViewZ;
+        int px = -1, py = -1, fx = -1, fy = -1;
+        for (float d = 0.05f; d < reach; d += 0.04f)
+        {
+            int cx = (int)MathF.Floor(p.X + dx * d), cy = (int)MathF.Floor(p.Y + dy * d);
+            if (Level.Blocks(cx, cy)) return px >= 0 ? Placeable(px, py, Level.Face.Wall) : null;
+            if (Level.Dig)
+            {
+                int i = cy * Level.W + cx;
+                float z = eye + dz * d;
+                if (z < Level.Floors[i]) return Placeable(cx, cy, Level.Face.Floor);
+                if (z > Level.Heights[i]) return Placeable(cx, cy, Level.Face.Ceiling);
+            }
+            if (!PlayerTouchesCell(cx, cy)) { px = cx; py = cy; if (fx < 0) { fx = cx; fy = cy; } }
+        }
+        // nothing to build against: the cell just ahead of you
+        return fx >= 0 ? Placeable(fx, fy, Level.Face.Wall) : null;
+    }
+
+    (int x, int y, Level.Face face)? Placeable(int x, int y, Level.Face f)
+    {
+        if (!Level.CanPlace(x, y, f)) return null;
+        var p = P;
+        if (PlayerTouchesCell(x, y))
+        {
+            int i = y * Level.W + x;
+            // building under yourself lifts you up a step; building over yourself mustn't squash you
+            if (f == Level.Face.Wall) return null;
+            if (f == Level.Face.Floor && Level.Floors[i] + Level.DigStep > p.FloorZ + p.Z + Level.MaxStep + 0.001f) return null;
+            if (f == Level.Face.Ceiling && Level.Heights[i] - Level.DigStep < p.FloorZ + p.Z + Player.Height + 0.05f) return null;
+        }
+        return (x, y, f);
+    }
+
+    /// <summary>Places one of your carried rubble blocks where you're aiming.</summary>
+    void PlaceBlock()
+    {
+        var p = P;
+        if (Level.Flight) return;
+        if (p.Blocks <= 0) { Say("You have no blocks to place. Break some rubble first."); PlaySound(Sfx.Locked, 0.5f); return; }
+        if (PlaceTarget() is not (var x, var y, var face) || !Level.PlaceBlock(x, y, face)) { PlaySound(Sfx.Locked, 0.4f); return; }
+        p.Blocks--;
+        PlaySound(Sfx.Land, 1);
+        SpawnPuff(Art.RubbleChunk, x + 0.5f, y + 0.5f, Level.Floors[y * Level.W + x] + 0.3f, 0.25f);
+    }
+
+    /// <summary>
+    /// The breakable block you're looking at within reach, or null. On a dig map this is aimed in 3D, and looking
+    /// all the way down (or up) aims straight down (or up), so you can dig out the rock under your feet.
+    /// </summary>
+    (int x, int y, Level.Face face, float slot)? MineTarget(float reach)
+    {
+        var p = P;
+        if (Level.Dig) reach = MathF.Max(reach, 2f); // a miner's reach, so a raised ceiling stays in range
+        float pitch = Level.Dig ? Math.Clamp(p.Pitch / 70f, -1f, 1f) * 85f * MathF.PI / 180f : 0f;
+        float flat = MathF.Cos(pitch), dz = MathF.Sin(pitch);
+        float dx = MathF.Cos(p.Angle) * flat, dy = MathF.Sin(p.Angle) * flat, eye = p.FloorZ + p.ViewZ;
+        for (float d = 0.05f; d < reach; d += 0.04f)
+        {
+            int cx = (int)MathF.Floor(p.X + dx * d), cy = (int)MathF.Floor(p.Y + dy * d);
+            float z = eye + dz * d;
+            // never more than a step above you, so the opening is always one you can walk up into
+            if (Level.Blocks(cx, cy)) return Level.CanDig(cx, cy, Level.Face.Wall) ? (cx, cy, Level.Face.Wall, MathF.Min(SlotAt(z), p.FloorZ + Level.DigStep)) : null;
+            if (!Level.Dig) continue;
+            int i = cy * Level.W + cx;
+            if (z < Level.Floors[i]) return Level.CanDig(cx, cy, Level.Face.Floor) ? (cx, cy, Level.Face.Floor, 0f) : null;
+            if (z > Level.Heights[i]) return Level.CanDig(cx, cy, Level.Face.Ceiling) ? (cx, cy, Level.Face.Ceiling, 0f) : null;
+        }
+        return null;
+    }
+
+    /// <summary>Chips a block; when it gives way it bursts into debris. Rubble dug on a dig map opens with its floor
+    /// at `slot` (default: your own level).</summary>
+    public void HitBlock(int cx, int cy, int dmg, Level.Face face = Level.Face.Wall, bool quiet = false, float? slot = null)
+    {
+        if (!Level.CanDig(cx, cy, face)) return;
+        int i = cy * Level.W + cx;
+        float x = cx + 0.5f, y = cy + 0.5f;
+        int before = Level.CrackStage(i, face);
+        char was = Level.Cells[i];
+        if (!Level.DamageBlock(cx, cy, (int)MathF.Round(dmg * Vars.Damage), face, slot ?? P.FloorZ))
+        {
+            if (!quiet || Level.CrackStage(i, face) != before) Sound(Sfx.Hit, x, y);
+            return;
+        }
+        Sound(Sfx.Break, x, y);
+        // the rock you break loose is yours to build with (ore goes to the ship instead)
+        if ((face != Level.Face.Wall || was == Level.Rubble) && P.Blocks < Player.BlockStack) P.Blocks++;
+        if (face == Level.Face.Wall && Level.OreIndex(was) is var ore and >= 0)
+        {
+            P.Ore[ore]++;
+            P.PickupFlash = 1;
+            PlaySound(Sfx.Pickup, 1);
+            if (Level.Ship is { } ship)
+            {
+                int have = ship.Delivered[ore] + P.Ore[ore];
+                Say($"+1 {Words.T(OreNames[ore])} ({Math.Min(have, Ship.Need[ore])}/{Ship.Need[ore]})" + (have == Ship.Need[ore] ? Words.T(" - that's enough!") : ""));
+            }
+            else Say($"+1 {Words.T(OreNames[ore])} ({P.Ore[ore]} carried)");
+        }
+        float z = face == Level.Face.Ceiling ? Level.Heights[i] - Level.DigStep - 0.2f : Level.Floors[i];
+        for (int k = 0; k < 5; k++)
+            Level.Things.Add(new Puff(Art.RubbleChunk, RandF() * 0.08f + 0.1f, 0.35f + RandF() * 0.25f, 0f)
+            {
+                X = x + (RandF() - 0.5f) * 0.7f, Y = y + (RandF() - 0.5f) * 0.7f, Z = z + 0.2f + RandF() * 0.6f, Level = Level,
+                FullBright = false, VZ = RandF() * 1.5f, Gravity = 9f,
+            });
     }
 
     void SpawnPuff(Tex tex, float x, float y, float z, float size)
@@ -1566,6 +1914,7 @@ public sealed class Game
         P.TeleportFlash = 1;
         PlaySound(Sfx.Teleport, 1);
         Say(lv.EntryMessage);
+        if (lv.Flight) EnterFlight();
     }
 
     /// <summary>Spawns an already-awake monster with a teleport flash (used by arena waves).</summary>

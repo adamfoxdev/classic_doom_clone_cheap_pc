@@ -22,6 +22,7 @@ public static class Chests
     public static int Scatter(Level lv, Random rng, float perCells)
     {
         var (sx, sy) = lv.ArrivalCell();
+        if (lv.Flight) return 0; // nothing to open in open space
         var reach = lv.Reachable(sx, sy);
         int open = reach.Count(r => r);
         int want = perCells <= 0 ? 0 : Math.Clamp((int)MathF.Round(perCells * open / 200f), 1, 12);
@@ -31,6 +32,18 @@ public static class Chests
         for (int attempt = 0; attempt < 600 && placed < want; attempt++)
         {
             int i = rng.Next(lv.Cells.Length);
+            if (lv.Dig)
+            {
+                // on a dig map chests are buried treasure: a pocket carved deep in the rock
+                int bx = i % lv.W, by = i / lv.W;
+                if (lv.Cells[i] != Level.Rubble || Math.Abs(bx - sx) + Math.Abs(by - sy) < 3) continue;
+                if (new[] { (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1) }.Any(o => lv.Cell(bx + o.Item1, by + o.Item2) != Level.Rubble)) continue;
+                lv.Cells[i] = '\0';
+                lv.BlockHp[i] = 0;
+                lv.Things.Add(new Chest { X = bx + 0.5f, Y = by + 0.5f, Level = lv });
+                placed++;
+                continue;
+            }
             if (!reach[i] || blocked.Contains(i) || !Suitable(lv, i, sx, sy, strict: attempt < 400)) continue;
 
             // make sure the chest doesn't cut the map in two
@@ -60,7 +73,7 @@ public static class Chests
         foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
         {
             char c = lv.Cell(x + dx, y + dy);
-            if (Level.IsDoor(c) || c == 'L') return false;          // never block doors or levers
+            if (Level.IsDoor(c) || c == 'L' || Level.IsRubble(c)) return false; // never block doors, levers or rubble you'll dig through
             if (c != '\0') { walls++; if (dx != 0) horiz = true; else vert = true; }
         }
         // against one wall (or tucked in a corner); never in a corridor or out in the open

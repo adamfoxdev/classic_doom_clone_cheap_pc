@@ -65,7 +65,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt*, the *Windspire* and
-  the optional *Chaos Arena*. Each map keeps its state (dead monsters, opened doors, pulled levers) when you leave and come back.
+  the optional *Chaos Arena*, *Deepdelve Quarry*, *Bedrock Depths*, *Barren World*, *Void Crossing* and *Verdant Moon*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
@@ -82,6 +82,63 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   screen tallies how many you opened.
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
+- **Deepdelve Quarry** (the **Asteroid Mine** in sci-fi): an optional dig-your-way-through level, through portal
+  **5** in Winnowing Hall's courtyard. Every tunnel is sealed with **rubble** blocks that you break
+  Minecraft-style. Hit a block and it cracks in stages, then bursts into falling debris. Melee is quickest, shots
+  work too, and splash weapons (the Hammer, Firestorm) chip every block around the blast. You can also pry a block
+  loose with Use, three pulls each, which is how you dig in Relaxed mode. Pockets in the rock field hide mana and
+  vials. A drone waits in a sealed cave, and the quarrymen's strongroom holds armor, a Mystic Urn and a secret nook.
+  Monsters can't dig, and their missiles don't break rubble.
+- **Building with blocks.** Every rubble block you break goes into your pack, up to a stack of 64, shown bottom-left.
+  So does rock dug from floors and ceilings in the Bedrock Depths. Ore goes to the ship instead. Right click (or `B`)
+  places a block:
+  - against the wall you're facing, or in the cell just ahead of you, but never on top of you;
+  - in the Bedrock Depths, also onto the floor you're looking at (look down to build a step under your own feet and
+    climb up on it) or under the ceiling (it comes down half a step, but always leaves a storey of headroom).
+
+  Placed blocks are ordinary rubble, so you can break them out again. Wall off a corridor, or build your way back
+  out of a pit.
+- **Bedrock Depths** (the **Asteroid Core** in sci-fi): a solid-rock dig map, through portal **6** in the quarry's
+  strongroom. Everything except the cell you arrive in is rubble, and you carve your own path in any direction:
+  - **Ahead:** the rock opens as a slot one storey tall. Aim level for a tunnel at your own level, a little high to
+    open it half a step up (dig a staircase up by repeating it), or a little low for a step down. The highlight
+    shows exactly which slot will open.
+  - **Down:** look all the way down (or well down, at the floor in front of you) and each block you break drops the
+    floor half a step, down to the bedrock 4 units below the start.
+  - **Up:** look all the way up and each block you break raises the ceiling half a step, up to the roof at 10.
+
+  The rock under a floor, over a ceiling and in the face of a step all crack as you hit them. Half a step is a
+  walk, and a jump clears just under one unit. To get out of a deeper pit, dig the lip of the step in front of you
+  down, tunnel out sideways at the new depth, or use the jetpack. Reach is longer here, like a miner's pick. Splash weapons blast floors and ceilings
+  too. Chests, and relics in Relaxed mode, are buried in pockets deep in the rock.
+- **Barren World** (the **Barren Planet** in sci-fi): you're stranded. Portal **7** in Winnowing Hall's courtyard
+  drops you on a dusty world of cliffs and rock outcrops, and burns out behind you. Your wrecked skyship (a shuttle
+  in sci-fi) lies beside the dead portal. The rocks hold **ore veins** that break like rubble:
+  - **iron ore** (titanium in sci-fi): rust-coloured nuggets
+  - **moonstone** (power crystals): violet
+  - **brimstone** (fuel ore): glowing green
+
+  Each vein you break goes into your pack. Press `E` at the ship to hand over what it needs: 6 iron, 4 moonstone and
+  3 brimstone. A panel in the top-right corner tracks what's delivered and what you're carrying. The ship looks
+  patched up once it's half done, then gets its engine lit and its fin back. Press `E` again to take off into the
+  Void Crossing; after that the Barren World's portal works both ways.
+- **Flight: the Void Crossing** (the **Asteroid Belt** in sci-fi): a new way to play. You pilot the repaired ship down
+  a long lane of open space toward the green moon hanging ahead. The ship cruises forward on its own. The controls:
+
+  | Control | In the cockpit |
+  |---|---|
+  | Forward / back | Speed up / slow down |
+  | Strafe | Slide across the lane |
+  | Mouse or turn keys | A little yaw either side |
+  | Jump / Slide | Climb / dive |
+  | Attack | Twin lasers, aimed with the gunsight |
+
+  Tumbling **asteroids** thicken along the way, bobbing up and down across your path, and drones (later psi
+  wraiths) come at you; it's Afrits and Dark Bishops in fantasy. Ram a rock and your hull (your health) takes the
+  blow; shoot it and it shatters. Floating vials patch the hull, if you're at their altitude. The dashboard shows
+  speed, altitude and how far along the lane you are. If the hull gives out, you start the crossing again with a
+  full hull. Reach the end to land on the **Verdant Moon**, a meadow with an overgrown outpost; portal **9** there
+  leads home to Winnowing Hall, and the landing pad takes you back into the crossing.
 - **The Windspire** (the **Comms Spire** in sci-fi): a vertical level on the main route, through portal **4** in
   the Frozen Keep's vault. It's an open-topped tower ten units tall with eight ledges and pillars
   spiralling up its walls, each at least a unit higher than the last, so none can be walked or jumped onto. You
@@ -145,12 +202,13 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `W` `A` `S` `D` / arrow keys | Move / strafe / turn |
 | Mouse | Look (including up/down) |
 | Left click / `Ctrl` | Attack |
-| `E` | Use (doors, levers, chests, lore stones, secret walls); push a stone block |
+| `E` | Use (doors, levers, chests, lore stones, secret walls); push a stone block; pry at rubble (above and below you too, in the Bedrock Depths) |
 | `Shift+E` | Pull a stone block toward you |
 | `Space` | Jump; hold in mid-air to fly with the jetpack |
 | `C` | Slide (while moving); hold while flying to sink |
 | `1` `2` `3` / mouse wheel | Select weapon |
 | `F` | Use a healing item (Quartz Flask, else Mystic Urn) |
+| Right click / `B` | Place a rubble block you've broken loose |
 | `Shift` | Walk |
 | `Tab` / `M` | Automap |
 | `Esc` | Pause menu (Resume, Options, Restart, Quit) |
@@ -192,13 +250,21 @@ portcullis = force field, Heresiarch = Overmind, relic = artifact, lore stone = 
    Kill the Heresiarch, then step on the red exit rune.
 
 Optional: portal **3** in the courtyard leads to the Chaos Arena for wave survival (Dark Bishops join from wave 4).
+Portal **5**, near the courtyard's south wall, leads to Deepdelve Quarry. Smash east through the rubble into the
+gallery, dig down through the rock field (the pockets hold loot, the middle cave a drone), and keep digging south-west
+to the strongroom's door, or south-east straight into the strongroom. Its secret wall is at the east end.
+Portal **6** in the strongroom leads down to the Bedrock Depths, where there's nothing but rock to dig.
+Portal **7**, in the courtyard between its two northern trees, strands you on the Barren World until you've mined
+enough ore to repair your ship. Then fly it through the Void Crossing to the Verdant Moon, whose portal 9 brings you
+back to the courtyard.
 
-**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 15 relics, which
-are spread over all five maps (including the arena and the Windspire, where some sit on high ledges) before the
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 26 relics, which
+are spread over all ten maps (including the arena and the Windspire, where some sit on high ledges, and the
+Bedrock Depths, where they're buried in the rock) before the
 exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
-under the crypt's south-west room, under the arena's antechamber, and at the east end of the Windspire's
-north-east ledge.
+under the crypt's south-west room, under the arena's antechamber, at the east end of the Windspire's
+north-east ledge, and at the east end of the quarry's strongroom.
 
 ## Map editor
 
@@ -320,7 +386,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
-| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire) |
+| `map <number\|name>` | warp to a hub map (`map 4` = Chaos Arena, `map 5` = Windspire, `map 6` = Deepdelve Quarry, `map 7` = Bedrock Depths, `map 8` = Barren World, `map 9` = Void Crossing, `map 10` = Verdant Moon) |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
@@ -369,7 +435,8 @@ cover keeps its procedural look. It covers:
   and a white-hot pain frame; the death frames are derived from them as usual. They're built bolder than the
   pickups, with brighter hulls, strong glows and a rim light, so they still read at a distance. The walkers are
   seen at a three-quarter angle to show their legs.
-- four textures: the main station wall panels, white hull plating, the pipe wall and the deck floor
+- five textures: the main station wall panels, white hull plating, the pipe wall, the deck floor and the mine's
+  rubble (faceted rocks with ore glints; its crack stages are drawn over it in game)
 
 ![Rendered art sheet: procedural above, rendered below](docs/rendered_art_sheet.png)
 ![Rendered monsters: procedural above, rendered below](docs/rendered_art_monsters.png)
@@ -397,7 +464,7 @@ lineups of every monster in both looks (`56_…`, `57_…`).
 |---|---|
 | `src/Program.cs` | Raylib window, input mapping, framebuffer upload |
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
-| `src/Level.cs` | Map parsing, doors, collision, line of sight; the hub's five maps and the themes |
+| `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's ten maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards |
 | `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
@@ -435,6 +502,8 @@ Maps are ASCII grids in `src/Level.cs`:
 | `k` / `f` | Steel Key / Fire Key | `r` | Mesh Armor |
 | `$` | treasure chest (hand-placed; most are scattered randomly) | `J` | jetpack / Wings of Wrath |
 | `X` | pushable stone block | `^` | pressure plate |
+| `K` | rubble (break it with attacks or Use) | `V` | wrecked ship (Use to repair with ore, then to fly home) |
+| `N` `Q` `U` | ore veins: iron, moonstone, brimstone (break like rubble; the ore goes in your pack) | `A` | asteroid (flight maps) |
 | `Z` | secret wall (looks like its neighbours) | `&` | lore stone |
 | `%` | secret treasure (a relic in Relaxed, a Mystic Urn in Classic) | | |
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |

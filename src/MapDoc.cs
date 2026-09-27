@@ -93,7 +93,7 @@ public sealed class MapDoc
     }
 
     /// <summary>Every glyph a map can use (the map legend in the README). Anything else loads as floor.</summary>
-    public const string KnownGlyphs = "#BWMIO.,DSFPLZX^@E1234*!+=eacCdHhqubgrkfwx$%&JtpT";
+    public const string KnownGlyphs = "#BWMIO.,DSFPLZX^KNQU@E123456789*!+=eacCdHhqubgrkfwx$%&JVAtpT";
 
     public static bool IsKnownGlyph(char c) => KnownGlyphs.IndexOf(c) >= 0;
 

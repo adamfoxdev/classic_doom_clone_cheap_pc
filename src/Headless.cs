@@ -84,6 +84,8 @@ public static class Headless
         JetpackChecks(Check);
         Console.WriteLine("Windspire:");
         SpireChecks(Check);
+        Console.WriteLine("Deepdelve Quarry and rubble:");
+        QuarryChecks(Check);
         VerticalAimChecks(Check);
         Console.WriteLine("Checkpoints:");
         CheckpointChecks(Check);
@@ -100,6 +102,380 @@ public static class Headless
 
         Console.WriteLine(failures == 0 ? "All checks passed." : $"{failures} check(s) failed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    static void QuarryChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int qi = Array.FindIndex(hub, l => l.RawName == "Deepdelve Quarry");
+        check(qi == 5 && hub.Count(l => l.FindMark('5') != null) == 2 && hub[0].FindMark('5') != null,
+              "portal 5 in Winnowing Hall's courtyard leads to Deepdelve Quarry");
+        var lv = hub[qi];
+        var (ax, ay) = lv.ArrivalCell();
+        var rubble = Enumerable.Range(0, lv.Cells.Length).Where(i => lv.Cells[i] == Level.Rubble).ToHashSet();
+        var walled = lv.Reachable(ax, ay, rubble);
+        var dug = lv.Reachable(ax, ay);
+        int gallery = 3 * lv.W + 14, vault = 16 * lv.W + 11;
+        check(rubble.Count > 150 && !walled[gallery] && dug[gallery] && dug[vault] && !walled[vault],
+              $"the gallery and the strongroom are sealed behind rubble ({rubble.Count} blocks)");
+        check(lv.WalkableFloor.Contains(9 * lv.W + 5), "rubble counts as floor to explore");
+        check(lv.BlockHp[2 * lv.W + 6] == Level.RubbleHp && lv.CrackStage(2 * lv.W + 6) == 0 && lv.Blocks(6, 2), "rubble starts whole and solid");
+
+        var g = new Game { FixedSeed = 5 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Warp(qi);
+        var q = g.Level;
+        q.Things.RemoveAll(t => t is Monster or Chest);
+        var p = g.P;
+        // punch through the plug east of the arrival room
+        p.X = 5.5f; p.Y = 2.5f; p.Angle = 0;
+        int plug = 2 * q.W + 6;
+        var stages = new HashSet<int>();
+        for (int k = 0; k < 35 * 10 && q.Cells[plug] == Level.Rubble; k++) { stages.Add(q.CrackStage(plug)); Tick(new Input { Fire = true }); }
+        check(q.Cells[plug] == '\0' && !q.Blocks(6, 2), "gauntlets smash a rubble block");
+        check(stages.Count >= 2, $"it cracks up as you hit it ({stages.Count} stages seen)");
+        check(q.Things.Any(t => t is Puff), "it bursts into debris");
+        // walk into the hole
+        Tick(new Input { Move = 1 }, 12);
+        check(p.X > 6.1f, "you can walk into the hole you made");
+
+        // prying by hand works too (it's the only way in relaxed mode)
+        p.X = 5.5f; p.Y = 3.5f; p.Angle = 0;
+        int pry = 3 * q.W + 6;
+        for (int k = 0; k < 35 * 6 && q.Cells[pry] == Level.Rubble; k++) Tick(new Input { Use = k % 2 == 0 });
+        check(q.Cells[pry] == '\0', "Use pries a rubble block loose");
+
+        // a splash weapon chips every block around the blast
+        var mg = new Game { FixedSeed = 5 };
+        mg.NewGame(PClass.Cleric);
+        mg.Warp(qi);
+        var mq = mg.Level;
+        mq.Things.RemoveAll(t => t is Monster or Chest);
+        mg.P.HasWeapon[2] = true; mg.P.GreenMana = 200; mg.P.Weapon = 2;
+        mg.P.X = 14.5f; mg.P.Y = 5.5f; mg.P.Angle = MathF.PI / 2;
+        for (int k = 0; k < 35 * 2; k++) mg.Update(new Input { Fire = k < 3 }, 1f / 35f);
+        int chipped = rubble.Count(i => mq.Cells[i] != Level.Rubble || mq.BlockHp[i] < Level.RubbleHp);
+        check(chipped >= 3, $"a firestorm blast chips several blocks ({chipped})");
+
+        // monsters' shots don't dig
+        q.Things.Add(new Projectile { Kind = ProjKind.Fireball, FromPlayer = false, DmgMin = 90, DmgMax = 90, X = 2.5f, Y = 5.9f, VX = 0, VY = 6f, Level = q });
+        Tick(default, 20);
+        check(q.Cells[6 * q.W + 2] == Level.Rubble && q.BlockHp[6 * q.W + 2] == Level.RubbleHp, "monster fire doesn't break rubble");
+
+        // each style has its own rubble, with distinct crack stages
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            g.SetArtStyle(style);
+            var s = Art.RubbleCracked;
+            check(s.Length == Level.RubbleStages && s[0] == Art.Rubble && Enumerable.Range(1, s.Length - 1).All(k => !s[k].Px.SequenceEqual(s[k - 1].Px)),
+                  $"{style} rubble has {Level.RubbleStages} crack stages");
+        }
+        g.SetArtStyle(ArtStyle.SciFi);
+        DigChecks(check);
+        PlaceChecks(check);
+        PlanetChecks(check);
+        FlightChecks(check);
+    }
+
+    static void PlaceChecks(Action<bool, string> check)
+    {
+        // in the quarry: break a block, carry it, build a wall with it
+        var g = new Game { FixedSeed = 3 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        int qi = Array.FindIndex(g.Hub, l => l.RawName == "Deepdelve Quarry");
+        g.Warp(qi);
+        var q = g.Level;
+        var p = g.P;
+        q.Things.RemoveAll(t => t is Monster or Chest);
+        p.X = 3.5f; p.Y = 2.5f; p.Angle = 0; p.PortalLock = true;
+        Tick(new Input { Place = true });
+        check(p.Blocks == 0 && q.Cells[2 * q.W + 4] == '\0', "nothing to place until you've broken a block");
+        g.HitBlock(6, 2, 999);
+        check(p.Blocks == 1, "breaking rubble puts the block in your pack");
+        Tick(new Input { Place = true });
+        check(p.Blocks == 0 && q.Cells[2 * q.W + 4] == Level.Rubble && q.BlockHp[2 * q.W + 4] == Level.RubbleHp, "Place builds it into the cell ahead of you");
+        g.HitBlock(4, 2, 999);
+        check(p.Blocks == 1 && q.Cells[2 * q.W + 4] == '\0', "and you can break it back out");
+        p.X = 4.5f; p.Y = 2.5f; p.Angle = 0;
+        Tick(new Input { Place = true });
+        check(q.Cells[2 * q.W + 4] == '\0' && q.Cells[2 * q.W + 5] == Level.Rubble, "you never build a block on top of yourself");
+        g.HitBlock(5, 2, 999);
+        check(p.Blocks == 1, "your own block comes back to you");
+
+        // on a dig map: build a step up under yourself, or bring the ceiling down
+        int di = Array.FindIndex(g.Hub, l => l.Dig);
+        g.Warp(di);
+        var d = g.Level;
+        var (ax, ay) = d.ArrivalCell();
+        p.X = ax + 0.5f; p.Y = ay + 0.5f; p.Angle = 0; p.Pitch = 0; p.PortalLock = true;
+        g.HitBlock(ax + 1, ay, 999, slot: d.Floors[ay * d.W + ax]);
+        int e = ay * d.W + ax + 1;
+        for (int k = 0; k < 3; k++) g.HitBlock(ax + 1, ay, 999, Level.Face.Ceiling);
+        p.X = ax + 1.5f; Tick(default, 3);
+        float floor = d.Floors[e], roof = d.Heights[e];
+        p.Pitch = -70; p.Blocks = 4;
+        Tick(new Input { Place = true }); Tick(default, 10);
+        check(d.Floors[e] == floor + Level.DigStep && MathF.Abs(p.FloorZ - d.Floors[e]) < 0.01f, "look down and place: a block under your feet lifts you a step");
+        p.Pitch = 70;
+        Tick(new Input { Place = true }); Tick(default);
+        Tick(new Input { Place = true }); Tick(default);
+        check(d.Heights[e] == roof - 2 * Level.DigStep && d.Heights[e] - d.Floors[e] == Level.MinHeight, "look up and place: the ceiling comes down a block at a time");
+        Tick(new Input { Place = true });
+        check(d.Heights[e] - d.Floors[e] == Level.MinHeight && p.Blocks == 1, "but never lower than a storey above the floor");
+
+        // ore you mine goes to the ship, not your block pack
+        int bi = Array.FindIndex(g.Hub, l => l.Ship != null);
+        g.Warp(bi);
+        int vein = Array.FindIndex(g.Level.Cells, c => c == 'N');
+        int before = p.Blocks;
+        g.HitBlock(vein % g.Level.W, vein / g.Level.W, 999);
+        check(p.Blocks == before && p.Ore[0] == 1, "ore goes to the ship, not your block pack");
+    }
+
+    static void FlightChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int fi = Array.FindIndex(hub, l => l.Flight), mi = Array.FindIndex(hub, l => l.RawName == "Verdant Moon");
+        var lane = hub[fi];
+        check(fi == 8 && mi == 9 && hub.Count(l => l.Flight) == 1, "the Void Crossing is flown, and the Verdant Moon lies beyond it");
+        check(hub.Count(l => l.FindMark('8') != null) == 2 && lane.FindMark('8') != null && hub[mi].FindMark('8') != null, "portal 8 at the end of the crossing lands on the moon");
+        check(hub.Count(l => l.FindMark('9') != null) == 2 && hub[0].FindMark('9') != null && hub[mi].FindMark('9') != null, "portal 9 on the moon leads home to Winnowing Hall");
+        var rocks = lane.Things.OfType<Asteroid>().ToList();
+        int firstHalf = rocks.Count(a => a.X < lane.W / 2f);
+        check(rocks.Count > 60 && firstHalf < rocks.Count - firstHalf, $"asteroids thicken along the crossing ({firstHalf} then {rocks.Count - firstHalf})");
+        check(lane.Things.OfType<Monster>().Count() >= 6 && lane.Things.OfType<Monster>().All(m => m.Def.FlyZ > 0), "only flyers come at you out there");
+
+        var g = new Game { FixedSeed = 12 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Warp(fi);
+        var f = g.Level;
+        var p = g.P;
+        check(f.Flight && p.Z > 1f && p.ShipSpeed == Game.FlightCruise && g.CanRespawn, "into the pilot's seat, with a checkpoint at the start");
+        f.Things.RemoveAll(t => t is Monster or Asteroid or Pickup);
+        float x0 = p.X;
+        Tick(default, 35);
+        check(p.X > x0 + Game.FlightCruise * 0.8f, "the ship cruises forward by itself");
+        float cruise = p.X;
+        Tick(new Input { Move = 1 }, 35);
+        check(p.X - cruise > Game.FlightCruise * 1.1f && p.ShipSpeed > Game.FlightCruise, "forward speeds it up");
+        float z0 = p.Z;
+        Tick(new Input { JumpHeld = true }, 20);
+        check(p.Z > z0 + 0.5f, "Jump climbs");
+        Tick(new Input { SlideHeld = true }, 100);
+        check(p.Z <= 0.11f, "Slide dives, down to just above the stars");
+        float y0 = p.Y;
+        Tick(new Input { Strafe = 1 }, 20);
+        check(p.Y > y0 + 0.8f, "strafing slides the ship across the lane");
+        Tick(new Input { Strafe = 1 }, 200);
+        check(p.Y < f.H - 1 - p.Radius + 0.01f, "the edge of the lane holds you in");
+
+        // a rock dead ahead: ram it and the hull takes the blow
+        p.Y = f.H / 2 + 0.5f; p.Z = 1.2f; p.Angle = 0; p.Pitch = 0;
+        var rock = new Asteroid(0.9f, 1.0f, 0f) { X = p.X + 1.2f, Y = p.Y, Level = f, Bob = 0 };
+        f.Things.Add(rock);
+        int hp = p.Health;
+        Tick(default, 20);
+        check(rock.Removed && p.Health < hp, "ramming an asteroid shatters it and dents the hull");
+        // or shoot it first
+        var rock2 = new Asteroid(0.9f, p.Z + 0.28f - 0.45f, 0f) { X = p.X + 5f, Y = p.Y, Level = f, Bob = 0 };
+        rock2.BaseZ = rock2.Z;
+        f.Things.Add(rock2);
+        hp = p.Health;
+        for (int k = 0; k < 20 && !rock2.Removed; k++) Tick(new Input { Fire = true, Move = -1 });
+        check(rock2.Removed && p.Health == hp, "the lasers blast asteroids out of your way");
+
+        // lose the hull and you're back at the start of the lane
+        g.Vars.Freeze = true;
+        p.Health = 1;
+        var rock3 = new Asteroid(0.9f, p.Z + 0.28f - 0.45f, 0f) { X = p.X + 0.3f, Y = p.Y, Level = f, Bob = 0 };
+        rock3.BaseZ = rock3.Z;
+        f.Things.Add(rock3);
+        Tick(default, 2);
+        check(g.Mode == GameMode.Dead, "the hull gives out");
+        g.RespawnAtCheckpoint();
+        check(g.Mode == GameMode.Playing && g.Level == f && MathF.Abs(p.X - f.StartX) < 0.01f && p.Z > 1f && p.Health == 100, "and you start the crossing again");
+        g.Vars.Freeze = false;
+
+        // fly to the end and you land on the moon
+        var end = f.FindMark('8').Value;
+        p.X = end.x - 0.6f; p.Y = end.y;
+        Tick(default, 10);
+        check(g.Level == g.Hub[mi] && !g.Level.Flight, "reach the end of the crossing to land on the Verdant Moon");
+        // and taking off again from the moon's pad starts the crossing over
+        var pad = g.Level.FindMark('8').Value;
+        p.X = pad.x + 1f; p.Y = pad.y; Tick(default, 2);
+        p.X = pad.x; Tick(default, 2);
+        check(g.Level == f && MathF.Abs(p.X - f.StartX) < 0.2f, "the moon's landing pad launches you back into the crossing");
+    }
+
+    static void PlanetChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int bi = Array.FindIndex(hub, l => l.RawName == "Barren World");
+        var lv = hub[bi];
+        check(bi == 7 && lv.Ship != null && lv.Ship.Stage == 0 && lv.ThemeId == "barren", "the Barren World has a wrecked ship");
+        check(hub[0].FindMark('7') != null && lv.FindMark('7') != null && hub.Count(l => l.FindMark('7') != null) == 2, "portal 7 in Winnowing Hall's courtyard leads to the Barren World");
+        for (int k = 0; k < Ship.Need.Length; k++)
+        {
+            int veins = lv.Cells.Count(c => Level.OreIndex(c) == k);
+            check(veins >= Ship.Need[k] + 2, $"enough {Game.OreNames[k]} in the rocks ({veins} veins for {Ship.Need[k]})");
+        }
+
+        var g = new Game { FixedSeed = 6 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Warp(bi);
+        var w = g.Level;
+        var p = g.P;
+        w.Things.RemoveAll(t => t is Monster);
+        var (ax, ay) = w.ArrivalCell();
+        check(g.Level == w && w.Ship is { Built: false }, "stranded on arrival");
+        // stepping back onto the dead portal goes nowhere
+        p.X = ax + 1.5f; Tick(default, 2);
+        p.X = ax + 0.5f; Tick(default, 2);
+        check(g.Level == w, "the burnt-out portal won't take you home");
+
+        // mine an iron vein: the ore goes into your pack
+        int vein = Array.FindIndex(w.Cells, c => c == 'N');
+        int vx = vein % w.W, vy = vein / w.W;
+        g.HitBlock(vx, vy, 999);
+        check(w.Cells[vein] == '\0' && p.Ore[0] == 1, "breaking an iron vein gives you iron ore");
+        g.HitBlock(vx, vy, 999);
+        check(p.Ore[0] == 1, "and only once");
+
+        // hand it over at the ship, then everything else it needs
+        var s = w.Ship;
+        void FaceShip() { p.X = s.X - 1.2f; p.Y = s.Y; p.Angle = 0; p.PortalLock = true; Tick(default); }
+        FaceShip();
+        Tick(new Input { Use = true });
+        check(s.Delivered[0] == 1 && p.Ore[0] == 0 && !s.Built, "Use hands your ore over to the ship");
+        for (int k = 0; k < Ship.Need.Length; k++) p.Ore[k] = Ship.Need[k] + 1;
+        Tick(default); Tick(new Input { Use = true });
+        check(s.Built && s.Stage == 2 && p.Ore[0] == 2 && p.Ore[1] == 1 && p.Ore[2] == 1, "the ship takes only what it needs, and is repaired");
+        Tick(default); Tick(new Input { Use = true });
+        check(g.Level.Flight && MathF.Abs(p.X - g.Level.StartX) < 0.01f && p.Z > 1f, "the repaired ship takes off into the Void Crossing");
+        g.Warp(0);
+
+        // with the ship fixed, the portal works both ways
+        var home = g.Hub[0].FindMark('7').Value;
+        p.X = home.x + 1f; Tick(default, 2);
+        p.X = home.x; p.Y = home.y; Tick(default, 2);
+        check(g.Level == w, "portal 7 takes you back");
+        p.X = ax + 1.5f; p.Y = ay + 0.5f; Tick(default, 2);
+        p.X = ax + 0.5f; Tick(default, 2);
+        check(g.Level == g.Hub[0], "and, with the ship repaired, home again");
+
+        // art for both styles
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            g.SetArtStyle(style);
+            check(Art.Ship.Length == 3 && Art.Ship.Distinct().Count() == 3 && Art.Ores.Length == 3 && Art.OreCracked.All(o => o.Length == Level.RubbleStages)
+                  && Art.Dust != null && Art.Cliff != null && Art.SkyBarren != null, $"{style} has ship, ore and barren-world art");
+        }
+        g.SetArtStyle(ArtStyle.SciFi);
+    }
+
+    static void DigChecks(Action<bool, string> check)
+    {
+        var hub = Maps.BuildHub();
+        int di = Array.FindIndex(hub, l => l.RawName == "Bedrock Depths");
+        var lv = hub[di];
+        check(di == 6 && lv.Dig && hub.Count(l => l.Dig) == 1, "the Bedrock Depths is the hub's only dig map");
+        check(lv.FindMark('6') != null && hub[5].FindMark('6') != null && hub.Count(l => l.FindMark('6') != null) == 2,
+              "portal 6 in the quarry's strongroom leads to the Bedrock Depths");
+        int open = Enumerable.Range(0, lv.Cells.Length).Count(i => lv.Cells[i] == '\0');
+        int interior = (lv.W - 2) * (lv.H - 2);
+        check(open == 1 && lv.Cells.Count(c => c == Level.Rubble) == interior - 1, $"solid rock but the arrival cell ({interior - 1} blocks)");
+
+        var g = new Game { FixedSeed = 2 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Fighter);
+        g.Warp(di);
+        var d = g.Level;
+        var p = g.P;
+        var (ax, ay) = d.ArrivalCell();
+        int here = ay * d.W + ax, e = here + 1;
+        void Punch(Func<bool> done)
+        {
+            for (int k = 0; k < 35 * 8 && !done(); k++) Tick(new Input { Fire = true });
+            Tick(default, 25);
+        }
+        p.X = ax + 0.5f; p.Y = ay + 0.5f; p.Angle = 0; p.Pitch = 0;
+        float start = d.Floors[here];
+        Tick(default);
+        check(g.DigTarget is (var t1x, var t1y, Level.Face.Wall, var t1s) && t1x == ax + 1 && t1y == ay && t1s == start, "the block ahead is highlighted, at your level");
+        p.Pitch = 70; Tick(default);
+        check(g.DigTarget is (var t2x, var t2y, Level.Face.Ceiling, _) && t2x == ax && t2y == ay, "looking up highlights the rock overhead");
+        p.Pitch = 0;
+        Punch(() => d.Cells[e] == '\0');
+        check(d.Cells[e] == '\0' && d.Floors[e] == start && d.Heights[e] == start + 1, "punch a tunnel ahead, at your own level");
+        check(!d.CanDig(ax, ay, Level.Face.Floor), "the portal's floor can't be dug away");
+
+        // step into the tunnel and dig down, then up
+        p.X = ax + 1.5f;
+        Tick(default, 2);
+        p.Pitch = -70;
+        Tick(default);
+        check(g.DigTarget is (var t3x, var t3y, Level.Face.Floor, _) && t3x == ax + 1 && t3y == ay, "looking down highlights the rock underfoot");
+        Punch(() => d.Floors[e] < start);
+        check(d.Floors[e] == start - Level.DigStep, "look down to dig out the rock under your feet");
+        check(MathF.Abs(p.FloorZ - d.Floors[e]) < 0.01f && p.Z < 0.01f, "and you drop into the hole");
+        float roof = d.Heights[e];
+        p.Pitch = 70;
+        Punch(() => d.Heights[e] > roof);
+        check(d.Heights[e] == roof + Level.DigStep, "look up to dig into the rock overhead");
+
+        p.Pitch = 0; p.Angle = 0;
+        Punch(() => d.Cells[e + 1] == '\0');
+        check(d.Floors[e + 1] == start - Level.DigStep, "tunnels dug from lower down open lower down");
+
+        // aim a little high at the rock ahead and it opens a step up: dig a staircase and climb it
+        int south = e + d.W;
+        float low = p.FloorZ;
+        p.Angle = MathF.PI / 2; p.Pitch = 20;
+        Tick(default);
+        check(g.DigTarget is (_, _, Level.Face.Wall, var up) && up == low + Level.DigStep, "aiming high marks a slot a step up");
+        Punch(() => d.Cells[south] == '\0');
+        check(d.Floors[south] == low + Level.DigStep && d.Heights[south] == low + Level.DigStep + 1, "it opens a step up");
+        p.Pitch = 0;
+        Tick(new Input { Move = 1 }, 20);
+        check(MathF.Abs(p.FloorZ - (low + Level.DigStep)) < 0.01f, "and you walk up onto it");
+        p.X = ax + 1.5f; p.Y = ay + 0.5f; p.Angle = 0;
+        Tick(default, 25);
+
+        // Use digs too (the way to dig in relaxed mode)
+        p.Pitch = 70;
+        float before = d.Heights[e];
+        for (int k = 0; k < 35 * 4 && d.Heights[e] == before; k++) Tick(new Input { Use = true });
+        check(d.Heights[e] == before + Level.DigStep, "Use digs upward");
+        check(d.CrackStage(e, Level.Face.Ceiling) == 0, "each new layer starts whole");
+        Tick(default, 25);
+
+        // half a step down, so you can walk back up onto the portal
+        p.Pitch = 0; p.Angle = MathF.PI;
+        Tick(new Input { Move = 1 }, 40);
+        check(g.Level == g.Hub[5], "walk up out of the hole and back onto the portal to the quarry");
+
+        // floors stop at the bedrock and ceilings at the roof
+        d.Floors[e] = 0;
+        check(!d.CanDig(ax + 1, ay, Level.Face.Floor) && !d.DamageBlock(ax + 1, ay, 999, Level.Face.Floor) && d.Floors[e] == 0, "nothing to dig below the bedrock");
+        d.Heights[e] = Level.MaxHeight;
+        check(!d.CanDig(ax + 1, ay, Level.Face.Ceiling), "nor above the roof");
+
+        // floors and ceilings of ordinary maps stay put
+        var hall = hub[0];
+        check(!hall.CanDig(3, 2, Level.Face.Floor) && !hall.CanDig(3, 2, Level.Face.Ceiling), "you can't dig through an ordinary map's floor");
+
+        // relaxed mode buries a couple of relics in the rock
+        var rg = new Game { FixedSeed = 4, Style = GameStyle.Relaxed };
+        rg.NewGame(PClass.Mage);
+        var rd = rg.Hub[di];
+        var relics = rd.Things.OfType<Pickup>().Where(t => t.Kind == PickupKind.Relic).ToList();
+        check(relics.Count == 2 && relics.All(r => new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.All(o => rd.Cell((int)r.X + o.Item1, (int)r.Y + o.Item2) == Level.Rubble)),
+              "relaxed mode buries relics deep in the rock");
     }
 
     static void SoundChecks(Action<bool, string> check)
@@ -132,7 +508,7 @@ public static class Headless
     {
         var hub = Maps.BuildHub();
         int si = Array.FindIndex(hub, l => l.RawName == "Windspire");
-        check(si == hub.Length - 1 && si >= 4, "the Windspire joins the hub after the Chaos Arena");
+        check(si == 4, "the Windspire joins the hub after the Chaos Arena");
         var lv = hub[si];
         var (ax, ay) = lv.ArrivalCell();
         var walk = lv.Reachable(ax, ay);
@@ -486,7 +862,7 @@ public static class Headless
         check(back.W == 37 && back.H == 23 && back.Px.SequenceEqual(src), "PNG reader round-trips a saved image");
 
         var covered = RenderedArt.Covered.ToList();
-        check(RenderedArt.Available && covered.Count == 21, $"the pack covers 11 pickups, 4 textures and all 6 monsters ({covered.Count})");
+        check(RenderedArt.Available && covered.Count == 22, $"the pack covers 11 pickups, 5 textures and all 6 monsters ({covered.Count})");
         check(new[] { "afrit", "ettin", "centaur", "slaughtaur", "bishop", "heresiarch" }.All(m => covered.Contains("monsters/" + m)), "every monster has rendered frames");
         bool shapes = true;
         foreach (var (file, png) in RenderedArt.Files)
@@ -1226,12 +1602,12 @@ public static class Headless
         // secrets and lore exist in both modes
         var classic = new Game { FixedSeed = 4 };
         classic.NewGame(PClass.Fighter);
-        check(classic.SecretsTotal == 5 && classic.LoreTotal == 20, $"5 secrets and 20 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.SecretsTotal == 6 && classic.LoreTotal == 24, $"6 secrets and 24 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
         check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
 
-        foreach (var lv in classic.Hub)
+        foreach (var lv in classic.Hub.Where(l => l.SecretCount > 0))
         {
             // a secret really is secret: with the Z wall shut, its treasure can't be reached
             int z = Array.IndexOf(lv.Cells, 'Z');
@@ -1247,15 +1623,18 @@ public static class Headless
         var g = new Game { FixedSeed = 7, Style = GameStyle.Relaxed };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         g.NewGame(PClass.Cleric);
-        int relicCount = Maps.Hub.Length * 3;
+        // every map hides 2 relics, plus 1 in its secret nook if it has one
+        int RelicsIn(MapDef d) => d.Rows.Any(r => r.Contains('%')) ? 3 : 2;
+        int relicCount = Maps.Hub.Sum(RelicsIn);
         check(g.RelicsTotal == relicCount, $"{relicCount} relics hidden across the hub ({g.RelicsTotal})");
-        foreach (var lv in g.Hub)
+        for (int li = 0; li < g.Hub.Length; li++)
         {
+            var lv = g.Hub[li];
             var relics = lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).ToList();
             var (sx, sy) = lv.ArrivalCell();
             var reach = lv.Reachable(sx, sy, move: Level.Move.Fly);
-            check(relics.Count == 3 && relics.All(r => reach[(int)r.Y * lv.W + (int)r.X] && !lv.BlocksPoint(r.X, r.Y)),
-                  $"{lv.Name}: 3 reachable relics");
+            check(relics.Count == RelicsIn(Maps.Hub[li]) && relics.All(r => reach[(int)r.Y * lv.W + (int)r.X] && !lv.BlocksPoint(r.X, r.Y)),
+                  $"{lv.Name}: {RelicsIn(Maps.Hub[li])} reachable relics");
             check(relics.All(r => !string.IsNullOrEmpty(r.Name)), $"{lv.Name}: relics are named");
         }
         check(g.Hub.SelectMany(l => l.Things.OfType<Pickup>()).Where(p => p.Kind == PickupKind.Relic).Select(p => p.Name).Distinct().Count() == relicCount, "relic names are unique");
@@ -1268,7 +1647,7 @@ public static class Headless
         }
         check(short_ == 0, $"60 random games all hide exactly {relicCount} relics");
         var g2 = new Game { FixedSeed = 8, Style = GameStyle.Relaxed }; g2.NewGame(PClass.Cleric);
-        string Where(Game gg) => string.Join(";", gg.Hub[0].Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).Select(p => $"{p.X},{p.Y}"));
+        string Where(Game gg) => string.Join(";", gg.Hub.SelectMany(l => l.Things.OfType<Pickup>()).Where(p => p.Kind == PickupKind.Relic).Select(p => $"{p.X},{p.Y}"));
         check(Where(g) != Where(g2), "relic spots change between games");
 
         // peaceful creatures: stand among them for 20 seconds
@@ -1665,7 +2044,7 @@ public static class Headless
         foreach (var lv in g.Hub)
         {
             var chests = lv.Things.OfType<Chest>().ToList();
-            check(chests.Count >= 1, $"{lv.Name}: {chests.Count} chest(s) placed");
+            check(chests.Count >= 1 || lv.Flight, $"{lv.Name}: {chests.Count} chest(s) placed");
             var (sx, sy) = lv.ArrivalCell();
             var cells = chests.Select(c => (int)c.Y * lv.W + (int)c.X).ToHashSet();
             var open = lv.Reachable(sx, sy);
@@ -2196,6 +2575,126 @@ public static class Headless
         PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
         Shot("50_windspire_fantasy");
         g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+
+        // Deepdelve Quarry: a rubble plug cracking under your fists, then the tunnel you dug into the gallery
+        g.NewGame(PClass.Fighter);
+        int quarry = Array.FindIndex(g.Hub, l => l.RawName == "Deepdelve Quarry");
+        g.Warp(quarry);
+        var ql = g.Level;
+        ql.Things.RemoveAll(t => t is Monster);
+        g.Messages.Clear();
+        g.HitBlock(6, 2, 25); g.HitBlock(6, 3, 45);
+        g.Vars.Freeze = true;
+        PlaceCam(3.2f, 2.9f, 0, 0, 0.1f, 0);
+        Tick(default, 1); PlaceCam(3.2f, 2.9f, 0, 0, 0.1f, 0);
+        Shot("58_quarry_rubble");
+        for (int x = 6; x <= 8; x++) g.HitBlock(x, 2, 999);
+        g.HitBlock(6, 3, 999);
+        g.Vars.Freeze = false;
+        Tick(default, 35);
+        g.Vars.Freeze = true;
+        PlaceCam(4.6f, 2.5f, 0, 0, 0.0f, 0);
+        Tick(default, 1); PlaceCam(4.6f, 2.5f, 0, 0, 0.0f, 0);
+        g.Messages.Clear();
+        Shot("59_quarry_tunnel");
+        g.SetRenderedArt(true);
+        Shot("61_quarry_rendered");
+        g.SetRenderedArt(false);
+        g.SetArtStyle(ArtStyle.Fantasy);
+        Shot("60_quarry_fantasy");
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+
+        // Bedrock Depths: boxed in by rock on arrival, then a dug-out tunnel with a pit, a shaft and a cracked roof
+        int depths = Array.FindIndex(g.Hub, l => l.RawName == "Bedrock Depths");
+        g.Warp(depths);
+        var dl = g.Level;
+        var (dax, day) = dl.ArrivalCell();
+        g.Messages.Clear();
+        g.Vars.Freeze = true;
+        PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0, 0);
+        Tick(default, 1); PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0, 0);
+        g.HitBlock(dax + 1, day, 30);
+        Shot("62_depths_arrival");
+        for (int x = dax + 1; x <= dax + 5; x++) g.HitBlock(x, day, 999);
+        g.HitBlock(dax + 2, day - 1, 999);
+        for (int k = 0; k < 3; k++) g.HitBlock(dax + 3, day, 999, Level.Face.Floor);
+        g.HitBlock(dax + 4, day, 999, Level.Face.Floor);
+        for (int k = 0; k < 4; k++) g.HitBlock(dax + 2, day, 999, Level.Face.Ceiling);
+        g.HitBlock(dax + 5, day, 40, Level.Face.Floor);
+        g.HitBlock(dax + 1, day, 45, Level.Face.Ceiling);
+        g.Vars.Freeze = false;
+        Tick(default, 35);
+        g.Vars.Freeze = true;
+        PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0.05f, -20);
+        Tick(default, 1); PlaceCam(dax + 0.5f, day + 0.5f, dl.Floors[day * dl.W + dax], 0, 0.05f, -20);
+        g.Messages.Clear();
+        Shot("63_depths_dug");
+        PlaceCam(dax + 1.8f, day + 0.5f, dl.Floors[day * dl.W + dax + 1], 0, 0.3f, -55);
+        Tick(default, 1); PlaceCam(dax + 1.8f, day + 0.5f, dl.Floors[day * dl.W + dax + 1], 0, 0.3f, -55);
+        Shot("65_depths_pit");
+        PlaceCam(dax + 1.5f, day + 0.5f, dl.Floors[day * dl.W + dax + 1], 0, MathF.PI / 2, 20);
+        Tick(default, 1); PlaceCam(dax + 1.5f, day + 0.5f, dl.Floors[day * dl.W + dax + 1], 0, MathF.PI / 2, 20);
+        Shot("66_depths_step_up");
+        g.SetArtStyle(ArtStyle.Fantasy);
+        Shot("64_depths_fantasy");
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+
+        // Barren World: the crash site, mining an ore vein, and the repaired ship
+        int barren = Array.FindIndex(g.Hub, l => l.RawName == "Barren World");
+        g.Warp(barren);
+        var bw = g.Level;
+        bw.Things.RemoveAll(t => t is Monster);
+        g.Vars.Freeze = true;
+        void BarrenShot(string name, float x, float y, float angle, float pitch)
+        {
+            PlaceCam(x, y, 0, 0, angle, pitch);
+            Tick(default, 1); PlaceCam(x, y, 0, 0, angle, pitch);
+            g.Messages.Clear();
+            Shot(name);
+        }
+        BarrenShot("67_barren_crash", 10.5f, 13.5f, -0.64f, 0);
+        g.HitBlock(6, 11, 999);
+        g.HitBlock(5, 11, 35);
+        g.P.Ore[0] = 2; g.P.Ore[1] = 1; bw.Ship.Delivered[0] = 3;
+        BarrenShot("68_barren_mining", 7.2f, 11.5f, MathF.PI, 0);
+        for (int k = 0; k < Ship.Need.Length; k++) bw.Ship.Delivered[k] = Ship.Need[k];
+        BarrenShot("69_barren_repaired", 10.5f, 13.5f, -0.64f, 0);
+        for (int k = 0; k < Ship.Need.Length; k++) bw.Ship.Delivered[k] = 0;
+        g.SetArtStyle(ArtStyle.Fantasy);
+        BarrenShot("70_barren_fantasy", 10.5f, 13.5f, -0.64f, 0);
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+
+        // Void Crossing: in the cockpit at the start, then deep in the rocks, then landing on the Verdant Moon
+        int crossing = Array.FindIndex(g.Hub, l => l.Flight);
+        g.Warp(crossing);
+        var cl = g.Level;
+        g.Vars.Freeze = true;
+        void FlyShot(string name, float x, float y, float z, float angle, float pitch)
+        {
+            g.P.X = x; g.P.Y = y; g.P.Z = z; g.P.Angle = angle; g.P.Pitch = pitch; g.P.TeleportFlash = 0; g.P.DamageFlash = 0;
+            Tick(default, 1);
+            g.P.X = x; g.P.Y = y; g.P.Z = z; g.P.Angle = angle; g.P.Pitch = pitch;
+            g.Messages.Clear();
+            Shot(name);
+        }
+        FlyShot("71_crossing_start", cl.StartX, cl.StartY, 1.3f, 0, 0);
+        FlyShot("72_crossing_rocks", 70.5f, 6.5f, 1.6f, 0.1f, -6);
+        g.SetArtStyle(ArtStyle.Fantasy);
+        FlyShot("73_crossing_fantasy", 70.5f, 6.5f, 1.6f, 0.1f, -6);
+        g.SetArtStyle(ArtStyle.SciFi);
+        g.Vars.Freeze = false;
+        int moon = Array.FindIndex(g.Hub, l => l.RawName == "Verdant Moon");
+        g.Warp(moon);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.Vars.Freeze = true;
+        PlaceCam(4.5f, 8.5f, 0, 0, -0.5f, 0);
+        Tick(default, 1); PlaceCam(4.5f, 8.5f, 0, 0, -0.5f, 0);
+        g.Messages.Clear();
+        Shot("74_verdant_moon");
         g.Vars.Freeze = false;
 
         // the original fantasy look, kept as an option

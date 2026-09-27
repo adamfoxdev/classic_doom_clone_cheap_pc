@@ -27,6 +27,7 @@ public static class RenderedArt
         ("textures/marble", t => Art.Marble = t),
         ("textures/brick", t => Art.Brick = t),
         ("textures/floor", t => Art.FloorStone = t),
+        ("textures/rubble", t => Art.Rubble = t),
     };
 
     /// <summary>Monsters with rendered frames: the four live poses; the death frames are derived as usual.</summary>

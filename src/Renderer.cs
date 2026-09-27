@@ -239,6 +239,8 @@ public sealed class Renderer
             case 'P': return Art.Portcullis;
             case 'L': return lv.PulledLevers.Contains(cell) ? Art.LeverOn : Art.LeverOff;
             case 'X': return Art.Block;
+            case Level.Rubble: return Art.RubbleCracked[lv.CrackStage(cell)];
+            case 'N': case 'Q': case 'U': return Art.OreCracked[Level.OreIndex(c)][lv.CrackStage(cell)];
             case 'Z': return lv.Theme.Walls.TryGetValue(lv.SecretLook[cell], out var look) ? look : Art.Stone;
         }
         return lv.Theme.Walls.TryGetValue(c, out var t) ? t : Art.Stone;
@@ -264,6 +266,13 @@ public sealed class Renderer
         _horizon = ViewH / 2f + p.Pitch;
         uint fog = th.FogColor;
         int baseLight = Light(th);
+        _hiCell = g.DigTarget is (var hx, var hy, _, _) ? hy * lv.W + hx : -1;
+        _hiFace = g.DigTarget?.face ?? Level.Face.Wall;
+        _hiSlot = lv.Dig && _hiFace == Level.Face.Wall;
+        _hiLo = g.DigTarget?.slot ?? 0f;
+        _hiGlow = 320 + (int)(35 * MathF.Sin(g.PlayTime * 6f));
+        _dig = lv.Dig;
+        _viewFloor = p.FloorZ;
 
         for (int x = 0; x < W; x++)
         {
@@ -312,20 +321,20 @@ public sealed class Renderer
                 bool door = Level.IsDoor(c);
                 if (c != '\0' && !door)
                 {
-                    WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null);
+                    WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null, Hi(ci, Level.Face.Wall));
                     break;
                 }
                 float newH = lv.Heights[ci], newF = lv.Floors[ci];
                 if (newH < curH)
                 {
                     // the ceiling steps down: a band of wall hangs over the opening
-                    WallSpan(x, UpperTex(lv, ci), d, side, wx, curH, newH, clipTop, clipBot, rdx, rdy, baseLight);
+                    WallSpan(x, lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Ceiling)] : UpperTex(lv, ci), d, side, wx, curH, newH, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, Level.Face.Ceiling));
                     clipTop = MathF.Max(clipTop, RowOf(newH, d));
                 }
                 if (newF > curF)
                 {
                     // the floor steps up: the face of the step
-                    WallSpan(x, Art.StepRiser, d, side, wx, newF, curF, clipTop, clipBot, rdx, rdy, baseLight);
+                    WallSpan(x, lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Floor)] : Art.StepRiser, d, side, wx, newF, curF, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, Level.Face.Floor));
                     clipBot = MathF.Min(clipBot, RowOf(newF, d));
                 }
                 if (door)
@@ -384,11 +393,43 @@ public sealed class Renderer
 
     Tex UpperTex(Level lv, int cell) => lv.Theme.Walls.TryGetValue(lv.UpperLook[cell], out var t) ? t : Art.Stone;
 
+    // the block your next swing would break: it glows, pulsing, with a bright outline round its face
+    int _hiCell = -1, _hiGlow = 256;
+    Level.Face _hiFace;
+    // on a dig map only the slot of rubble that will open (from _hiLo up one storey) lights up
+    bool _hiSlot;
+    float _hiLo;
+    static readonly uint HiEdge = Col.Rgb(255, 236, 140);
+    bool Hi(int cell, Level.Face face) => cell == _hiCell && face == _hiFace;
+    uint Highlight(uint c, bool edge) => edge ? Col.Lerp(c, HiEdge, 210) : Col.Shade(c, _hiGlow);
+
+    // dig maps: rock below your feet darkens and warms the deeper it lies, and each layer of blocks reads apart
+    bool _dig;
+    float _viewFloor;
+    static readonly uint DeepTint = Col.Rgb(110, 60, 34);
+    uint Layered(uint c, float z, bool seam)
+    {
+        int layer = (int)MathF.Floor(z / Level.DigStep + 0.001f);
+        int s = (layer & 1) == 0 ? 268 : 244;
+        float depth = _viewFloor - z;
+        if (depth <= 0.01f) return Col.Shade(c, s);
+        int k = (int)MathF.Min(110 + depth * 60, 220);
+        c = Col.Lerp(c, DeepTint, k * 3 / 4);
+        s -= k / 3;
+        return Col.Shade(c, seam ? s * 140 >> 8 : s);
+    }
+    static bool Seam(float z)
+    {
+        float f = z / Level.DigStep;
+        f -= MathF.Floor(f);
+        return f < 0.04f || f > 0.96f;
+    }
+
     /// <summary>
     /// A vertical slice of wall between heights `bottom` and `top` at distance d, below clipTop.
     /// The texture repeats every unit of height, anchored to the floor.
     /// </summary>
-    void WallSpan(int x, Tex tex, float d, int side, float wallX, float top, float bottom, float clipTop, float clipBot, float rdx, float rdy, int baseLight, Tex above = null)
+    void WallSpan(int x, Tex tex, float d, int side, float wallX, float top, float bottom, float clipTop, float clipBot, float rdx, float rdy, int baseLight, Tex above = null, bool hi = false)
     {
         float s = Proj / d;
         float yT = MathF.Max(clipTop, RowOf(top, d)), yB = MathF.Min(clipBot, RowOf(bottom, d));
@@ -400,6 +441,7 @@ public sealed class Renderer
         tx = Math.Clamp(tx, 0, tex.W - 1);
         int light = side == 1 ? baseLight * 200 >> 8 : baseLight;
         int vis = Vis(_theme, d);
+        float hiTop = hi && _hiSlot ? MathF.Min(top, _hiLo + Level.MinHeight) : top, hiBot = hi && _hiSlot ? MathF.Max(bottom, _hiLo) : bottom;
         for (int y = y0; y < y1; y++)
         {
             float z = _eyeZ + (_horizon - (y + 0.5f)) / s;
@@ -408,7 +450,10 @@ public sealed class Renderer
             var t = above != null && z >= bottom + 1f ? above : tex; // e.g. a lever only on the bottom storey
             int ty = Math.Clamp((int)(v * t.H), 0, t.H - 1);
             int idx = y * W + x;
-            Fb[idx] = Col.Fog(t.Px[ty * t.W + Math.Min(tx, t.W - 1)], light, vis, _theme.FogColor);
+            uint texel = t.Px[ty * t.W + Math.Min(tx, t.W - 1)];
+            if (_dig) texel = Layered(texel, z, Seam(z));
+            if (hi && z >= hiBot && z <= hiTop) texel = Highlight(texel, tx < 2 || tx >= tex.W - 2 || z > hiTop - 2.5f / s || z < hiBot + 2.5f / s);
+            Fb[idx] = Col.Fog(texel, light, vis, _theme.FogColor);
             _depth[idx] = d;
         }
     }
@@ -420,7 +465,8 @@ public sealed class Renderer
         y1 = Math.Min(y1, ViewH);
         bool outdoor = cell >= 0 && lv.Outdoor[cell];
         if (!outdoor && h <= _eyeZ + 0.001f) { clipTop = MathF.Max(clipTop, yEnd); return; }
-        var ct = _theme.CeilIn;
+        var ct = lv.Dig && cell >= 0 ? Art.RubbleCracked[lv.CrackStage(cell, Level.Face.Ceiling)] : _theme.CeilIn;
+        bool hi = Hi(cell, Level.Face.Ceiling);
         for (int y = y0; y < y1; y++)
         {
             int idx = y * W + x;
@@ -429,7 +475,10 @@ public sealed class Renderer
             float rowDist = (h - _eyeZ) * Proj / dy;
             float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
             int u = (int)((wx - MathF.Floor(wx)) * ct.W) & (ct.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ct.H) & (ct.H - 1);
-            Fb[idx] = Col.Fog(ct.Px[vv * ct.W + u], baseLight * 220 >> 8, Vis(_theme, rowDist), _theme.FogColor);
+            uint texel = ct.Px[vv * ct.W + u];
+            if (_dig) texel = Layered(texel, h + 0.005f, false);
+            if (hi) texel = Highlight(texel, u < 2 || u >= ct.W - 2 || vv < 2 || vv >= ct.H - 2);
+            Fb[idx] = Col.Fog(texel, baseLight * 220 >> 8, Vis(_theme, rowDist), _theme.FogColor);
             _depth[idx] = rowDist;
         }
         clipTop = MathF.Max(clipTop, yEnd);
@@ -455,7 +504,9 @@ public sealed class Renderer
             else if (mk == '!') { ft = lv.Arena?.Started == true ? Art.AltarFloorOff : Art.AltarFloor; fl = 300; }
             else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
             else if (lv.Outdoor[cell]) ft = th.OutdoorFloor;
+            else if (lv.Dig) ft = Art.RubbleCracked[lv.CrackStage(cell, Level.Face.Floor)];
         }
+        bool hi = Hi(cell, Level.Face.Floor);
         for (int y = y0; y < y1; y++)
         {
             float dy = y + 0.5f - _horizon;
@@ -464,7 +515,10 @@ public sealed class Renderer
             float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
             int u = (int)((wx - MathF.Floor(wx)) * ft.W) & (ft.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ft.H) & (ft.H - 1);
             int idx = y * W + x;
-            Fb[idx] = Col.Fog(ft.Px[vv * ft.W + u], fl, Vis(th, rowDist), th.FogColor);
+            uint texel = ft.Px[vv * ft.W + u];
+            if (_dig && cell >= 0 && lv.Marks[cell] == '\0') texel = Layered(texel, f - 0.005f, false);
+            if (hi) texel = Highlight(texel, u < 2 || u >= ft.W - 2 || vv < 2 || vv >= ft.H - 2);
+            Fb[idx] = Col.Fog(texel, fl, Vis(th, rowDist), th.FogColor);
             _depth[idx] = rowDist;
         }
         clipBot = MathF.Min(clipBot, yStart);
@@ -532,9 +586,48 @@ public sealed class Renderer
         }
     }
 
+    /// <summary>Flying: the canopy frame and dashboard, a gunsight, and readouts for speed, altitude and how far you've come.</summary>
+    void DrawCockpit(Game g)
+    {
+        var p = g.P;
+        var lv = g.Level;
+        bool scifi = Art.Style == ArtStyle.SciFi;
+        uint frame = scifi ? Col.Rgb(60, 66, 78) : Col.Rgb(92, 60, 32), lip = scifi ? Col.Rgb(130, 140, 156) : Col.Rgb(200, 160, 70);
+        uint glow = scifi ? Col.Rgb(90, 220, 255) : Col.Rgb(255, 200, 110);
+        // canopy struts from the dashboard corners up to the top of the view
+        for (int y = 0; y < ViewH; y++)
+        {
+            int inset = 6 + y * 22 / ViewH;
+            for (int k = 0; k < 5; k++) { Put(inset + k - 6, y, frame); Put(W - inset - k + 5, y, frame); }
+            Put(inset - 1, y, lip); Put(W - inset, y, lip);
+        }
+        Rect(0, 0, W, 4, frame);
+        Rect(0, 4, W, 1, lip);
+        // dashboard
+        int dy = ViewH - 26;
+        for (int y = dy; y < ViewH; y++)
+        {
+            int curve = (int)(18 * MathF.Pow((y - dy) / 26f, 0.5f));
+            for (int x = 40 - curve; x < W - 40 + curve; x++) Put(x, y, y == dy ? lip : Col.Shade(frame, 200 + (y - dy) * 3));
+        }
+        int bx = (int)(MathF.Sin(g.Time * 11) * p.FireAnim * 20);
+        Text(56, dy + 5, $"SPD {p.ShipSpeed * 20:0}", glow);
+        Text(56, dy + 15, $"ALT {p.Z * 100:0}", glow);
+        // progress along the lane, west to east
+        float along = Math.Clamp((p.X - lv.StartX) / Math.Max(1f, lv.W - 4 - lv.StartX), 0f, 1f);
+        int px0 = 140, pw = 110;
+        Rect(px0, dy + 8, pw, 5, Col.Rgb(20, 22, 28));
+        Rect(px0, dy + 8, (int)(pw * along), 5, glow);
+        Text(px0, dy + 16, Words.T("TO THE MOON"), Col.Shade(glow, 180));
+        // gunsight
+        int cx = W / 2 + bx, cy = (int)(ViewH / 2f + p.Pitch);
+        for (int k = 3; k <= 7; k++) { Put(cx - k, cy, glow); Put(cx + k, cy, glow); Put(cx, cy - k, glow); Put(cx, cy + k, glow); }
+    }
+
     void DrawWeapon(Game g)
     {
         var p = g.P;
+        if (g.Level.Flight) { DrawCockpit(g); return; }
         if (g.Mode == GameMode.Dead || g.Relaxed) return; // relaxed mode: weapons stay sheathed
         int slot = p.Weapon;
         var frames = Art.Weapons[(int)p.Class * 3 + slot];
@@ -647,6 +740,10 @@ public sealed class Renderer
                     'S' => Col.Rgb(150, 170, 230),
                     'F' => Col.Rgb(240, 110, 40),
                     'X' => Col.Rgb(80, 220, 200),
+                    Level.Rubble => Col.Rgb(120, 104, 90),
+                    'N' => Col.Rgb(200, 128, 78),
+                    'Q' => Col.Rgb(176, 112, 255),
+                    'U' => Col.Rgb(120, 255, 96),
                     'P' => Col.Rgb(140, 140, 140),
                     'L' => Col.Rgb(80, 220, 90),
                     _ => Col.Rgb(150, 110, 70),
@@ -706,7 +803,14 @@ public sealed class Renderer
         int by = ViewH + 3;
         uint label = Col.Rgb(200, 180, 140);
         if (p.HasJetpack) DrawFuel(p, label);
-        DrawLevelBar(g);
+        if (!g.Level.Flight) DrawLevelBar(g); // the cockpit dashboard fills that corner when flying
+        if (g.Level.Ship != null) DrawShipPanel(g);
+        if (p.Blocks > 0 && !g.Level.Flight)
+        {
+            // above the level bar and its +XP pop-up
+            Icon(Art.Rubble, 4, ViewH - 34, 12);
+            Text(19, ViewH - 30, $"x{p.Blocks}", Col.Rgb(230, 220, 200));
+        }
         if (g.Relaxed) { DrawDiscoveryHud(g, by, label); return; }
         Text(6, by, "HEALTH", label);
         uint hcol = p.Health > p.MaxHealth / 2 ? Col.Rgb(240, 230, 210) : p.Health > p.MaxHealth / 4 ? Col.Rgb(250, 200, 60) : Col.Rgb(250, 60, 40);
@@ -752,6 +856,31 @@ public sealed class Renderer
         Bar(bx, y + 2, 48, 3, pr.Level >= Profile.MaxLevel ? 1f : pr.Xp / (float)Profile.XpToNext(pr.Level), Col.Rgb(230, 190, 80));
         if (pr.Points > 0) Text(bx + 52, y, "+", Col.Rgb(120, 255, 140));
         if (g.XpPopupTime > 0) Text(4, y - 10, $"+{g.XpPopup} XP", Col.Rgb(255, 230, 120));
+    }
+
+    /// <summary>On a stranded map: ore carried, and how much of each the ship still needs, in the view's top-right corner.</summary>
+    void DrawShipPanel(Game g)
+    {
+        var s = g.Level.Ship;
+        uint[] cols = { Col.Rgb(220, 150, 96), Col.Rgb(190, 140, 255), Col.Rgb(140, 255, 120) };
+        string title = s.Built ? Words.T("SKYSHIP READY - USE IT TO TAKE OFF") : Words.T("SKYSHIP REPAIRS");
+        int x = W - 4, y = 3;
+        Text(x - Font.Width(title), y, title, s.Built ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
+        bool carrying = false;
+        for (int k = 0; k < Ship.Need.Length && !s.Built; k++)
+        {
+            y += 9;
+            // what you've gathered so far: handed over plus in your pack
+            int have = Math.Min(Ship.Need[k], s.Delivered[k] + g.P.Ore[k]);
+            carrying |= g.P.Ore[k] > 0 && s.Delivered[k] < Ship.Need[k];
+            string line = $"{Words.T(Game.OreNames[k].ToUpperInvariant())} {have}/{Ship.Need[k]}";
+            Text(x - Font.Width(line), y, line, have >= Ship.Need[k] ? Col.Rgb(120, 255, 140) : cols[k]);
+        }
+        if (carrying)
+        {
+            string hint = Words.T("USE THE SKYSHIP TO LOAD ORE");
+            Text(x - Font.Width(hint), y + 11, hint, Col.Rgb(200, 190, 170));
+        }
     }
 
     /// <summary>Jetpack fuel gauge, tucked into the bottom-right corner of the view.</summary>
