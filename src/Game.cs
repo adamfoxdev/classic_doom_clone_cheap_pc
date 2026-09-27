@@ -8,7 +8,7 @@ public struct Input
 {
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
-    public bool Fire, Walk, JumpHeld, SlideHeld; // held
+    public bool Fire, Walk, JumpHeld, SlideHeld, JetHeld; // held
     public bool Use, UseItem, Place, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character, CycleHud; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
@@ -106,8 +106,8 @@ public sealed class Player
     public float Z, VZ;                                   // height above the floor while jumping
     /// <summary>Horizontal velocity, for Quake movement (classic movement goes straight where your keys say).</summary>
     public float VX, VY;
-    /// <summary>A jump pressed just before landing still counts (Quake movement), and how long Jump has been held.</summary>
-    public float JumpBuffer, JumpHold;
+    /// <summary>A jump pressed just before landing still counts (Quake movement).</summary>
+    public float JumpBuffer;
     /// <summary>Time not yet stepped by the fixed-rate Quake movement physics.</summary>
     public float MoveClock;
     public float HSpeed => MathF.Sqrt(VX * VX + VY * VY);
@@ -115,6 +115,8 @@ public sealed class Player
     public const float SlideLength = 0.55f, Height = 0.55f;
     /// <summary>Jetpack (Wings of Wrath in the fantasy style): fuel in seconds of hovering; it recharges on the ground.</summary>
     public bool HasJetpack, Flying;
+    /// <summary>Set when the tank runs dry: the jetpack won't relight until you let go of its key.</summary>
+    public bool JetLock;
     public float Fuel, JetSfx;
     public const float FuelMax = 6f, ClimbSpeed = 2.6f, SinkSpeed = 3.2f;
     /// <summary>Health and jetpack fuel limits, raised by the Vitality and Thrusters skills.</summary>
@@ -210,11 +212,74 @@ public sealed class Game
     public Func<Level[]> HubSource = Maps.BuildHub;
     public bool TestingMap;
 
+    /// <summary>On the strafe-jumping practice course (Main menu > Practice): the run's clock, and whether it has started.</summary>
+    public bool Practicing, RunStarted;
+    public float RunTime;
+    /// <summary>Picking a class from the class screen starts practice rather than a new game.</summary>
+    public bool PendingPractice;
+
+    /// <summary>Starts the strafe-jumping practice course with the given class.</summary>
+    public void StartPractice(PClass cls)
+    {
+        HubSource = () => new[] { Maps.VelocityCourse().Build() };
+        TestingMap = true;
+        NewGame(cls);
+        Practicing = true;
+        RunTime = 0; RunStarted = false;
+        if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
+        float best = Profile.CourseBest.GetValueOrDefault(P.Class.ToString());
+        if (best > 0) Say($"Your best as the {P.Def.Name}: {best:0.00}s.");
+    }
+
+    /// <summary>
+    /// Speed you need, as a percentage of your run, to clear a gap `cells` wide with a running jump onto a landing
+    /// `drop` lower, rounded up to 5%. It's the exact arc, which high frame rates follow closely; at low ones each jump
+    /// carries a little further, so the figure is on the safe side.
+    /// </summary>
+    public int GapSpeedPercent(int cells, float drop = 0)
+    {
+        float j = Vars.JumpPower, air = (j + MathF.Sqrt(j * j + 2 * Vars.Gravity * drop)) / Vars.Gravity;
+        float need = (cells - 2 * P.Radius) / air;
+        return (int)(MathF.Ceiling(need / RunSpeed * 20) * 5);
+    }
+
+    /// <summary>What the course tells you as you reach each platform: how fast you'll need to be for the next gap.</summary>
+    string CourseHint(int zone)
+    {
+        var plats = Maps.CoursePlatforms;
+        if (zone == 0) return "Strafe jumping: jump, then hold A or D and turn the mouse the same way. Hop again the moment you land.";
+        if (zone >= plats.Length - 1) return "Made it! Step into the exit to finish the run.";
+        int gap = plats[zone + 1].x0 - plats[zone].x1 - 1;
+        string zig = zone == 2 ? " Zig-zag: switch strafe keys and turn the other way each hop." : "";
+        return $"Platform {zone + 1}. The next gap is {gap} wide: hit about {GapSpeedPercent(gap, plats[zone].floor - plats[zone + 1].floor)}% speed.{zig}";
+    }
+
+    /// <summary>Crossed the finish: report the time, keep the best for your class, and start the run over.</summary>
+    void FinishRun()
+    {
+        string key = P.Class.ToString();
+        float best = Profile.CourseBest.GetValueOrDefault(key);
+        bool record = best <= 0 || RunTime < best;
+        if (record) { Profile.CourseBest[key] = RunTime; SaveProfile(); }
+        PlaySound(record ? Sfx.Secret : Sfx.Teleport, 1);
+        Messages.Clear();
+        Say(record ? $"Course cleared in {RunTime:0.00}s - a new best!" : $"Course cleared in {RunTime:0.00}s (best {best:0.00}s).");
+        LastRun = RunTime;
+        Level.CheckpointsReached.Clear();
+        Checkpoint = null;
+        MoveTo(Level.StartX, Level.StartY, Level.StartAngle);
+        RunTime = 0; RunStarted = false;
+    }
+
+    /// <summary>The time of the last finished practice run.</summary>
+    public float LastRun;
+
     /// <summary>Plays a single custom map (from --play or `playmap`). Restart or winning plays it again.</summary>
     public void StartTest(MapDef map, PClass cls)
     {
         HubSource = () => new[] { map.Build() };
         TestingMap = true;
+        Practicing = false;
         NewGame(cls);
         Say($"Play-testing '{map.Name}'.");
     }
@@ -243,6 +308,7 @@ public sealed class Game
     {
         SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
+        Practicing = false;
         Mode = GameMode.Title;
         Paused = false;
         Menu.Close();
@@ -302,6 +368,7 @@ public sealed class Game
         ChestsTotal = 0;
         Checkpoint = null;
         _onLift = false;
+        RunTime = 0; RunStarted = false;
         var names = Discovery.RelicNames.OrderBy(_ => _loot.Next()).ToList();
         int nameIndex = 0;
         string NextName() => names[nameIndex++ % names.Count];
@@ -395,9 +462,14 @@ public sealed class Game
             case GameMode.ClassSelect:
                 if (inp.Up) { MenuIndex = (MenuIndex + 2) % 3; PlaySound(Sfx.Swing, 0.6f); }
                 if (inp.Down) { MenuIndex = (MenuIndex + 1) % 3; PlaySound(Sfx.Swing, 0.6f); }
-                if (inp.Slot >= 1 && inp.Slot <= 3) { MenuIndex = inp.Slot - 1; NewGame((PClass)MenuIndex); PlaySound(Sfx.Teleport, 1); }
-                else if (inp.Confirm) { NewGame((PClass)MenuIndex); PlaySound(Sfx.Teleport, 1); }
-                if (inp.Pause) GoToTitle();
+                if (inp.Slot >= 1 && inp.Slot <= 3) MenuIndex = inp.Slot - 1;
+                if ((inp.Slot >= 1 && inp.Slot <= 3) || inp.Confirm)
+                {
+                    if (PendingPractice) { PendingPractice = false; StartPractice((PClass)MenuIndex); }
+                    else NewGame((PClass)MenuIndex);
+                    PlaySound(Sfx.Teleport, 1);
+                }
+                if (inp.Pause) { PendingPractice = false; GoToTitle(); }
                 return;
             case GameMode.Victory:
                 // a play-tested map starts over, so you can keep iterating; the hub goes back to the title
@@ -436,7 +508,7 @@ public sealed class Game
     /// <summary>Your full running speed, in map units a second.</summary>
     public float RunSpeed => 3.6f * P.Def.Speed * Vars.Speed * Profile.SpeedMult;
 
-    const float JumpBufferTime = 0.15f, JetHoldTime = 0.12f;
+    const float JumpBufferTime = 0.15f;
     /// <summary>Quake's stop speed and air-control cap, as fractions of your run speed (100 and 30 of its 320).</summary>
     const float StopSpeed = 0.31f, AirCap = 0.094f;
     const float MoveStep = 1f / 72f;
@@ -526,7 +598,6 @@ public sealed class Game
         float mx = (ca * inp.Move - sa * inp.Strafe), my = (sa * inp.Move + ca * inp.Strafe);
         float len = MathF.Sqrt(mx * mx + my * my);
         if (len > 1) { mx /= len; my /= len; }
-        p.JumpHold = inp.JumpHeld ? p.JumpHold + dt : 0;
         p.JumpBuffer = inp.Jump ? JumpBufferTime : MathF.Max(0, p.JumpBuffer - dt);
         bool jump = (inp.Jump || (Vars.QuakeMove && p.JumpBuffer > 0)) && p.OnGround && p.SlideTime <= 0 && Vars.JumpPower > 0;
         float dx, dy;
@@ -540,21 +611,23 @@ public sealed class Game
             p.VZ = Vars.JumpPower;
             PlaySound(Sfx.Jump, 0.8f);
         }
-        // jetpack: hold Jump in the air to fly. Keep holding to climb, hold Slide to sink, let go of both to hover.
-        if (!p.Flying && p.HasJetpack && !p.OnGround && inp.JumpHeld && p.JumpHold >= JetHoldTime && p.VZ < 0.6f && (p.Fuel > 0.25f || Vars.InfiniteFuel))
+        // jetpack: its own key (Q), so Jump stays free for bunny hopping. Hold it to take off (from the ground or mid-air)
+        // and climb, hold Slide to sink, let go of both to hover.
+        if (!inp.JetHeld) p.JetLock = false;
+        if (!p.Flying && p.HasJetpack && inp.JetHeld && !p.JetLock && (p.Fuel > 0.25f || Vars.InfiniteFuel))
         {
             p.Flying = true; p.JetSfx = 0;
             PlaySound(Sfx.JetStart, 0.9f);
         }
         if (p.Flying)
         {
-            float target = inp.JumpHeld ? Player.ClimbSpeed : inp.SlideHeld ? -Player.SinkSpeed : 0f;
+            float target = inp.JetHeld ? Player.ClimbSpeed : inp.SlideHeld ? -Player.SinkSpeed : 0f;
             p.VZ += (target - p.VZ) * MathF.Min(1, dt * 6);
             p.Z += p.VZ * dt;
-            if (!Vars.InfiniteFuel) p.Fuel -= (inp.JumpHeld ? 1f : 0.6f) * dt;
+            if (!Vars.InfiniteFuel) p.Fuel -= (inp.JetHeld ? 1f : 0.6f) * dt;
             p.JetSfx -= dt;
-            if (p.JetSfx <= 0) { PlaySound(Sfx.Jet, inp.JumpHeld ? 0.6f : 0.35f); p.JetSfx = 0.1f; }
-            if (p.Fuel <= 0 && !Vars.InfiniteFuel) { p.Fuel = 0; p.Flying = false; PlaySound(Sfx.JetOut, 1); Say("The Wings of Wrath falter!"); }
+            if (p.JetSfx <= 0) { PlaySound(Sfx.Jet, inp.JetHeld ? 0.6f : 0.35f); p.JetSfx = 0.1f; }
+            if (p.Fuel <= 0 && !Vars.InfiniteFuel) { p.Fuel = 0; p.Flying = false; p.JetLock = true; PlaySound(Sfx.JetOut, 1); Say("The Wings of Wrath falter!"); }
             if (p.Z <= 0) { p.Z = 0; p.VZ = 0; p.Flying = false; PlaySound(Sfx.Land, 0.4f); }
         }
         else if (!p.OnGround || p.VZ > 0)
@@ -626,6 +699,12 @@ public sealed class Game
         p.Bob += dt * 9 * moving;
 
         UpdateCheckpoints(p, dt);
+        if (Practicing)
+        {
+            // the clock starts when you leave the spot you started on
+            if (!RunStarted && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
+            if (RunStarted) RunTime += dt;
+        }
 
         // portals & exit
         char mark = Level.MarkAt(p.X, p.Y);
@@ -641,6 +720,7 @@ public sealed class Game
         }
         else p.PortalLock = false;
         _exitMsgCd -= dt;
+        if (mark == 'E' && Practicing) { FinishRun(); return; }
         if (mark == 'E')
         {
             if (Relaxed ? P.Relics >= RelicsTotal : Level.BossDead)
@@ -821,15 +901,17 @@ public sealed class Game
             {
                 int pad = lv.Checkpoints[zone];
                 float floor = lv.Floors[pad];
-                // respawn at the highest pad you've lit, so dropping back to a lower ledge doesn't lose progress
-                if (Checkpoint == null || Checkpoint.Level != lv || floor > Checkpoint.Floor)
+                // respawn at the highest pad you've lit, so dropping back to a lower ledge doesn't lose progress (on
+                // ledges of equal height, the newest)
+                if (Checkpoint == null || Checkpoint.Level != lv || floor >= Checkpoint.Floor)
                     Checkpoint = new Checkpoint
                     {
                         Level = lv, Index = zone, X = pad % lv.W + 0.5f, Y = pad / lv.W + 0.5f, Floor = floor, Angle = p.Angle,
                         Health = Math.Max(p.Health, 50), Armor = p.Armor,
                     };
                 PlaySound(Sfx.Secret, 0.7f);
-                Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count}).");
+                if (Practicing) Say(CourseHint(zone));
+                else Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count}).");
             }
         }
 
@@ -1274,7 +1356,7 @@ public sealed class Game
                 return;
             case PickupKind.Jetpack:
                 if (p.HasJetpack && p.Fuel >= p.MaxFuel) return;
-                msg = p.HasJetpack ? "Wings of Wrath: recharged" : "Wings of Wrath! Jump, then hold Jump to fly. Hold Slide to sink.";
+                msg = p.HasJetpack ? "Wings of Wrath: recharged" : "Wings of Wrath! Hold Q to fly. Hold Slide to sink.";
                 p.HasJetpack = true; p.Fuel = p.MaxFuel;
                 break;
             case PickupKind.Armor:

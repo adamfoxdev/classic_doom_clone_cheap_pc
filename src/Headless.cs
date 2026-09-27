@@ -94,6 +94,8 @@ public static class Headless
 
         Console.WriteLine("Quake movement:");
         QuakeMoveChecks(Check);
+        Console.WriteLine("Strafe-jumping practice:");
+        PracticeChecks(Check);
         Console.WriteLine("HUD styles:");
         HudChecks(Check);
         Console.WriteLine("Rendered art pack:");
@@ -564,12 +566,12 @@ public static class Headless
         bool FlyTo(float tx, float ty, float floor)
         {
             Tick(default, 70); // let the tank recharge
-            Tick(new Input { Jump = true, JumpHeld = true });
-            for (int k = 0; k < 35 * 4 && p.FloorZ + p.Z < floor + 0.5f; k++) Tick(new Input { JumpHeld = true });
+            Tick(new Input { JetHeld = true });
+            for (int k = 0; k < 35 * 4 && p.FloorZ + p.Z < floor + 0.5f; k++) Tick(new Input { JetHeld = true });
             for (int k = 0; k < 35 * 8 && Dist(tx, ty) > 0.15f; k++)
             {
                 Face(tx, ty);
-                Tick(new Input { Move = MathF.Min(1, Dist(tx, ty) * 2), JumpHeld = p.FloorZ + p.Z < floor + 0.4f });
+                Tick(new Input { Move = MathF.Min(1, Dist(tx, ty) * 2), JetHeld = p.FloorZ + p.Z < floor + 0.4f });
             }
             for (int k = 0; k < 35 * 5 && p.Flying; k++) Tick(new Input { SlideHeld = true });
             return p.OnGround && MathF.Abs(p.FloorZ - floor) < 0.01f;
@@ -577,7 +579,7 @@ public static class Headless
 
         // without the jetpack you can't get off the ground
         WalkTo(9.9f, 16.5f); WalkTo(9.9f, 13.5f); WalkTo(15.2f, 13.5f);
-        for (int k = 0; k < 10; k++) { Tick(new Input { Jump = true, JumpHeld = true, Move = 1 }); Tick(new Input { JumpHeld = true, Move = 1 }, 25); }
+        for (int k = 0; k < 10; k++) { Tick(new Input { Jump = true, JetHeld = true, Move = 1 }); Tick(new Input { JetHeld = true, Move = 1 }, 25); }
         check(!p.HasJetpack && p.FloorZ == 0f, "without a jetpack you're stuck on the ground floor");
         WalkTo(9.9f, 16.5f); WalkTo(7.5f, 19.5f);
         check(p.HasJetpack, "the spare jetpack by the portal");
@@ -762,16 +764,14 @@ public static class Headless
         check(!p.OnGround && p.VZ > 0, "a jump pressed just before landing hops as soon as you touch down");
         while (!p.OnGround) Tick(default);
 
-        // a bunny-hop tap never lights the jetpack; holding Jump still does
+        // Jump never lights the jetpack, even held, so hopping is safe with one on; its own key does
         p.HasJetpack = true; p.Fuel = p.MaxFuel;
         Tick(new Input { Jump = true, JumpHeld = true });
-        Tick(new Input(), 1);
         bool lit = false;
-        while (!p.OnGround) { Tick(default); lit |= p.Flying; }
-        check(!lit, "a quick tap of Jump is just a hop, even with a jetpack");
-        Tick(new Input { Jump = true, JumpHeld = true });
-        for (int k = 0; k < 20 && !p.Flying; k++) Tick(new Input { JumpHeld = true });
-        check(p.Flying, "holding Jump still fires the jetpack");
+        while (!p.OnGround) { Tick(new Input { JumpHeld = true }); lit |= p.Flying; }
+        check(!lit, "holding Jump is just a jump, even with a jetpack");
+        Tick(new Input { JetHeld = true });
+        check(p.Flying, "the jetpack key takes off");
         for (int k = 0; k < 175 && p.Flying; k++) Tick(new Input { SlideHeld = true });
 
         // classic movement: you go exactly where the keys say and stop dead
@@ -790,6 +790,136 @@ public static class Headless
         check(!g.Vars.QuakeMove && g.Menu.Value(g.Menu.Cursor) == "CLASSIC", "and switches it to CLASSIC");
         check(Settings.Lines(g).Contains("quakemove 0"), "the choice is saved with the settings");
         g.Menu.Close();
+    }
+
+    static void PracticeChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        float fps = 35;
+        void Tick(Input i, int n = 1) { for (int k = 0; k < n; k++) g.Update(i, 1f / fps); }
+        g.GoToTitle();
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Main), "Practice");
+        check(g.Menu.Cursor == 1, "Practice sits under New game on the title menu");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(g.Mode == GameMode.ClassSelect, "it asks for a class, since each runs at its own speed");
+        Tick(new Input { Confirm = true });
+        var p = g.P;
+        var lv = g.Level;
+        var plats = Maps.CoursePlatforms;
+        check(g.Practicing && lv.RawName == "Velocity Hangar" && p.Class == PClass.Fighter && p.FloorZ == 2.5f,
+              "picking the Marine starts the Velocity Hangar course, on the first platform");
+        Tick(default);
+        check(g.Messages.Any(m => m.text.Contains("hold A or D and turn the mouse")), "the first platform tells you how to strafe jump");
+
+        // the layout: raised platforms over gaps of 2 to 5 cells, every gap floor a lift pad, a checkpoint on each platform
+        var gaps = plats.Zip(plats.Skip(1), (a, b) => b.x0 - a.x1 - 1).ToArray();
+        check(gaps.SequenceEqual(new[] { 2, 4, 5, 6 }), $"four gaps, 2 to 6 wide ({string.Join(", ", gaps)})");
+        bool lifts = true;
+        for (int y = 1; y < lv.H - 1; y++)
+            for (int x = 1; x < lv.W - 1; x++)
+            {
+                int i = y * lv.W + x;
+                var on = plats.Where(pl => x >= pl.x0 && x <= pl.x1).ToList();
+                lifts &= on.Count > 0 ? lv.Floors[i] == on[0].floor && lv.Marks[i] != '=' : lv.Floors[i] == 0 && lv.Marks[i] == '=';
+            }
+        check(lifts && plats[^1].floor < plats[0].floor, "the platforms stand 2.5 up (the finish a step lower) and every gap floor is a lift pad");
+        check(lv.Checkpoints.Count == plats.Length, "each platform has a checkpoint");
+
+        // each gap: a running jump off the edge at a given speed, no keys held in the air
+        bool Clears(int k, float speed)
+        {
+            var (a, b) = (plats[k], plats[k + 1]);
+            g.Level.CheckpointsReached.Clear(); g.Checkpoint = null; // so a miss stays down in the gap
+            p.X = a.x1 + 1 + p.Radius - 0.01f; p.Y = 5.5f; p.Angle = 0; p.Z = 0; p.VZ = 0; p.FloorZ = a.floor;
+            p.VX = speed; p.VY = 0;
+            Tick(new Input { Jump = true });
+            for (int t = 0; t < 2 * fps && !p.OnGround; t++) Tick(default);
+            return p.OnGround && p.FloorZ == b.floor && p.X > b.x0 - p.Radius - 0.01f;
+        }
+        float run = g.RunSpeed;
+        check(Clears(0, run), "a plain running jump clears the first gap");
+        check(!Clears(1, run), "but not the second: that takes speed");
+        bool allGood = true, allTight = true;
+        for (int k = 0; k < gaps.Length; k++)
+        {
+            float need = g.GapSpeedPercent(gaps[k], plats[k].floor - plats[k + 1].floor) / 100f * run;
+            bool ok = Clears(k, need);
+            allGood &= ok;
+            allTight &= k == 0 || !Clears(k, need * 0.8f);
+        }
+        check(allGood, "each gap clears at the speed its platform's hint gives");
+        fps = 120;
+        allGood = true;
+        for (int k = 0; k < gaps.Length; k++) allGood &= Clears(k, g.GapSpeedPercent(gaps[k], plats[k].floor - plats[k + 1].floor) / 100f * run);
+        fps = 35;
+        check(allGood, "at 120 frames a second too");
+        check(allTight, "and falls short well below it");
+        int Hardest(Game gm) => Enumerable.Range(0, gaps.Length).Max(k => gm.GapSpeedPercent(gaps[k], plats[k].floor - plats[k + 1].floor));
+        int hardest = Hardest(g);
+        check(hardest <= g.Vars.MaxHop * 100 * 0.7f, $"the hardest gap needs {hardest}%, well inside the strafe-jumping cap");
+        foreach (var cls in new[] { PClass.Cleric, PClass.Mage })
+        {
+            var g2 = new Game { FixedSeed = 1 };
+            g2.StartPractice(cls);
+            check(Hardest(g2) > hardest && Hardest(g2) <= g2.Vars.MaxHop * 100 * 0.8f,
+                  $"slower classes need more ({g2.P.Def.Name}: {Hardest(g2)}%), still within reach");
+        }
+
+        // falling in: the lift takes you back to the last platform you reached (they're all level, so the newest)
+        g.Level.CheckpointsReached.Clear(); g.Checkpoint = null;
+        p.X = plats[1].x0 + 2.5f; p.Y = 5.5f; p.FloorZ = 2.5f; p.Z = 0; p.VX = p.VY = 0;
+        Tick(default, 2);
+        g.Messages.Clear();
+        p.X = plats[2].x0 + 2.5f; p.Y = 5.5f; p.FloorZ = 2.5f; p.Z = 0; p.VX = p.VY = 0;
+        Tick(default, 2);
+        check(g.Messages.Any(m => m.text.Contains("next gap is 5 wide") && m.text.Contains("Zig-zag")), "reaching platform 3 names the next gap and the speed it needs");
+        p.X = plats[2].x1 + 2.5f; p.FloorZ = 0; p.Z = 0.4f;
+        Tick(default, 20);
+        check(p.FloorZ == 2.5f && p.X > plats[2].x0 && p.X < plats[2].x1, "dropping into a gap, the lift carries you back to platform 3");
+
+        // the clock: waits for you to move, runs, and the exit ends the run and keeps your best
+        g.StartPractice(PClass.Fighter);
+        Tick(default, 35);
+        check(g.RunTime == 0 && !g.RunStarted, "the clock waits until you set off");
+        Tick(new Input { Move = 1 }, 35);
+        check(g.RunStarted && g.RunTime > 0.5f, "and runs once you do");
+        var r = new Renderer();
+        r.Render(g);
+        g.Messages.Clear();
+        var bare = new Renderer();
+        g.Practicing = false; bare.Render(g); g.Practicing = true;
+        r.Render(g);
+        int Corner(Renderer rr) => Enumerable.Range(3, 8).Sum(y => Enumerable.Range(Renderer.W - 80, 76).Count(x => rr.Fb[y * Renderer.W + x] == Col.Rgb(240, 236, 220)));
+        check(Corner(r) > 20 && Corner(bare) == 0, "the run's time shows in the top-right corner");
+        var exit = lv.FindMark('E');
+        p = g.P;
+        p.X = exit.Value.x - 1; p.Y = exit.Value.y; p.FloorZ = plats[^1].floor; p.Angle = 0;
+        float time = g.RunTime;
+        for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
+        float best = g.Profile.CourseBest.GetValueOrDefault("Fighter");
+        check(best > time && g.Messages.Any(m => m.text.Contains("a new best")), $"the exit finishes the run: {best:0.00}s, a new best");
+        check(MathF.Abs(p.X - g.Level.StartX) < 0.01f && g.RunTime == 0 && g.Mode == GameMode.Playing, "and puts you back at the start for another go");
+        check(g.Level.CheckpointsReached.Count <= 1 && g.Checkpoint == null || g.Checkpoint.X < plats[0].x1, "with the checkpoints reset");
+        Tick(new Input { Move = 1 }, 10);
+        g.RunTime = best + 5;
+        p.X = exit.Value.x - 1; p.Y = exit.Value.y; p.FloorZ = plats[^1].floor; p.Angle = 0;
+        for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
+        check(g.Profile.CourseBest["Fighter"] == best && g.Messages.Any(m => m.text.Contains($"(best {best:0.00}s)")), "a slower run keeps your best, and tells you it");
+
+        // restart and quitting
+        g.Paused = true; g.Menu.Show(MenuPage.Pause);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Pause), "Restart");
+        Tick(new Input { Move = 1 }, 5);
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(g.Practicing && g.Level.RawName == "Velocity Hangar" && g.RunTime == 0, "Restart starts the course over");
+        g.GoToTitle();
+        check(!g.Practicing, "quitting to the title leaves practice");
+        g.GoToTitle();
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Main), "New game");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        Tick(new Input { Confirm = true });
+        check(!g.Practicing && g.Level.RawName != "Velocity Hangar", "and New game is the hub as usual");
     }
 
     static void HudChecks(Action<bool, string> check)
@@ -1041,7 +1171,7 @@ public static class Headless
         ui.Update(new Input { Character = true }, 1f / 35f);
         check(!ui.Paused && !ui.Menu.Open, "K again closes it and resumes");
         ui.Update(new Input { Pause = true }, 1f / 35f);
-        check(ui.Menu.Items(MenuPage.Pause)[1] == "Character" && ui.Menu.Items(MenuPage.Main)[1] == "Character", "the pause and title menus have Character too");
+        check(ui.Menu.Items(MenuPage.Pause)[1] == "Character" && ui.Menu.Items(MenuPage.Main).Contains("Character"), "the pause and title menus have Character too");
         ui.Menu.Close(); ui.Paused = false;
 
         // no experience from play-testing custom maps; a win pays out and counts
@@ -1209,8 +1339,8 @@ public static class Headless
         // an Afrit on the ground fires up at you as you hover
         p.X = 6.5f; p.Y = 9.5f; p.FloorZ = 0; p.HasJetpack = true; p.Fuel = Player.FuelMax;
         g.Vars.InfiniteFuel = true;
-        Tick(new Input { Jump = true, JumpHeld = true });
-        for (int k = 0; k < 35 * 2; k++) Tick(new Input { JumpHeld = true });
+        Tick(new Input { JetHeld = true });
+        for (int k = 0; k < 35 * 2; k++) Tick(new Input { JetHeld = true });
         float alt = p.Z;
         var shooter = new Monster(Monster.Afrit) { X = 12.5f, Y = 12.5f, Level = lv };
         lv.Things.Add(shooter);
@@ -1241,10 +1371,10 @@ public static class Headless
         var pack = g.Level.Things.OfType<Pickup>().FirstOrDefault(t => t.Kind == PickupKind.Jetpack);
         check(pack != null && MathF.Abs(pack.X - p.X) + MathF.Abs(pack.Y - p.Y) < 4, "a jetpack waits near the start of the Hab Ring");
 
-        // without it, holding Jump is just a jump
+        // without it, the jetpack key does nothing and Jump is just a jump
         float apex = 0;
-        Tick(new Input { Jump = true, JumpHeld = true });
-        for (int k = 0; k < 35 * 2; k++) { Tick(new Input { JumpHeld = true }); apex = MathF.Max(apex, p.Z); }
+        Tick(new Input { Jump = true, JumpHeld = true, JetHeld = true });
+        for (int k = 0; k < 35 * 2; k++) { Tick(new Input { JumpHeld = true, JetHeld = true }); apex = MathF.Max(apex, p.Z); }
         check(!p.Flying && apex < 0.6f && p.OnGround, $"without a jetpack you only hop (apex {apex:0.00})");
 
         // pick it up
@@ -1257,11 +1387,11 @@ public static class Headless
         g.Level.Things.RemoveAll(t => t is Decor or Chest or LoreStone);
         p.X = 12.5f; p.Y = 6.5f; p.Angle = MathF.PI / 2; p.FloorZ = g.Level.FloorAt(p.X, p.Y);
         sfx.Clear();
-        Tick(new Input { Jump = true, JumpHeld = true });
-        Tick(new Input { JumpHeld = true }, 35);
-        check(p.Flying && p.Z > 1.2f, $"holding Jump in the air fires the jetpack and climbs (height {p.Z:0.00})");
+        Tick(new Input { JetHeld = true });
+        Tick(new Input { JetHeld = true }, 35);
+        check(p.Flying && p.Z > 1.2f, $"holding the jetpack key takes off from the floor and climbs (height {p.Z:0.00})");
         check(sfx.Contains(Sfx.JetStart) && sfx.Count(s => s == Sfx.Jet) >= 5, "the jetpack ignites and roars while it burns");
-        Tick(new Input { JumpHeld = true }, 35 * 2);
+        Tick(new Input { JetHeld = true }, 35 * 2);
         float top = g.Level.HeightAt(p.X, p.Y) - p.FloorZ;
         check(p.Z + Player.Height < top && p.Z > top - 0.9f, $"you rise until your head nears the ceiling ({p.Z + Player.Height:0.00} of {top:0.00})");
 
@@ -1279,8 +1409,8 @@ public static class Headless
         p.X = 12.5f; p.Y = 7.5f; p.Angle = MathF.PI / 2; p.FloorZ = 0; p.Fuel = Player.FuelMax;
         Tick(new Input { Move = 1 }, 35);
         check(p.Y < 8.8f && p.FloorZ == 0, "a 1.5-unit ledge blocks you on foot");
-        Tick(new Input { Jump = true, JumpHeld = true });
-        Tick(new Input { JumpHeld = true }, 35);
+        Tick(new Input { JetHeld = true });
+        Tick(new Input { JetHeld = true }, 35);
         Tick(new Input { Move = 1 }, 30);
         for (int k = 0; k < 35 * 3 && p.Flying; k++) Tick(new Input { SlideHeld = true });
         check(p.FloorZ == 1.5f && p.OnGround && !p.Flying, $"with the jetpack you fly up and land on the ledge (floor {p.FloorZ})");
@@ -1288,15 +1418,20 @@ public static class Headless
         // running dry drops you; the tank refills on the ground
         p.X = 12.5f; p.Y = 6.5f; p.FloorZ = 0; p.Z = 0; p.Fuel = 0.5f;
         sfx.Clear();
-        Tick(new Input { Jump = true, JumpHeld = true });
+        Tick(new Input { JetHeld = true });
         bool ranDry = false;
-        for (int k = 0; k < 35 * 3; k++) { Tick(new Input { JumpHeld = true }); ranDry |= p.Fuel == 0 && !p.Flying && !p.OnGround; }
+        for (int k = 0; k < 35 * 3; k++) { Tick(new Input { JetHeld = true }); ranDry |= p.Fuel == 0 && !p.Flying && !p.OnGround; }
         check(ranDry && p.OnGround && sfx.Contains(Sfx.JetOut), "when the fuel runs out the jetpack sputters and you fall");
+        check(p.Fuel > 0.25f && !p.Flying, "and it stays off while you keep holding the key, though the tank refills");
+        Tick(default);
+        Tick(new Input { JetHeld = true });
+        check(p.Flying, "let go and press it again to relight it");
+        for (int k = 0; k < 35 * 3 && p.Flying; k++) Tick(new Input { SlideHeld = true });
         Tick(default, 35 * 2);
         check(p.Fuel > 2.5f && p.Fuel <= Player.FuelMax, $"the tank recharges on the ground ({p.Fuel:0.0})");
         g.Vars.InfiniteFuel = true; p.Fuel = 0;
-        Tick(new Input { Jump = true, JumpHeld = true });
-        Tick(new Input { JumpHeld = true }, 35);
+        Tick(new Input { JetHeld = true });
+        Tick(new Input { JetHeld = true }, 35);
         check(p.Flying && p.Fuel == 0, "'infinitefuel' lets you fly on an empty tank");
         g.Vars.InfiniteFuel = false;
 
@@ -1722,14 +1857,14 @@ public static class Headless
         keys.Hit.Add(Keys.WheelDown); check(Read().Cycle == 1, "mouse wheel cycles weapons"); keys.Hit.Clear();
         keys.Hit.Add(Keys.Space); check(Read().Jump, "Space jumps"); keys.Hit.Clear();
 
-        // title menu: New game / Options / Quit
+        // title menu: New game / Practice / Character / Options / Quit
         check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
-        Press(Keys.Down); Press(Keys.Down);
+        Press(Keys.Down); Press(Keys.Down); Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
         Press(Keys.Escape);
-        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 2, "Esc goes back to the main menu");
-        Press(Keys.Up); Press(Keys.Up); Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 3, "Esc goes back to the main menu");
+        Press(Keys.Up); Press(Keys.Up); Press(Keys.Up); Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
         Press(Keys.Enter);
         check(g.Mode == GameMode.ClassSelect && g.Style == GameStyle.Classic, "Classic goes to class select");
@@ -1976,7 +2111,7 @@ public static class Headless
         var g = new Game { FixedSeed = 1, MapsDir = dir };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
 
-        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Character", "Options", "Quit" }),
+        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Character", "Options", "Quit" }),
               "the title menu no longer has a level editor (maps are made in tools/editor)");
         g.Con.Execute("edit");
         check(g.Con.Log.Last().Contains("unknown"), "the 'edit' console command is gone");
@@ -2744,8 +2879,8 @@ public static class Headless
         g.Con.Execute("give jetpack");
         g.Messages.Clear();
         g.P.X = 9.5f; g.P.Y = 9.5f; g.P.Angle = -MathF.PI / 4; g.P.Pitch = -20; g.P.FloorZ = 0;
-        Tick(new Input { Jump = true, JumpHeld = true });
-        Tick(new Input { JumpHeld = true }, 30);
+        Tick(new Input { JetHeld = true });
+        Tick(new Input { JetHeld = true }, 30);
         Tick(default, 10);
         Shot("45_jetpack_flight");
         g.SetArtStyle(ArtStyle.Fantasy);
@@ -2772,7 +2907,7 @@ public static class Headless
         Tick(default, 3); PlaceCam(10.2f, 14.2f, 0, 0, -MathF.PI / 2 - 0.5f, 60);
         Shot("47_spire_foot");
         PlaceCam(16.5f, 6.5f, 0, 3.4f, MathF.PI + 0.35f, 12);
-        Tick(new Input { JumpHeld = false }, 1); PlaceCam(16.5f, 6.5f, 0, 3.4f, MathF.PI + 0.35f, 12);
+        Tick(new Input { JetHeld = false }, 1); PlaceCam(16.5f, 6.5f, 0, 3.4f, MathF.PI + 0.35f, 12);
         Shot("48_spire_climb");
         PlaceCam(9.3f, 10.75f, 8.5f, 0, -1.2f, -25);
         Tick(default, 1); PlaceCam(9.3f, 10.75f, 8.5f, 0, -1.2f, -25);
@@ -2843,6 +2978,21 @@ public static class Headless
         g.P.Z = 0.3f; g.P.VX = MathF.Cos(g.P.Angle) * g.RunSpeed * 1.8f; g.P.VY = MathF.Sin(g.P.Angle) * g.RunSpeed * 1.8f;
         Shot("82_strafe_speed");
         g.P.Z = 0; g.P.VX = g.P.VY = 0;
+
+        // the strafe-jumping practice course: the view down the hangar from the start, then mid-hop over the 5-wide gap
+        g.StartPractice(PClass.Fighter);
+        g.Vars.Freeze = true;
+        Tick(default, 2);
+        PlaceCam(3.5f, 5.5f, 2.5f, 0, 0, -6);
+        Tick(default, 1); PlaceCam(3.5f, 5.5f, 2.5f, 0, 0, -6);
+        Shot("83_velocity_hangar");
+        g.Messages.Clear();
+        g.RunStarted = true; g.RunTime = 14.62f;
+        PlaceCam(Maps.CoursePlatforms[2].x1 + 2.2f, 4.8f, 0, 2.9f, 0.12f, -4);
+        g.P.Flying = false; g.P.VX = g.RunSpeed * 2.1f;
+        Shot("84_velocity_gap");
+        g.P.VX = 0; g.Vars.Freeze = false;
+        g.GoToTitle();
         g.Vars.Freeze = false;
 
         // character progression: the HUD's level bar with an XP pop-up, and the character screen
