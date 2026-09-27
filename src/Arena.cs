@@ -20,6 +20,7 @@ public sealed class ArenaState
     readonly List<Monster> _live = new();
     readonly Random _rng = new(4242);
     float _spawnTimer;
+    bool _quietShown;
 
     public ArenaState(Level lv)
     {
@@ -64,6 +65,17 @@ public sealed class ArenaState
     public void Update(Game g, float dt)
     {
         BannerTime -= dt;
+        if (g.Relaxed)
+        {
+            // no waves in relaxed mode
+            if (!_quietShown && g.Level.MarkAt(g.P.X, g.P.Y) == '!')
+            {
+                _quietShown = true;
+                g.Say("The altar's bell rings softly. The old games sleep, and the arena is at peace.");
+                g.PlaySound(Sfx.Lore, 1);
+            }
+            return;
+        }
         if (!Started)
         {
             if (g.Mode == GameMode.Playing && g.Level.MarkAt(g.P.X, g.P.Y) == '!')

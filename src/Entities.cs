@@ -3,7 +3,7 @@ namespace HexenSharp;
 public enum Sfx
 {
     Swing, Hit, Shoot, Magic, Explode, Sight, Death, Pickup, Item, Door, Lever,
-    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Count
+    Pain, PlayerPain, PlayerDeath, Teleport, Locked, BossSight, Heal, Jump, Land, Slide, Chest, Push, Blur, Secret, Lore, Relic, Count
 }
 
 public abstract class Thing
@@ -32,23 +32,24 @@ public sealed class Decor : Thing
 
 // ---------------------------------------------------------------- pickups
 
-public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3 }
+public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic }
 
 public sealed class Pickup : Thing
 {
     public readonly PickupKind Kind;
+    public string Name;                // relics have a name
     readonly Tex _tex;
     public Pickup(PickupKind kind, Tex tex, float size = 0.4f)
     {
         Kind = kind; _tex = tex; SpriteW = size; SpriteH = size;
-        FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3;
+        FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.Relic;
     }
     public override Tex Sprite(float time) => _tex;
 }
 
 // ---------------------------------------------------------------- monsters
 
-public enum AiState { Idle, Chase, Attack, Pain, Dying, Dead }
+public enum AiState { Idle, Chase, Attack, Pain, Dying, Dead, Wander }
 
 public sealed class MonsterDef
 {
@@ -95,7 +96,7 @@ public sealed class Monster : Thing
             AiState.Pain => f[(int)Pose.Pain],
             AiState.Dying => f[StateTime < 0.15f ? (int)Pose.Die0 : StateTime < 0.3f ? (int)Pose.Die1 : (int)Pose.Dead],
             AiState.Dead => f[(int)Pose.Dead],
-            AiState.Chase => f[((int)(Anim * 4)) % 2],
+            AiState.Chase or AiState.Wander => f[((int)(Anim * 4)) % 2],
             _ => f[((int)(time * 1.5f + X)) % 2],
         };
     }
@@ -217,6 +218,8 @@ public static class ThingFactory
             'p' => new Decor(new[] { Art.Pillar }, 0.6f, 1.0f, true, false),
             'T' => new Decor(new[] { Art.Tree }, 1.0f, 1.3f, true, false),
             '$' => new Chest(),
+            '&' => new LoreStone(),
+            '%' => new Pickup(PickupKind.Relic, Art.Relics[0], 0.42f),
             _ => null,
         };
         if (t == null) return null;

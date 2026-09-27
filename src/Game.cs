@@ -82,7 +82,7 @@ public sealed class Player
     public ClassDef Def => ClassDef.All[(int)Class];
     public float X, Y, Angle, Pitch;
     public float Radius = 0.25f;
-    public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills, ChestsOpened;
+    public int Health = 100, Armor, BlueMana = 50, GreenMana, Flasks, Urns, Kills, ChestsOpened, Relics, LoreRead, Secrets;
     public bool[] HasWeapon = { true, false, false };
     public int Weapon, PendingWeapon = -1;
     public float Cooldown, FireAnim, Raise, Bob, BobAmount;
@@ -163,7 +163,12 @@ public sealed class Game
 
     /// <summary>Seed for chest placement and loot; null picks a fresh random layout every game.</summary>
     public int? FixedSeed;
-    public int ChestsTotal;
+    public int ChestsTotal, RelicsTotal, LoreTotal, SecretsTotal;
+    /// <summary>Classic: fight through the hub. Relaxed: no combat; explore, read lore, find relics and secrets.</summary>
+    public GameStyle Style = GameStyle.Classic;
+    public bool Relaxed => Style == GameStyle.Relaxed;
+    /// <summary>Text of the lore stone being read (the game pauses while it's open).</summary>
+    public string ReadingLore;
     Random _loot = new();
 
     public void NewGame(PClass cls)
@@ -171,11 +176,30 @@ public sealed class Game
         Hub = Maps.BuildHub();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
         ChestsTotal = 0;
+        var names = Discovery.RelicNames.OrderBy(_ => _loot.Next()).ToList();
+        int nameIndex = 0;
+        string NextName() => names[nameIndex++ % names.Count];
         foreach (var lv in Hub)
         {
             Chests.Scatter(lv, _loot, Vars.Chests);
             ChestsTotal += lv.Things.Count(t => t is Chest);
+
+            // treasure in secret nooks: a relic when relaxed, a Mystic Urn in classic
+            foreach (var r in lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Relic).ToList())
+            {
+                lv.Things.Remove(r);
+                lv.Things.Add(Relaxed ? Discovery.MakeRelic(r.X, r.Y, lv, NextName()) : Place(new Pickup(PickupKind.Urn, Art.Urn, 0.45f), r, lv));
+            }
+            if (Relaxed)
+            {
+                Discovery.ScatterRelics(lv, _loot, 2, NextName);
+                foreach (var m in lv.Things.OfType<Monster>()) { m.State = AiState.Idle; m.StrafeTime = RandF() * 3; }
+            }
         }
+        RelicsTotal = Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Relic }));
+        LoreTotal = Hub.Sum(l => l.Things.Count(t => t is LoreStone));
+        SecretsTotal = Hub.Sum(l => l.SecretCount);
+        ReadingLore = null;
         Level = Hub[0];
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
         Messages.Clear();
@@ -185,7 +209,17 @@ public sealed class Game
         Menu.Close();
         ShowMap = false;
         Say(Level.EntryMessage);
-        Say($"You are the {P.Def.Name}. Find a way through the hub.");
+        if (Relaxed)
+        {
+            Say($"Relaxed mode: the creatures here are peaceful. Find the {RelicsTotal} relics to awaken the exit.");
+        }
+        else Say($"You are the {P.Def.Name}. Find a way through the hub.");
+    }
+
+    static Thing Place(Thing t, Thing at, Level lv)
+    {
+        t.X = at.X; t.Y = at.Y; t.Level = lv;
+        return t;
     }
 
     // ================================================================ update
@@ -213,6 +247,13 @@ public sealed class Game
         if (Menu.Open)
         {
             Menu.Update(inp, dt);
+            return;
+        }
+
+        // reading a lore stone pauses the game until you close it
+        if (ReadingLore != null)
+        {
+            if (inp.Use || inp.Confirm || inp.Pause || inp.Fire || inp.Jump) ReadingLore = null;
             return;
         }
 
@@ -335,13 +376,17 @@ public sealed class Game
         _exitMsgCd -= dt;
         if (mark == 'E')
         {
-            if (Level.BossDead)
+            if (Relaxed ? P.Relics >= RelicsTotal : Level.BossDead)
             {
                 Mode = GameMode.Victory;
                 PlaySound(Sfx.Teleport, 1);
                 return;
             }
-            if (_exitMsgCd <= 0) { Say("The exit is sealed by the Heresiarch's magic."); _exitMsgCd = 3; }
+            if (_exitMsgCd <= 0)
+            {
+                Say(Relaxed ? $"The exit portal sleeps. Relics found: {P.Relics}/{RelicsTotal}." : "The exit is sealed by the Heresiarch's magic.");
+                _exitMsgCd = 3;
+            }
         }
 
         // pickups
@@ -370,7 +415,7 @@ public sealed class Game
 
         p.Cooldown -= dt;
         p.FireAnim = MathF.Max(0, p.FireAnim - dt);
-        if (inp.Fire && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
+        if (inp.Fire && !Relaxed && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
     }
 
     void SelectWeapon(int w)
@@ -445,7 +490,7 @@ public sealed class Game
     void UseLine(bool pull)
     {
         var p = P;
-        if (TryOpenChest()) return;
+        if (TryReadLore() || TryOpenChest()) return;
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle);
         for (float d = 0.1f; d < 1.3f; d += 0.05f)
         {
@@ -481,12 +526,44 @@ public sealed class Game
                         CheckPuzzle($"Lever {Level.PulledLevers.Count} of {Level.LeverCount} pulled.");
                     }
                     break;
+                case 'Z':
+                    if (Level.DoorOpen[i] < 1f && Level.DoorMove[i] <= 0)
+                    {
+                        Level.OpenDoor(cx, cy);
+                        PlaySound(Sfx.Door, 1);
+                        if (Level.SecretsFound.Add(i))
+                        {
+                            p.Secrets++;
+                            PlaySound(Sfx.Secret, 1);
+                            Say($"A secret passage! ({p.Secrets}/{SecretsTotal} secrets)");
+                        }
+                    }
+                    break;
                 case 'X':
                     MoveBlock(cx, cy, pull);
                     break;
             }
             return;
         }
+    }
+
+    /// <summary>Reads the lore stone the player is facing, if any.</summary>
+    bool TryReadLore()
+    {
+        LoreStone best = null;
+        float bestD = 1.5f;
+        foreach (var t in Level.Things)
+        {
+            if (t is not LoreStone s) continue;
+            float d = Dist(s.X, s.Y, P.X, P.Y);
+            if (d >= bestD || MathF.Abs(AngleDiff(MathF.Atan2(s.Y - P.Y, s.X - P.X), P.Angle)) > 0.6f) continue;
+            best = s; bestD = d;
+        }
+        if (best == null) return false;
+        if (!best.Read) { best.Read = true; P.LoreRead++; }
+        ReadingLore = best.Text;
+        PlaySound(Sfx.Lore, 1);
+        return true;
     }
 
     /// <summary>Opens the closed chest the player is facing, if any.</summary>
@@ -528,7 +605,7 @@ public sealed class Game
         }
         SpawnPuff(Art.Fireball[1], c.X, c.Y, 0.35f, 0.3f);
 
-        bool trap = Level.Arena == null && _loot.NextDouble() < Chests.TrapChance;
+        bool trap = !Relaxed && Level.Arena == null && _loot.NextDouble() < Chests.TrapChance;
         if (trap)
         {
             // a monster bursts out beside the chest
@@ -664,6 +741,15 @@ public sealed class Game
                 p.SteelKey = true; msg = "Steel Key! It must open a door somewhere in the hub."; break;
             case PickupKind.FireKey:
                 p.FireKey = true; msg = "Fire Key! A scorched door awaits it."; break;
+            case PickupKind.Relic:
+                p.Relics++;
+                msg = $"Relic found: {pk.Name ?? "an ancient relic"} ({p.Relics}/{RelicsTotal})";
+                if (Relaxed && p.Relics >= RelicsTotal) msg += " - the exit portal awakens!";
+                pk.Removed = true;
+                p.PickupFlash = 1;
+                PlaySound(Sfx.Relic, 1);
+                Say(msg);
+                return;
             case PickupKind.Armor:
                 if (p.Armor >= 100) return;
                 p.Armor = Math.Min(100, p.Armor + 50); msg = "Mesh Armor"; break;
@@ -790,6 +876,8 @@ public sealed class Game
         float dist = Dist(m.X, m.Y, P.X, P.Y);
         bool playerAlive = Mode != GameMode.Dead;
 
+        if (Relaxed && m.Alive) { Wander(m, dt, dist); return; }
+
         // Dark Bishop blur: dart sideways, see-through and untouchable
         if (m.Blurring)
         {
@@ -893,6 +981,34 @@ public sealed class Game
         float a = RandF() * MathF.Tau;
         m.StuckDX = MathF.Cos(a); m.StuckDY = MathF.Sin(a);
         m.StuckTime = 0.3f + RandF() * 0.4f;
+    }
+
+    /// <summary>Relaxed mode: creatures amble about, pause, and shy away if you come close. They never attack.</summary>
+    void Wander(Monster m, float dt, float dist)
+    {
+        m.StrafeTime -= dt;
+        if (dist < 2.2f)
+        {
+            // drift away from the player
+            float ax = m.X - P.X, ay = m.Y - P.Y, l = MathF.Max(0.01f, MathF.Sqrt(ax * ax + ay * ay));
+            m.StuckDX = ax / l; m.StuckDY = ay / l;
+            m.StrafeTime = MathF.Max(m.StrafeTime, 0.8f);
+        }
+        else if (m.StrafeTime <= 0)
+        {
+            m.StrafeTime = 1.5f + RandF() * 2.5f;
+            if (RandF() < 0.4f) { m.StuckDX = m.StuckDY = 0; } // rest a while
+            else { float a = RandF() * MathF.Tau; m.StuckDX = MathF.Cos(a); m.StuckDY = MathF.Sin(a); }
+        }
+        bool moving = m.StuckDX != 0 || m.StuckDY != 0;
+        if (moving)
+        {
+            float s = m.Def.Speed * 0.45f * Vars.MonsterSpeed * dt;
+            float nx = m.X + m.StuckDX * s, ny = m.Y + m.StuckDY * s;
+            if (!Blocked(nx, ny, m.Radius, m)) { m.X = nx; m.Y = ny; m.Anim += dt; }
+            else { float a = RandF() * MathF.Tau; m.StuckDX = MathF.Cos(a); m.StuckDY = MathF.Sin(a); }
+        }
+        m.State = moving ? AiState.Wander : AiState.Idle;
     }
 
     void StartBlur(Monster m)
@@ -1030,7 +1146,7 @@ public sealed class Game
     void DamagePlayer(int dmg)
     {
         var p = P;
-        if (Mode != GameMode.Playing || Vars.God) return;
+        if (Mode != GameMode.Playing || Vars.God || Relaxed) return;
         dmg = Math.Max(0, (int)MathF.Round(dmg * Vars.MonsterDamage));
         if (dmg == 0) return;
         int saved = Math.Min(p.Armor, (int)(dmg * p.Def.ArmorSave));
