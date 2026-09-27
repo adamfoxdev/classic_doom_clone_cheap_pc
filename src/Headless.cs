@@ -896,7 +896,7 @@ public static class Headless
         p.X = exit.Value.x - 1; p.Y = exit.Value.y; p.FloorZ = plats[^1].floor; p.Angle = 0;
         float time = g.RunTime;
         for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
-        float best = g.Profile.CourseBest.GetValueOrDefault("Fighter");
+        float best = g.Profile.CourseBestTime("Fighter");
         check(best > time && g.Messages.Any(m => m.text.Contains("a new best")), $"the exit finishes the run: {best:0.00}s, a new best");
         check(MathF.Abs(p.X - g.Level.StartX) < 0.01f && g.RunTime == 0 && g.Mode == GameMode.Playing, "and puts you back at the start for another go");
         check(g.Level.CheckpointsReached.Count <= 1 && g.Checkpoint == null || g.Checkpoint.X < plats[0].x1, "with the checkpoints reset");
@@ -904,7 +904,47 @@ public static class Headless
         g.RunTime = best + 5;
         p.X = exit.Value.x - 1; p.Y = exit.Value.y; p.FloorZ = plats[^1].floor; p.Angle = 0;
         for (int k = 0; k < 35 && g.RunStarted; k++) Tick(new Input { Move = 1 });
-        check(g.Profile.CourseBest["Fighter"] == best && g.Messages.Any(m => m.text.Contains($"(best {best:0.00}s)")), "a slower run keeps your best, and tells you it");
+        check(g.Profile.CourseBestTime("Fighter") == best && g.Messages.Any(m => m.text.Contains($"(best {best:0.00}s)")), "a slower run keeps your best, and tells you it");
+
+        // the leaderboard: every finished run goes on its class's board, quickest first, under your name
+        var board = g.Profile.Board("Fighter");
+        check(board.Count == 2 && board[0].Time == best && board[1].Time > best && board.All(r => r.Name == g.RunnerName && r.When != default),
+              "both runs are on the Marine's leaderboard, quickest first, with your name and the date");
+        check(g.LastPlace == 2 && g.Messages.Any(m => m.text.Contains("#2 on the leaderboard")), "and finishing tells you your place");
+        g.Con.Execute("name  ace-1 zoë! ");
+        check(g.RunnerName == "ACE-1 ZO" && Settings.Lines(g).Contains("name ACE-1 ZO"), "'name' sets the name runs go under (upper case, letters and digits), saved with the settings");
+        for (int k = 0; k < 12; k++) g.Profile.AddCourseRun("Fighter", best + 1 + k, "FILLER", DateTime.Now);
+        check(board.Count == Profile.BoardSize && board.Zip(board.Skip(1)).All(t => t.First.Time <= t.Second.Time), "the board keeps the ten fastest, in order");
+        int slow = g.Profile.AddCourseRun("Fighter", best + 100, "SLOW", DateTime.Now);
+        int quick = g.Profile.AddCourseRun("Fighter", best + 0.5f, "QUICK", DateTime.Now);
+        check(slow == 0 && quick == 2 && board[1].Name == "QUICK" && board.Count == Profile.BoardSize && board.All(r => r.Name != "SLOW"),
+              "a run slower than all ten stays off it; a quick one slots into its place");
+        var legacy = new Profile { CourseBest = { ["Mage"] = 20f } };
+        check(legacy.CourseBestTime("Mage") == 20f && legacy.Board("Mage").Count == 1 && !legacy.CourseBest.ContainsKey("Mage"),
+              "a best time saved before the leaderboard joins it");
+        var tmp = Path.Combine(Path.GetTempPath(), $"hexen_board_{Environment.ProcessId}.json");
+        g.Profile.Save(tmp);
+        var back = Profile.Load(tmp);
+        File.Delete(tmp);
+        check(back.Board("Fighter").Select(r => (r.Time, r.Name)).SequenceEqual(board.Select(r => (r.Time, r.Name))), "the leaderboard is saved with your profile");
+
+        // it's on the pause menu while you practise, and on the title menu
+        g.Paused = true; g.Menu.Show(MenuPage.Pause);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Pause), "Leaderboard");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(g.Menu.Page == MenuPage.Leaderboard && g.Menu.BoardClass == PClass.Fighter, "the pause menu on the course opens the leaderboard, on your class");
+        var rb = new Renderer();
+        rb.Render(g);
+        int gold = rb.Fb.Count(c => c == Col.Rgb(230, 190, 80));
+        check(gold > 200, "it draws the board");
+        g.Menu.Update(new Input { Right = true }, 1f / 35f);
+        check(g.Menu.BoardClass == PClass.Cleric, "Right shows the next class's board");
+        g.Menu.Update(new Input { Left = true }, 1f / 35f);
+        g.Menu.Update(new Input { Left = true }, 1f / 35f);
+        check(g.Menu.BoardClass == PClass.Mage, "and Left wraps round");
+        g.Menu.Update(new Input { Pause = true }, 1f / 35f);
+        check(g.Menu.Page == MenuPage.Pause, "Esc goes back to the pause menu");
+        g.Menu.Close(); g.Paused = false;
 
         // restart and quitting
         g.Paused = true; g.Menu.Show(MenuPage.Pause);
@@ -920,6 +960,13 @@ public static class Headless
         g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
         Tick(new Input { Confirm = true });
         check(!g.Practicing && g.Level.RawName != "Velocity Hangar", "and New game is the hub as usual");
+        check(!g.Menu.Items(MenuPage.Pause).Contains("Leaderboard"), "outside practice the pause menu has no leaderboard");
+        g.GoToTitle();
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Main), "Leaderboard");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(g.Menu.Cursor >= 0 && g.Menu.Page == MenuPage.Leaderboard, "the title menu opens it too");
+        g.Menu.Update(new Input { Pause = true }, 1f / 35f);
+        check(g.Menu.Page == MenuPage.Main, "and Esc goes back to the title");
     }
 
     static void HudChecks(Action<bool, string> check)
@@ -1857,14 +1904,14 @@ public static class Headless
         keys.Hit.Add(Keys.WheelDown); check(Read().Cycle == 1, "mouse wheel cycles weapons"); keys.Hit.Clear();
         keys.Hit.Add(Keys.Space); check(Read().Jump, "Space jumps"); keys.Hit.Clear();
 
-        // title menu: New game / Practice / Character / Options / Quit
+        // title menu: New game / Practice / Leaderboard / Character / Options / Quit
         check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
-        Press(Keys.Down); Press(Keys.Down); Press(Keys.Down);
+        Press(Keys.Down); Press(Keys.Down); Press(Keys.Down); Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
         Press(Keys.Escape);
-        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 3, "Esc goes back to the main menu");
-        Press(Keys.Up); Press(Keys.Up); Press(Keys.Up); Press(Keys.Enter);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 4, "Esc goes back to the main menu");
+        Press(Keys.Up); Press(Keys.Up); Press(Keys.Up); Press(Keys.Up); Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
         Press(Keys.Enter);
         check(g.Mode == GameMode.ClassSelect && g.Style == GameStyle.Classic, "Classic goes to class select");
@@ -2111,7 +2158,7 @@ public static class Headless
         var g = new Game { FixedSeed = 1, MapsDir = dir };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
 
-        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Character", "Options", "Quit" }),
+        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Leaderboard", "Character", "Options", "Quit" }),
               "the title menu no longer has a level editor (maps are made in tools/editor)");
         g.Con.Execute("edit");
         check(g.Con.Log.Last().Contains("unknown"), "the 'edit' console command is gone");
@@ -2992,6 +3039,15 @@ public static class Headless
         g.P.Flying = false; g.P.VX = g.RunSpeed * 2.1f;
         Shot("84_velocity_gap");
         g.P.VX = 0; g.Vars.Freeze = false;
+
+        // the leaderboard, opened from the pause menu on the course
+        var boardDay = new DateTime(2026, 9, 20);
+        foreach (var (t, n, d) in new[] { (21.84f, "RAIL", 1), (23.10f, "ACE-1", 3), (24.57f, "RAIL", 0), (26.02f, "NOVA", 5), (27.93f, "ACE-1", 2), (31.40f, "PLAYER", 6) })
+            g.Profile.AddCourseRun("Fighter", t, n, boardDay.AddDays(d));
+        g.Profile.AddCourseRun("Fighter", 22.75f, "ACE-1", boardDay.AddDays(7).AddHours(1));
+        g.Paused = true; g.Menu.Show(MenuPage.Pause); g.Menu.Show(MenuPage.Leaderboard);
+        Shot("85_leaderboard");
+        g.Menu.Close(); g.Paused = false;
         g.GoToTitle();
         g.Vars.Freeze = false;
 

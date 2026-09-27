@@ -83,7 +83,7 @@ public sealed class Renderer
         var m = g.Menu;
         var page = m.Page.Value;
         var items = m.Items(page);
-        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page == MenuPage.Character ? 246 : 230);
+        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard ? 246 : 230);
 
         switch (page)
         {
@@ -129,13 +129,50 @@ public sealed class Renderer
             case MenuPage.Character:
                 DrawCharacter(g);
                 break;
+
+            case MenuPage.Leaderboard:
+                DrawLeaderboard(g);
+                break;
         }
 
-        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character))
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
     }
 
     /// <summary>The character screen: level and experience, skills to spend points on, and your weapons' levels.</summary>
+    /// <summary>The practice course leaderboard for one class: the ten fastest runs, the latest one picked out.</summary>
+    void DrawLeaderboard(Game g)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        CenterText("LEADERBOARD", 6, gold, 2);
+        var def = ClassDef.All[(int)m.BoardClass];
+        CenterText($"VELOCITY HANGAR   < {def.Name.ToUpperInvariant()} >", 26, blue);
+        var runs = g.Profile.Board(m.BoardClass.ToString());
+        if (runs.Count == 0)
+        {
+            CenterText("NO RUNS YET.", 70, MenuText);
+            CenterText("PICK PRACTICE ON THE TITLE MENU TO SET A TIME.", 82, MenuDim);
+        }
+        else
+        {
+            var latest = runs.MaxBy(r => r.When);
+            Text(40, 42, "#", MenuDim); Text(64, 42, "TIME", MenuDim); Text(128, 42, "NAME", MenuDim); Text(224, 42, "DATE", MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 54 + i * 11;
+                uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
+                Text(34, y, $"{i + 1,2}", c);
+                Text(64, y, $"{r.Time:0.00}", c);
+                Text(128, y, r.Name, c);
+                Text(224, y, r.When == default ? "-" : r.When.ToString("yyyy-MM-dd"), c);
+            }
+        }
+        CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
+        CenterText("LEFT/RIGHT: CLASS   ESC: BACK", 186, MenuDim);
+    }
+
     void DrawCharacter(Game g)
     {
         var m = g.Menu;
@@ -877,7 +914,7 @@ public sealed class Renderer
     /// <summary>On the practice course: the run's time and your best, in the top-right corner (messages keep clear of it).</summary>
     void DrawRunClock(Game g)
     {
-        float best = g.Profile.CourseBest.GetValueOrDefault(g.P.Class.ToString());
+        float best = g.Profile.CourseBestTime(g.P.Class.ToString());
         string time = $"TIME {g.RunTime:0.00}", top = $"BEST {best:0.00}";
         int y = g.Vars.ShowFps ? 12 : 3;
         Text(W - 4 - Font.Width(time), y, time, g.RunStarted ? Col.Rgb(240, 236, 220) : Col.Rgb(150, 150, 160));
@@ -1181,9 +1218,9 @@ public sealed class Renderer
         var e = Art.Monsters["ettin"][(int)(g.Time * 2) % 2];
         var a = Art.Monsters["afrit"][(int)(g.Time * 3) % 2];
         var c = Art.Monsters["centaur"][(int)(g.Time * 2) % 2];
-        Icon(e, 40, 82, 64); Icon(c, 128, 82, 64); Icon(a, 216, 80, 64);
+        Icon(e, 56, 80, 48); Icon(c, 136, 80, 48); Icon(a, 216, 78, 48);
         var items = g.Menu.Items(MenuPage.Main);
-        for (int i = 0; i < items.Length; i++) MenuItem(items[i], 148 + i * 10, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
+        for (int i = 0; i < items.Length; i++) MenuItem(items[i], 128 + i * 10, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
         CenterText("ARROWS + ENTER.  CONTROLS ARE IN OPTIONS.", 190, Col.Rgb(150, 140, 120));
     }
 

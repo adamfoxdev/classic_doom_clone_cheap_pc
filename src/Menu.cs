@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style, Character }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -18,6 +18,9 @@ public sealed class MenuSystem
     public float NoticeTime;
     public const int BindRows = 15;
 
+    /// <summary>Whose leaderboard the Leaderboard page shows (Left/Right switch class).</summary>
+    public PClass BoardClass;
+
     public MenuSystem(Game g) { _g = g; }
 
     public bool Open => Page != null;
@@ -26,6 +29,7 @@ public sealed class MenuSystem
     {
         if (Page != null) _back.Push((Page.Value, Cursor));
         Page = p; Cursor = 0; Column = 0; Scroll = 0; Capturing = false; NoticeTime = 0;
+        if (p == MenuPage.Leaderboard) BoardClass = _g.P?.Class ?? PClass.Fighter;
     }
 
     public void Close()
@@ -51,8 +55,11 @@ public sealed class MenuSystem
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Practice", "Character", "Options", "Quit" },
-        MenuPage.Pause => new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
+        MenuPage.Main => new[] { "New game", "Practice", "Leaderboard", "Character", "Options", "Quit" },
+        MenuPage.Pause => _g.Practicing
+            ? new[] { "Resume", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
+            : new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
+        MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Back" },
@@ -137,6 +144,17 @@ public sealed class MenuSystem
             return;
         }
 
+        if (Page == MenuPage.Leaderboard)
+        {
+            if (inp.Left || inp.Right)
+            {
+                BoardClass = (PClass)(((int)BoardClass + (inp.Left ? 2 : 1)) % 3);
+                _g.PlaySound(Sfx.Swing, 0.5f);
+            }
+            if (inp.Confirm) Back();
+            return;
+        }
+
         if (Page == MenuPage.Options && (inp.Left || inp.Right || inp.Confirm))
         {
             int dir = inp.Left ? -1 : 1;
@@ -179,16 +197,23 @@ public sealed class MenuSystem
             case (MenuPage.Main, 0): Show(MenuPage.Style); Cursor = (int)_g.Style; break;
             case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.PendingPractice = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
             case (MenuPage.Main, 1): _g.Style = GameStyle.Classic; _g.PendingPractice = true; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Main, 2): Show(MenuPage.Leaderboard); break;
             case (MenuPage.Style, 2): Back(); break;
-            case (MenuPage.Main, 2): Show(MenuPage.Character); break;
-            case (MenuPage.Main, 3): Show(MenuPage.Options); break;
-            case (MenuPage.Main, 4): _g.QuitRequested = true; break;
-            case (MenuPage.Pause, 0): Close(); _g.Paused = false; break;
-            case (MenuPage.Pause, 1): Show(MenuPage.Character); break;
-            case (MenuPage.Pause, 2): Show(MenuPage.Options); break;
-            case (MenuPage.Pause, 3): Close(); _g.NewGame(_g.P.Class); break;
-            case (MenuPage.Pause, 4): Close(); _g.GoToTitle(); break;
-            case (MenuPage.Pause, 5): _g.QuitRequested = true; break;
+            case (MenuPage.Main, 3): Show(MenuPage.Character); break;
+            case (MenuPage.Main, 4): Show(MenuPage.Options); break;
+            case (MenuPage.Main, 5): _g.QuitRequested = true; break;
+            case (MenuPage.Pause, _):
+                switch (items[Cursor])
+                {
+                    case "Resume": Close(); _g.Paused = false; break;
+                    case "Character": Show(MenuPage.Character); break;
+                    case "Leaderboard": Show(MenuPage.Leaderboard); break;
+                    case "Options": Show(MenuPage.Options); break;
+                    case "Restart": Close(); _g.NewGame(_g.P.Class); break;
+                    case "Quit to title": Close(); _g.GoToTitle(); break;
+                    case "Quit game": _g.QuitRequested = true; break;
+                }
+                break;
         }
     }
 }
@@ -210,6 +235,7 @@ public static class Settings
         yield return "hud " + (int)g.Vars.Hud;
         yield return "crosshair " + (int)g.Vars.Crosshair;
         yield return "quakemove " + (g.Vars.QuakeMove ? 1 : 0);
+        yield return "name " + g.RunnerName;
     }
 
     public static void Save(Game g, string path)

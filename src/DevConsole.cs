@@ -196,6 +196,13 @@ public sealed class DevConsole
             if ((int)s < 0) { Print("usage: skill <vitality|power|agility|focus|thrusters>"); return; }
             Print(_g.SpendSkill(s) ? $"{s.ToString().ToLowerInvariant()} is now rank {_g.Profile.Rank(s)}" : "no points to spend, or that skill is maxed");
         });
+        Add("name", "[name]", "the name your practice course times go on the leaderboard under", a =>
+        {
+            if (a.Length < 2) { Print($"name = {_g.RunnerName}"); return; }
+            _g.RunnerName = Game.CleanName(string.Join(' ', a[1..]));
+            Print($"name = {_g.RunnerName}");
+            _g.SaveSettings();
+        });
         Add("renderedart", "[0|1]", "use the Blender-rendered sci-fi art pack", a =>
         {
             if (a.Length < 2) { Print($"renderedart = {(Art.Rendered ? 1 : 0)} ({RenderedArt.Covered.Count()} rendered assets available)"); return; }

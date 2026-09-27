@@ -227,7 +227,7 @@ public sealed class Game
         Practicing = true;
         RunTime = 0; RunStarted = false;
         if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
-        float best = Profile.CourseBest.GetValueOrDefault(P.Class.ToString());
+        float best = Profile.CourseBestTime(P.Class.ToString());
         if (best > 0) Say($"Your best as the {P.Def.Name}: {best:0.00}s.");
     }
 
@@ -254,25 +254,40 @@ public sealed class Game
         return $"Platform {zone + 1}. The next gap is {gap} wide: hit about {GapSpeedPercent(gap, plats[zone].floor - plats[zone + 1].floor)}% speed.{zig}";
     }
 
-    /// <summary>Crossed the finish: report the time, keep the best for your class, and start the run over.</summary>
+    /// <summary>Crossed the finish: report the time and its place on your class's leaderboard, and start the run over.</summary>
     void FinishRun()
     {
         string key = P.Class.ToString();
-        float best = Profile.CourseBest.GetValueOrDefault(key);
-        bool record = best <= 0 || RunTime < best;
-        if (record) { Profile.CourseBest[key] = RunTime; SaveProfile(); }
-        PlaySound(record ? Sfx.Secret : Sfx.Teleport, 1);
+        float best = Profile.CourseBestTime(key);
+        int place = Profile.AddCourseRun(key, RunTime, RunnerName, DateTime.Now);
+        if (place > 0) SaveProfile();
+        PlaySound(place == 1 ? Sfx.Secret : Sfx.Teleport, 1);
         Messages.Clear();
-        Say(record ? $"Course cleared in {RunTime:0.00}s - a new best!" : $"Course cleared in {RunTime:0.00}s (best {best:0.00}s).");
+        Say(place == 1 ? $"Course cleared in {RunTime:0.00}s - a new best!"
+            : place > 0 ? $"Course cleared in {RunTime:0.00}s - #{place} on the leaderboard (best {best:0.00}s)."
+            : $"Course cleared in {RunTime:0.00}s (best {best:0.00}s).");
         LastRun = RunTime;
+        LastPlace = place;
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         MoveTo(Level.StartX, Level.StartY, Level.StartAngle);
         RunTime = 0; RunStarted = false;
     }
 
-    /// <summary>The time of the last finished practice run.</summary>
+    /// <summary>The time of the last finished practice run, and its place on the leaderboard (0 if off it).</summary>
     public float LastRun;
+    public int LastPlace;
+
+    /// <summary>The name your practice runs go on the leaderboard under (`name` in the console).</summary>
+    public string RunnerName = CleanName(Environment.UserName);
+
+    /// <summary>A name the pixel font can draw: letters, digits, spaces and dashes, upper case, at most 12 long.</summary>
+    public static string CleanName(string name)
+    {
+        var s = new string((name ?? "").ToUpperInvariant().Where(c => c is >= 'A' and <= 'Z' or >= '0' and <= '9' or ' ' or '-').ToArray()).Trim();
+        if (s.Length > 12) s = s[..12].TrimEnd();
+        return s.Length > 0 ? s : "PLAYER";
+    }
 
     /// <summary>Plays a single custom map (from --play or `playmap`). Restart or winning plays it again.</summary>
     public void StartTest(MapDef map, PClass cls)
