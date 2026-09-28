@@ -1,5 +1,7 @@
 # Hexen Sharp
 
+[![Tests](https://github.com/adamfoxdev/classic_doom_clone_cheap_pc/actions/workflows/tests.yml/badge.svg)](https://github.com/adamfoxdev/classic_doom_clone_cheap_pc/actions/workflows/tests.yml)
+
 A small Hexen-style first-person shooter written in C#, set on a derelict space station. The original
 dark-fantasy look is kept as an option (**Options → Visual style**). It's built to run on cheap PCs: everything is
 software-rendered into a 320×200 framebuffer, and all textures, sprites and sounds are generated in code.
@@ -745,6 +747,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
+| `renderthreads [1-8]` | how many threads draw the 3D view (all your cores by default, up to 8) |
 | `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `-` none |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
@@ -772,6 +775,7 @@ Hexen's cheat codes work when typed during play (or in the console):
 dotnet run -c Release -- --selftest       # validates maps (reachability) and runs scripted gameplay checks
 dotnet run -c Release -- --shots shots    # renders scripted screenshots headlessly into ./shots
 dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styles, as WAV files into ./sounds
+dotnet run -c Release -- --bench [frames] # times the renderer on fixed views, from rooms to the tall open maps
 dotnet run -c Release -- --play map.hxm   # play-tests a map file, reloading it whenever it's saved
 dotnet run -c Release -- --check-map map.hxm   # prints the editor's checks for a map (exit code 1 if unplayable)
 dotnet run -c Release -- --export-maps maps    # writes every built-in hub map as a .hxm file
@@ -783,6 +787,23 @@ The self-test fails if `tools/editor/builtin-maps.js` is out of date with the ma
 needs Playwright and a `dotnet build -c Release`. It checks that every built-in map loads and saves back
 byte-for-byte, that the web editor's checks match `--check-map`, and that painting, stairs, fill, undo and resizing
 work.
+
+**Renderer performance:** `--bench` renders nine fixed views, from the great hall to the Windspire and the Hanging
+Cisterns, a few hundred times each, on one thread and then on all of them. It prints milliseconds per frame, the
+95th percentile and frames per second for each view.
+- **Threads:** the 3D view is drawn by several threads at once, a block of 16 columns at a time, one thread per
+  core up to 8. `renderthreads 1` in the console draws it on the main thread instead, and the setting is saved.
+  Every column is its own ray writing only its own pixels, so the picture is identical however many threads there
+  are; the self-test checks that on every benchmark view.
+- **Fast paths:** the wall and floor loops take a fast path for the usual case (no dig-map shading or highlight).
+  The texture row steps down a wall in fixed point, floors look up a per-row distance table instead of dividing,
+  and fog is worked out once a span.
+- **Results:** this took the benchmark from 0.83 ms a frame to 0.54 on one thread and 0.43 on four (on the machine
+  it was measured on). Rounding moves a few texels by one: about 700 of the screenshot tour's 7.4 million pixels.
+
+**CI:** `.github/workflows/tests.yml` runs on every pull request and every push to `main`. It builds, runs the
+self-test and the editor test (installing Playwright and Chromium), then renders the screenshot tour and uploads it as
+a `screenshots` artifact, so each PR's screenshots can be looked through. Any failed check fails the run.
 
 ## Rendered art pack (Blender)
 
@@ -863,7 +884,9 @@ in both looks (`76_…`, `77_…`).
 | `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
-| `src/Headless.cs` | `--selftest`, `--shots` and `--sounds` |
+| `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation |
+| `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |
 

@@ -274,6 +274,11 @@ public sealed class DevConsole
             _g.StartArena(n != null ? Enum.Parse<PClass>(n) : _g.P?.Class ?? PClass.Fighter);
             Open = false;
         });
+        Add("renderthreads", "[1-8]", "threads drawing the 3D view (all your cores by default; 1 draws it on the main thread)", a =>
+        {
+            if (a.Length > 1 && int.TryParse(a[1], out int n)) { Renderer.Threads = Math.Clamp(n, 1, 8); _g.SaveSettings(); }
+            Print($"renderthreads {Renderer.Threads} ({Environment.ProcessorCount} cores)");
+        });
         Add("difficulty", "[easy|normal|nightmare]", "show or set the difficulty (sets damage, monsterdamage and monsterspeed)", a =>
         {
             if (a.Length > 1)
