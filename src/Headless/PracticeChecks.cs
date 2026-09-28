@@ -508,8 +508,8 @@ public static partial class Headless
         g.Menu.Show(MenuPage.Leaderboard);
         check(g.Menu.BoardCourse == Courses.Circuit, "on a course, the leaderboard opens on it");
         var seen = new List<string>();
-        for (int k = 0; k < 4; k++) { g.Menu.Update(new Input { Down = true }, 1f / 35f); seen.Add(g.Menu.BoardArena ? "arena" : g.Menu.BoardCourse.Id); }
-        check(seen.SequenceEqual(new[] { "arena", "hangar", "descent", "circuit" }), "Up/Down step through the timed courses and the arena (Free Roam has no board)");
+        for (int k = 0; k < 5; k++) { g.Menu.Update(new Input { Down = true }, 1f / 35f); seen.Add(g.Menu.BoardDaily ? "daily" : g.Menu.BoardArena ? "arena" : g.Menu.BoardCourse.Id); }
+        check(seen.SequenceEqual(new[] { "arena", "daily", "hangar", "descent", "circuit" }), "Up/Down step through the timed courses, the arena and the daily challenge (Free Roam has no board)");
         g.Menu.Close(); g.Paused = false;
 
         // picking Free Roam from the menus

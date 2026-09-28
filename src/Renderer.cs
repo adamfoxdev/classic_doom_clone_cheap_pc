@@ -179,6 +179,7 @@ public sealed class Renderer
         CenterText("LEADERBOARD", 6, gold, 2);
         var def = ClassDef.All[(int)m.BoardClass];
         if (m.BoardArena) { DrawArenaBoard(g, def); return; }
+        if (m.BoardDaily) { DrawDailyBoard(g); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
         var (tg, ts, tb) = m.BoardCourse.MedalTimes(m.BoardClass);
         string targets = $"GOLD {tg:0.0}   SILVER {ts:0.0}   BRONZE {tb:0.0}";
@@ -261,7 +262,7 @@ public sealed class Renderer
         int n = ArenaModInfo.All.Length;
         for (int i = 0; i < items.Length; i++)
         {
-            int y = 46 + i * 13 + (i >= n ? 6 : 0);
+            int y = 44 + i * 12 + (i >= n ? 6 : 0);
             bool sel = i == m.Cursor;
             if (i >= n) { MenuItem(items[i], y, sel); continue; }
             var mod = ArenaModInfo.All[i];
@@ -271,14 +272,58 @@ public sealed class Renderer
             string val = set ? $"ON  +{ArenaModInfo.Bonus(mod) * 100:0}%" : "OFF";
             Text(272 - Font.Width(val), y, val, set ? on : sel ? MenuSel : MenuDim);
         }
-        if (m.Cursor < n)
-            foreach (var (line, k) in Wrap(ArenaModInfo.About(ArenaModInfo.All[m.Cursor]), 50).Select((l, k) => (l, k)))
-                CenterText(line, 132 + k * 10, blue);
+        bool daily = m.Cursor < items.Length && items[m.Cursor] == "Daily challenge";
+        string about = m.Cursor < n ? ArenaModInfo.About(ArenaModInfo.All[m.Cursor])
+            : daily ? $"TODAY: {Daily.Describe(Daily.Today).ToUpperInvariant()}. " + (g.TodaysRun(Daily.Today) is { } done
+                ? $"SCORED: {done.Score}. REPLAYS ARE PRACTICE." : "FIRST FINISHED RUN SCORES.")
+            : null;
+        if (about != null)
+            foreach (var (line, k) in Wrap(about, 50).Select((l, k) => (l, k)))
+                CenterText(line, 136 + k * 10, daily ? on : blue);
         var diff = Difficulties.Of(g.Vars);
+        var mods = daily ? Daily.For(Daily.Today).mods : g.ArenaMods;
         CenterText(diff == Difficulty.Custom ? "CUSTOM DIFFICULTY: RUNS AREN'T RECORDED"
-            : $"SCORE: 100 A WAVE  X{ArenaModInfo.Multiplier(g.ArenaMods) * Difficulties.ScoreFactor(diff):0.00}" + (diff == Difficulty.Normal ? "" : $"  ({Difficulties.Name(diff)})"), 156, gold);
-        DrawArenaTargets(168);
+            : $"SCORE: 100 A WAVE  X{ArenaModInfo.Multiplier(mods) * Difficulties.ScoreFactor(diff):0.00}" + (diff == Difficulty.Normal ? "" : $"  ({Difficulties.Name(diff)})"), 158, gold);
+        DrawArenaTargets(170);
         CenterText("ENTER/LEFT/RIGHT: SWITCH   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>The daily challenge's board for one day: each name's scored run, best first, and your streak.</summary>
+    void DrawDailyBoard(Game g)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        var day = Daily.Today.AddDays(-m.BoardDay);
+        string key = day.ToString("yyyy-MM-dd");
+        CenterText($"DAILY CHALLENGE   < {key} >", 26, blue);
+        CenterText(Daily.Describe(day).ToUpperInvariant(), 36, gold);
+        var runs = g.Profile.DailyRuns.Where(r => r.Date == key).OrderByDescending(r => r.Score).ThenBy(r => r.Time).ToList();
+        if (runs.Count == 0)
+        {
+            CenterText(m.BoardDay == 0 ? "NO SCORE YET TODAY." : "NOBODY PLAYED THIS DAY.", 70, MenuText);
+            if (m.BoardDay == 0) CenterText("ARENA > DAILY CHALLENGE ON THE TITLE MENU.", 82, MenuDim);
+        }
+        else
+        {
+            Text(18, 48, "#", MenuDim); Text(46, 48, "SCORE", MenuDim); Text(90, 48, "WAVES", MenuDim); Text(132, 48, "TIME", MenuDim);
+            Text(176, 48, "NAME", MenuDim);
+            for (int i = 0; i < runs.Count && i < Profile.BoardSize; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                MedalDot(36, y + 1, ArenaMedals.For(r.Waves));
+                uint c = r.Name == g.RunnerName ? fresh : i == 0 ? gold : MenuText;
+                Text(18, y, $"{i + 1,2}", c);
+                Text(46, y, $"{r.Score,5}", c);
+                Text(96, y, $"{r.Waves,2}", c);
+                Text(132, y, $"{r.Time:0.0}", c);
+                Text(176, y, r.Name, c);
+            }
+        }
+        int streak = Daily.Streak(g.Profile, g.RunnerName, Daily.Today);
+        var best = g.Profile.DailyRuns.Where(r => r.Name == g.RunnerName).OrderByDescending(r => r.Score).FirstOrDefault();
+        CenterText($"{g.RunnerName}: STREAK {streak} DAY{(streak == 1 ? "" : "S")}" + (best != null ? $"   BEST {best.Score} ({best.Date})" : ""), 172, MenuDim);
+        CenterText("LEFT/RIGHT: DAY   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
     }
 
     /// <summary>After a boss wave: the three perks to choose from, with what each does.</summary>
@@ -1283,7 +1328,8 @@ public sealed class Renderer
         {
             // under the wave count: your best, and the next medal you haven't got (by this run or your best)
             int best = g.Profile.ArenaBestWave(g.P.Class);
-            string line = best > 0 ? $"BEST {best} WAVE{(best == 1 ? "" : "S")}" : "NO BEST YET";
+            string line = g.DailyMode ? (g.TodaysRun(g.DailyDate) is { } today ? $"TODAY {today.Score}" : $"DAILY {g.DailyDate:MM-dd}")
+                : best > 0 ? $"BEST {best} WAVE{(best == 1 ? "" : "S")}" : "NO BEST YET";
             Text(W - 4 - Font.Width(line), top + 10, line, Col.Rgb(255, 220, 90));
             var (next, at) = ArenaMedals.Next(Math.Max(best, a.BestWave));
             if (next != Medal.None)

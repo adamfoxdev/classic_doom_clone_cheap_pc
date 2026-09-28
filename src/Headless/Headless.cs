@@ -74,6 +74,8 @@ public static partial class Headless
         GamepadChecks(Check);
         Console.WriteLine("Difficulty:");
         DifficultyChecks(Check);
+        Console.WriteLine("Daily challenge:");
+        DailyChecks(Check);
         Console.WriteLine("Arena perks and modifiers:");
         ArenaPerkChecks(Check);
 

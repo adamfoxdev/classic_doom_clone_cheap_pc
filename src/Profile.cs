@@ -79,6 +79,9 @@ public sealed class Profile
         return place + 1;
     }
 
+    /// <summary>Scored daily challenge runs: one per name per day, the first they finished.</summary>
+    public List<DailyRun> DailyRuns { get; set; } = new();
+
     /// <summary>The arena leaderboard by class: the runs that cleared the most waves, the quickest first among equals.</summary>
     public Dictionary<string, List<ArenaRun>> ArenaRuns { get; set; } = new();
 
@@ -206,6 +209,7 @@ public sealed class Profile
             p.ArenaRuns ??= new();
             p.ClassWins ??= new();
             p.MiniBosses ??= new();
+            p.DailyRuns ??= new();
             p.Achievements ??= new();
             // runs saved before scores: 100 a wave, as a run with no modifiers scores
             foreach (var board in p.ArenaRuns.Values)

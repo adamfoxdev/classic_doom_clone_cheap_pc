@@ -384,4 +384,79 @@ public static partial class Headless
         h.StartArena(PClass.Cleric);
         check(h.P.ArenaTier == 0, "a new run starts with a plain arsenal");
     }
+
+    static void DailyChecks(Action<bool, string> check)
+    {
+        var today = Daily.Today;
+        var days = Enumerable.Range(0, 60).Select(k => today.AddDays(-k)).Select(Daily.For).ToList();
+        check(Daily.For(today) == Daily.For(today) && days.Select(d => d.cls).Distinct().Count() == 3 && days.Select(d => d.mods).Distinct().Count() >= 4,
+              "each day has its own class and modifiers, the same all day");
+        check(days.All(d => (d.mods & ArenaMod.RandomClass) == 0 && System.Numerics.BitOperations.PopCount((uint)d.mods) is 1 or 2),
+              "one or two modifiers, never a random class");
+
+        // Arena > Daily challenge: the day's class and modifiers, without touching your own modifier picks
+        var g = new Game { FixedSeed = 1, AchievementsOn = false };
+        g.ArenaMods = ArenaMod.MeleeOnly;
+        g.Menu.Show(MenuPage.ArenaSetup);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.ArenaSetup), "Daily challenge");
+        check(g.Menu.Cursor > 0, "the Arena's setup page has the daily challenge");
+        g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        var (cls, mods) = Daily.For(today);
+        check(g.DailyMode && g.ArenaMode && g.P.Class == cls && g.Level.Arena.Mods == mods, $"it goes straight in, as the day's class with its modifiers ({Daily.Describe(today)})");
+        check(g.ArenaMods == ArenaMod.MeleeOnly && Settings.Lines(g).Contains("arenamods M"), "and your own modifier picks stay as they were");
+
+        // the same dice for everyone today
+        var other = new Game { FixedSeed = 99, AchievementsOn = false };
+        other.StartDaily();
+        var o1 = Enumerable.Range(0, 5).SelectMany(_ => g.Level.Arena.RollOffer()).ToList();
+        var o2 = Enumerable.Range(0, 5).SelectMany(_ => other.Level.Arena.RollOffer()).ToList();
+        var yesterday = new Game { FixedSeed = 1, AchievementsOn = false };
+        yesterday.StartDaily(today.AddDays(-1));
+        var o3 = Enumerable.Range(0, 5).SelectMany(_ => yesterday.Level.Arena.RollOffer()).ToList();
+        check(o1.SequenceEqual(o2) && !o1.SequenceEqual(o3), "every attempt today rolls the same perks (and waves), another day's differ");
+
+        // the day's first finished run is your score; the rest are practice
+        void Play(Game gg, int waves)
+        {
+            gg.Vars.God = true;
+            var a = gg.Level.Arena;
+            var altar = gg.Level.FindMark('!').Value;
+            gg.P.X = altar.x; gg.P.Y = altar.y;
+            for (int f = 0; f < 35 * 60 * 3 && a.BestWave < waves; f++) { gg.Update(default, 1f / 35f); gg.KillAll(); if (a.Offer != null) gg.Update(new Input { Slot = 1 }, 1f / 35f); }
+            gg.Vars.God = false;
+        }
+        g.RunnerName = "TESTER";
+        Play(g, 2);
+        g.GoToTitle();
+        var mine = g.Profile.DailyRuns.Where(r => r.Name == "TESTER").ToList();
+        check(mine.Count == 1 && mine[0].Date == today.ToString("yyyy-MM-dd") && mine[0].Waves == 2 && mine[0].Score == ArenaModInfo.Score(2, mods) && g.LastDailyScored,
+              $"your first finished run today is your score ({mine[0].Score})");
+        check(g.Profile.ArenaBoard(cls).Count == 0 && !g.DailyMode, "(it goes on the daily board, not the arena's)");
+        g.StartDaily();
+        Play(g, 3);
+        g.GoToTitle();
+        check(g.Profile.DailyRuns.Count(r => r.Name == "TESTER") == 1 && !g.LastDailyScored && g.LastDaily.Waves == 3, "another go today is practice: the score stays");
+        g.Con.Execute("daily " + today.AddDays(-3).ToString("yyyy-MM-dd"));
+        check(g.DailyMode && g.DailyDate == today.AddDays(-3), "'daily <date>' plays an old day's challenge");
+        Play(g, 1);
+        g.GoToTitle();
+        check(g.Profile.DailyRuns.Count(r => r.Name == "TESTER") == 1, "but only today's is scored");
+
+        // streaks, the board, and the Regular achievement
+        g.Profile.DailyRuns.Add(new DailyRun { Date = today.AddDays(-1).ToString("yyyy-MM-dd"), Name = "TESTER", Score = 500 });
+        g.Profile.DailyRuns.Add(new DailyRun { Date = today.AddDays(-2).ToString("yyyy-MM-dd"), Name = "TESTER", Score = 900 });
+        g.Profile.DailyRuns.Add(new DailyRun { Date = today.AddDays(-4).ToString("yyyy-MM-dd"), Name = "TESTER", Score = 100 });
+        g.Profile.DailyRuns.Add(new DailyRun { Date = today.ToString("yyyy-MM-dd"), Name = "RIVAL", Score = 99999, Waves = 30 });
+        check(Daily.Streak(g.Profile, "TESTER", today) == 3 && Daily.Streak(g.Profile, "TESTER", today.AddDays(1)) == 3, "a streak counts the days in a row, up to today (or yesterday, till you play)");
+        g.Paused = true; g.Menu.Show(MenuPage.Leaderboard);
+        for (int k = 0; k < 6 && !g.Menu.BoardDaily; k++) g.Menu.Update(new Input { Down = true }, 1f / 35f);
+        var r = new Renderer();
+        r.Render(g);
+        int top = r.Fb.Count(px => px == Col.Rgb(230, 190, 80)), mineLit = r.Fb.Count(px => px == Col.Rgb(120, 255, 140));
+        g.Menu.Update(new Input { Left = true }, 1f / 35f);
+        check(g.Menu.BoardDaily && g.Menu.BoardDay == 1 && top > 50 && mineLit > 50, "the leaderboard's Daily page ranks the day's names, yours picked out; Left goes back a day");
+        g.Menu.Close(); g.Paused = false;
+        foreach (int k in new[] { 5, 6, 7 }) g.Profile.DailyRuns.Add(new DailyRun { Date = today.AddDays(-k).ToString("yyyy-MM-dd"), Name = "TESTER" });
+        check(Achievements.Find("daily_7").Done(g), "seven different days is the Regular achievement");
+    }
 }

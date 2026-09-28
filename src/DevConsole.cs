@@ -279,6 +279,12 @@ public sealed class DevConsole
             if (a.Length > 1 && int.TryParse(a[1], out int n)) { Renderer.Threads = Math.Clamp(n, 1, 8); _g.SaveSettings(); }
             Print($"renderthreads {Renderer.Threads} ({Environment.ProcessorCount} cores)");
         });
+        Add("daily", "[yyyy-mm-dd]", "play the daily challenge (today's unless you name a day)", a =>
+        {
+            if (a.Length > 1 && !DateOnly.TryParse(a[1], System.Globalization.CultureInfo.InvariantCulture, out _)) { Print("usage: daily [yyyy-mm-dd]"); return; }
+            _g.StartDaily(a.Length > 1 ? DateOnly.Parse(a[1], System.Globalization.CultureInfo.InvariantCulture) : null);
+            Open = false;
+        });
         Add("difficulty", "[easy|normal|nightmare]", "show or set the difficulty (sets damage, monsterdamage and monsterspeed)", a =>
         {
             if (a.Length > 1)

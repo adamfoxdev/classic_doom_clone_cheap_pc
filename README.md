@@ -419,6 +419,24 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
 ![Picking a perk after a boss wave](docs/arena_perks.png)
 ![The arena's setup page, with two modifiers on](docs/arena_setup.png)
 
+#### Daily challenge
+
+**Daily challenge** on the Arena's setup page is an arena run set by the date (UTC), the same for everyone that day.
+- **What the date sets:** your class and one or two modifiers (never random class). It also seeds the arena's dice:
+  which monsters each wave brings, where they appear, and the perks on offer. So every attempt that day faces the
+  same waves.
+- **Scoring:** your first finished run of the day is your score for it (one per name, as set with `name`), scored
+  like any arena run. Later runs that day are practice. It goes on its own board, not the arena's, and your own
+  modifier picks aren't touched.
+- **The board:** the leaderboard's **Daily** page (`Up`/`Down` from the arena's) ranks the day's names, with yours
+  picked out. It shows the day's class and modifiers, your streak of days in a row and your best day. `Left`/`Right`
+  step back through earlier days.
+- **Old days:** `daily <yyyy-mm-dd>` in the console replays an old day's challenge, as practice only.
+- **Regular:** finishing it on seven different days is the Regular achievement.
+
+![The daily challenge on the Arena's setup page](docs/arena_daily.png)
+![The daily board](docs/daily_board.png)
+
 ## Saving
 
 The campaign saves itself to `save.json`, next to your profile. **Continue** heads the title menu whenever there's a
@@ -652,7 +670,7 @@ points with `Enter`. Every skill has 10 ranks:
 harder per level. The game announces each level-up, and the character screen shows every weapon's level and
 progress.
 
-**Achievements:** there are 21, listed under **Character → Achievements**. Each pays experience once, when it
+**Achievements:** there are 22, listed under **Character → Achievements**. Each pays experience once, when it
 unlocks, with a banner and a message; this works anywhere, practice and the arena included. The list shows which
 you've got and when, and how far along you are with the ones that build up.
 
@@ -679,6 +697,7 @@ you've got and when, and how far along you are with the ones that build up.
 | Master of Arms | Raise a weapon to level 10 | 250 |
 | Case Closed | Solve every case in Story mode | 300 |
 | Big Game Hunter | Defeat every mini-boss on the optional maps | 500 |
+| Regular | Finish the daily challenge on seven different days | 300 |
 
 - **Hub game only:** the one-game ones (secrets, lore) count only in a game through the hub, not on practice
   courses, in the arena or on custom maps.
@@ -772,6 +791,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
+| `daily [yyyy-mm-dd]` | play the daily challenge (an old day's is practice only) |
 | `renderthreads [1-8]` | how many threads draw the 3D view (all your cores by default, up to 8) |
 | `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `-` none |
 | `chests` | list this map's chests and how many you've opened |
