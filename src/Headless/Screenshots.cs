@@ -467,6 +467,24 @@ public static partial class Headless
                 Shot("157_roomlook_vaporwave");
                 g.Con.Execute("roomlook off", quiet: true);
             }
+            // Rocket Pool: the rack from behind the head string, and the demo mid-game
+            g.StartPractice(PClass.Fighter, Pool.Course);
+            g.P.X = 21.5f; g.P.Y = 12.5f; g.P.Angle = 0; g.P.Pitch = -14;
+            g.Messages.Clear(); g.Say("Rocket Pool: blast the balls into the pockets. The black 8 goes last: pot it early and it's back on the spot, +10s.");
+            Tick(default, 4);
+            Shot("158_rocket_pool");
+            g.StartDemo();
+            for (int k = 0; k < 35 * 14; k++) Tick(default);
+            Shot("159_rocket_pool_demo");
+            g.EndDemo();
+            foreach (var (n, t, shots, fouls) in new[] { (g.RunnerName, 58.4f, 17, 0), ("ACE-1", 64.9f, 15, 1), (g.RunnerName, 71.2f, 22, 0), ("NOVA", 96.0f, 30, 2) })
+                g.Profile.AddPoolRun(new PoolRun { Name = n, Class = "Fighter", Time = t, Shots = shots, Fouls = fouls, When = new DateTime(2026, 9, 20 + shots % 7) });
+            g.Menu.Show(MenuPage.Leaderboard);
+            g.Menu.BoardPool = true; g.Menu.BoardClass = PClass.Fighter;
+            Shot("160_pool_board");
+            g.Menu.Close();
+            g.Profile.PoolRuns.Clear();
+            g.StartPractice(PClass.Fighter, Soccer.Course);
             foreach (var (n, goals, shots) in new[] { (g.RunnerName, 9, 41), ("ACE-1", 7, 30), (g.RunnerName, 7, 52), ("NOVA", 4, 38) })
                 g.Profile.AddSoccerRun(new SoccerRun { Name = n, Class = "Fighter", Goals = goals, Shots = shots, When = new DateTime(2026, 9, 20 + shots % 7) });
             g.Menu.Show(MenuPage.Leaderboard);
@@ -1071,6 +1089,8 @@ public static partial class Headless
         Shot("141_practice_grenades");
         g.Menu.Cursor = Array.IndexOf(Courses.All, Soccer.Course);
         Shot("152_practice_soccer");
+        g.Menu.Cursor = Array.IndexOf(Courses.All, Pool.Course);
+        Shot("161_practice_pool");
         g.Menu.Close();
         foreach (var (course, name, cam) in new[]
         {

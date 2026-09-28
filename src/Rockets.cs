@@ -142,6 +142,7 @@ public sealed partial class Game
         };
         Level.Things.Add(pr);
         if (OnSoccer) SoccerShots++;
+        if (OnPool) PoolShots++;
     }
 
     /// <summary>The climb angle a rocket fired now would take (ignoring the aim at a monster).</summary>

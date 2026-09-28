@@ -117,9 +117,14 @@ public sealed class SoccerBall : Thing
 {
     public float VX, VY, VZ, Spin;
     public bool Grounded;
-    public SoccerBall() { Radius = Soccer.Radius; SpriteW = SpriteH = Soccer.Radius * 2; Solid = false; }
+    /// <summary>Its look (the soccer ball's unless set), how fast it slows rolling, how it comes off walls, and how hard blasts throw it.</summary>
+    public Tex[] Frames;
+    public float Roll = Soccer.Roll, WallBounce = Soccer.WallBounce, Knock = Soccer.Knock;
+    /// <summary>A pool ball's number (0 for the soccer ball).</summary>
+    public int Number;
+    public SoccerBall(float radius = Soccer.Radius) { Radius = radius; SpriteW = SpriteH = radius * 2; Solid = false; }
     public float MidZ => Z + Radius;
-    public override Tex Sprite(float time) => Soccer.Frames[(int)(Spin * 3) & 7];
+    public override Tex Sprite(float time) => (Frames ?? Soccer.Frames)[(int)(Spin * 3) & 7];
 }
 
 /// <summary>One soccer match: the goals scored, the shots it took, and whose it was.</summary>
@@ -180,7 +185,7 @@ public sealed partial class Game
     /// <summary>The ball touched: the clock starts.</summary>
     void BallTouched()
     {
-        if (!OnSoccer || RunStarted) return;
+        if (!(OnSoccer || OnPool) || RunStarted) return;
         RunStarted = true;
     }
 
@@ -262,15 +267,15 @@ public sealed partial class Game
         float h = dt / steps;
         for (int s = 0; s < steps; s++)
         {
-            float ground = Soccer.Ground(Level, b.X, b.Y);
             if (b.Grounded)
             {
                 // rolling: it slows, and a slope pulls it back down
                 float flat = MathF.Sqrt(b.VX * b.VX + b.VY * b.VY);
-                float keep = flat > 0 ? MathF.Max(0, flat - Soccer.Roll * h) / flat : 0;
+                float keep = flat > 0 ? MathF.Max(0, flat - b.Roll * h) / flat : 0;
                 b.VX *= keep; b.VY *= keep;
-                foreach (var ramp in Soccer.Ramps)
-                    if (ramp.Holds(b.X, b.Y)) b.VX -= Soccer.Gravity * ramp.Dir * ramp.Top / ramp.Length * h;
+                if (OnSoccer)
+                    foreach (var ramp in Soccer.Ramps)
+                        if (ramp.Holds(b.X, b.Y)) b.VX -= Soccer.Gravity * ramp.Dir * ramp.Top / ramp.Length * h;
             }
             else b.VZ -= Soccer.Gravity * h;
             // across: a wall, the crossbar, or a face higher than it can roll up turns it back
@@ -278,15 +283,15 @@ public sealed partial class Game
             {
                 if (Level.BlocksCircle(x, y, r)) return true;
                 float ax = x + dx * r * 0.7f, ay = y + dy * r * 0.7f;
-                return Soccer.Ground(Level, ax, ay) > b.Z + 0.3f || Level.HeightAt(ax, ay) < b.Z + 2 * r;
+                return BallGround(ax, ay) > b.Z + 0.3f || Level.HeightAt(ax, ay) < b.Z + 2 * r;
             }
             float nx = b.X + b.VX * h, ny = b.Y + b.VY * h;
-            if (b.VX != 0 && Stops(nx, b.Y, MathF.Sign(b.VX), 0)) { if (MathF.Abs(b.VX) > 1.5f) Thud(b); b.VX = -b.VX * Soccer.WallBounce; }
+            if (b.VX != 0 && Stops(nx, b.Y, MathF.Sign(b.VX), 0)) { if (MathF.Abs(b.VX) > 1.5f) Thud(b); b.VX = -b.VX * b.WallBounce; }
             else b.X = nx;
-            if (b.VY != 0 && Stops(b.X, ny, 0, MathF.Sign(b.VY))) { if (MathF.Abs(b.VY) > 1.5f) Thud(b); b.VY = -b.VY * Soccer.WallBounce; }
+            if (b.VY != 0 && Stops(b.X, ny, 0, MathF.Sign(b.VY))) { if (MathF.Abs(b.VY) > 1.5f) Thud(b); b.VY = -b.VY * b.WallBounce; }
             else b.Y = ny;
             // up and down
-            float under = Soccer.Ground(Level, b.X, b.Y);
+            float under = BallGround(b.X, b.Y);
             if (b.Grounded)
             {
                 // on the ground it follows the surface: up a ramp it climbs (and keeps the climb, off the top), off an edge it falls
@@ -314,16 +319,37 @@ public sealed partial class Game
 
     void Thud(SoccerBall b) => Sound(Sfx.Hit, b.X, b.Y);
 
+    /// <summary>The ground under a ball: the pitch's ramps on Rocket Soccer, else the floor.</summary>
+    float BallGround(float x, float y) => OnSoccer ? Soccer.Ground(Level, x, y) : Level.FloorAt(x, y);
+
+    /// <summary>The balls in play: the soccer ball, or the pool balls on the table.</summary>
+    IEnumerable<SoccerBall> LiveBalls()
+    {
+        if (OnSoccer && Ball is { Removed: false } b && b.Level == Level) yield return b;
+        if (OnPool) foreach (var pb in PoolBalls) if (!pb.Removed && pb.Level == Level) yield return pb;
+    }
+
+    /// <summary>Your velocity this frame, for running into balls: Quake movement's, or how far you've come since the last frame.</summary>
+    (float x, float y) RunVelocity(float dt)
+    {
+        if (PlayTime == _runVelAt) return _runVel;
+        var p = P;
+        float vx = p.VX, vy = p.VY;
+        if (dt > 0 && vx == 0 && vy == 0) { vx = (p.X - _ballLastX) / dt; vy = (p.Y - _ballLastY) / dt; }
+        if (MathF.Abs(vx) + MathF.Abs(vy) > 20) vx = vy = 0; // (a teleport, not a run)
+        _ballLastX = p.X; _ballLastY = p.Y;
+        _runVelAt = PlayTime;
+        return _runVel = (vx, vy);
+    }
+    float _runVelAt = -1;
+    (float x, float y) _runVel;
+
     /// <summary>You run into the ball: it's pushed off you, at least as fast as you were going into it.</summary>
     void BallMeetsPlayer(SoccerBall b, float dt)
     {
         var p = P;
-        // your velocity: Quake movement's, or (classic movement) how far you've come since the last frame
-        float pvx = p.VX, pvy = p.VY;
-        if (dt > 0 && pvx == 0 && pvy == 0) { pvx = (p.X - _ballLastX) / dt; pvy = (p.Y - _ballLastY) / dt; }
-        if (MathF.Abs(pvx) + MathF.Abs(pvy) > 20) pvx = pvy = 0; // (a teleport, not a run)
-        _ballLastX = p.X; _ballLastY = p.Y;
-        if (Mode != GameMode.Playing || _kickoff >= 0) return;
+        var (pvx, pvy) = RunVelocity(dt);
+        if (Mode != GameMode.Playing || OnSoccer && _kickoff >= 0) return;
         float feet = p.FloorZ + p.Z;
         if (feet > b.Z + 2 * b.Radius - 0.15f || feet + Player.Height < b.Z) return;
         float dx = b.X - p.X, dy = b.Y - p.Y, d = MathF.Sqrt(dx * dx + dy * dy), reach = b.Radius + p.Radius;
@@ -340,29 +366,34 @@ public sealed partial class Game
         BallTouched();
     }
 
-    /// <summary>A rocket's or grenade's blast shoves the ball away from it, harder the nearer its surface is.</summary>
+    /// <summary>A rocket's or grenade's blast shoves the balls away from it, harder the nearer their surfaces are.</summary>
     void BallBlast(Projectile pr)
     {
-        var b = Ball;
-        if (!OnSoccer || b == null || b.Removed || b.Level != Level) return;
+        foreach (var b in LiveBalls().ToList()) BallBlast(pr, b);
+    }
+
+    void BallBlast(Projectile pr, SoccerBall b)
+    {
         float dx = b.X - pr.X, dy = b.Y - pr.Y, dz = b.MidZ - pr.Z, d = MathF.Sqrt(dx * dx + dy * dy + dz * dz);
         float pts = Rockets.Points(MathF.Max(0, d - b.Radius));
         if (pts <= 0 || !Level.Sight(pr.X, pr.Y, b.X, b.Y)) return;
         if (d < 0.01f) { dx = 0; dy = 0; dz = 1; d = 1; }
-        float k = pts * Soccer.Knock / d;
+        float k = pts * b.Knock / d;
         b.VX += dx * k; b.VY += dy * k; b.VZ += dz * k;
         if (b.VZ > 0.5f) b.Grounded = false;
         Sound(Sfx.Push, b.X, b.Y);
         if (pr.FromPlayer) BallTouched();
     }
 
-    /// <summary>Does a shot at (x, y, z) touch the ball?</summary>
+    /// <summary>Does a shot at (x, y, z) touch a ball?</summary>
     bool HitsBall(float x, float y, float z, float pad)
     {
-        var b = Ball;
-        if (!OnSoccer || b == null || b.Removed || b.Level != Level) return false;
-        float dx = b.X - x, dy = b.Y - y, dz = b.MidZ - z;
-        return dx * dx + dy * dy + dz * dz < (b.Radius + pad) * (b.Radius + pad);
+        foreach (var b in LiveBalls())
+        {
+            float dx = b.X - x, dy = b.Y - y, dz = b.MidZ - z;
+            if (dx * dx + dy * dy + dz * dz < (b.Radius + pad) * (b.Radius + pad)) return true;
+        }
+        return false;
     }
 }
 
@@ -380,18 +411,32 @@ static class SoccerPilot
         var (gx, gy) = Soccer.Mouth(g.LitGoal);
         // aim for the middle of the goal, or at a corner of it when the ball is off to one side
         gy = Math.Clamp(b.Y, Soccer.MouthY0 + 1.5f, Soccer.MouthY1 - 0.5f);
+        return BallPilot.Shoot(g, pilot, b, gx, gy, (Soccer.LineW + 0.6f, Soccer.LineE - 0.6f, 1.6f, Soccer.H - 2.6f),
+            "SHOOT: the ball's between you and the goal: blast it low in the back", "GET BEHIND: round to the far side of the ball from the lit goal");
+    }
+}
+
+/// <summary>
+/// Shooting a ball at a target (a goal, a pocket): get behind it on the line from the target through it, giving it a
+/// wide berth, then fire a rocket low into its back from a few cells off, out of reach of the blast.
+/// </summary>
+static class BallPilot
+{
+    public static Input Shoot(Game g, DemoPilot pilot, SoccerBall b, float gx, float gy, (float x0, float x1, float y0, float y1) room, string shoot, string behind, float lineUp = 0.9f, float aim = 0.08f)
+    {
+        var p = g.P;
         float tx = gx - b.X, ty = gy - b.Y, tl = MathF.Max(0.01f, MathF.Sqrt(tx * tx + ty * ty));
         tx /= tl; ty /= tl;
         // the spot behind the ball, from which a shot sends it at the goal
         float back = 4.5f, sx = b.X - tx * back, sy = b.Y - ty * back;
-        sx = Math.Clamp(sx, Soccer.LineW + 0.6f, Soccer.LineE - 0.6f); sy = Math.Clamp(sy, 1.6f, Soccer.H - 2.6f);
+        sx = Math.Clamp(sx, room.x0, room.x1); sy = Math.Clamp(sy, room.y0, room.y1);
         float toSpot = MathF.Sqrt((sx - p.X) * (sx - p.X) + (sy - p.Y) * (sy - p.Y));
         float bx = b.X - p.X, by = b.Y - p.Y, toBall = MathF.Sqrt(bx * bx + by * by);
         float lined = (bx * tx + by * ty) / MathF.Max(0.01f, toBall); // 1 when the ball is straight between you and the goal
         float sens = 0.0025f * g.Vars.Sens;
         var inp = new Input();
         float face;
-        if (lined > 0.9f && toBall < 7f)
+        if (lined > lineUp && toBall < 7f)
         {
             // lined up: look at the ball's lower half and shoot
             face = MathF.Atan2(by, bx);
@@ -399,8 +444,8 @@ static class SoccerPilot
             float want = -MathF.Atan2(drop, toBall) * (160f / MathF.Tan(g.ViewFov * MathF.PI / 360f));
             inp.LookY = (p.Pitch - want) / (0.35f * g.Vars.Sens);
             inp.Move = toBall > 5f ? 1 : toBall < 4f ? -1 : 0; // far enough off that the blast doesn't catch it too
-            inp.Fire = p.Cooldown <= 0 && toBall > 3.8f && MathF.Abs(Game.AngleDiff(face, p.Angle)) < 0.08f && MathF.Abs(p.Pitch - want) < 6f;
-            pilot.Say("SHOOT: the ball's between you and the goal: blast it low in the back");
+            inp.Fire = p.Cooldown <= 0 && toBall > 3.8f && MathF.Abs(Game.AngleDiff(face, p.Angle)) < aim && MathF.Abs(p.Pitch - want) < 6f;
+            pilot.Say(shoot);
         }
         else
         {
@@ -410,7 +455,7 @@ static class SoccerPilot
             face = MathF.Atan2(ay, ax);
             inp.Move = toSpot > 0.4f ? 1 : 0;
             inp.LookY = p.Pitch / (0.35f * g.Vars.Sens);
-            pilot.Say("GET BEHIND: round to the far side of the ball from the lit goal");
+            pilot.Say(behind);
         }
         inp.LookX = MathF.IEEERemainder(face - p.Angle, MathF.Tau) / sens;
         return inp;

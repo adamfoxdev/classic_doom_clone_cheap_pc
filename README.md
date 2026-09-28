@@ -286,6 +286,7 @@ Switch to the old direct movement with **Options → Movement** or `quakemove 0`
 | **Endless** | 50 platforms over gaps, built from a seed, that get harder as you go. There's no clock to beat: you score the platforms you reach before you fall. See [The endless course](#the-endless-course). |
 | **Rocket Tower** | An endless climb up shafts of platforms from a seed, rocket jump by rocket jump. One fall ends the run. See [The rocket tower](#the-rocket-tower). |
 | **Rocket Soccer** | A walled pitch with two goals, two kicker ramps and a big ball, to blast into the lit goal with rockets and grenades. Two-minute matches with their own board. See [Rocket Soccer](#rocket-soccer). |
+| **Rocket Pool** | A giant pool table with ten balls racked in a triangle and six sunken pockets. Blast them in with rockets, the black 8 last, as fast as you can. Its own board. See [Rocket Pool](#rocket-pool). |
 | **Shooting Range** | Every weapon on a rack, with a Quake rocket launcher, railgun and grenade launcher, target dummies, and ledges to rocket jump onto. Use starts a one-minute drill with its own board. See [The shooting range](#the-shooting-range). |
 | **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
 
@@ -677,6 +678,31 @@ rocket launcher (1) and the grenade launcher (2).
 ![Rocket Soccer: lined up on the ball in front of the lit goal](docs/rocket_soccer.png)
 
 ![The ball flying off a kicker ramp](docs/soccer_ramp.png)
+
+#### Rocket Pool
+
+**Practice → Rocket Pool** puts you on a giant pool table with ten balls racked in a triangle. Your cue is the rocket
+launcher (1), with the grenade launcher (2) for trick shots.
+
+- **The table:** green felt 0.75 cells up inside wooden cushions, with six pockets sunk to the floor: four in the
+  corners and two halfway along the long sides. You can drop into a pocket and jump back out.
+- **The balls** are numbered 1 to 7 (solids), the black 8, and 9 and 10 (striped).
+  - A rocket blast shoves a ball away from it, hardest when it hits the ball square.
+  - Balls knock into each other (a straight hit stops the ball that hits and sends the other on), bounce off the
+    cushions and drop into the pockets.
+  - Running into a ball nudges it.
+- **The rules:** pot all ten, the 8 last. Pot the 8 early and it's a foul: 10 seconds go on your time and the 8 comes
+  back to the foot spot.
+- **The clock** starts at your first touch and stops when the table's clear. The top-right corner shows the time, the
+  balls left, any fouls, your best, and a colour chip for each ball still on the table. Your time goes on your class's
+  board (a Rocket Pool page on the Leaderboard: quickest, then fewest shots), and the table racks again.
+- **As on the other rocket courses:** your blasts can't kill you, and your health and ammo come back.
+- **The demo** picks the ball nearest a pocket, gets behind it on the line from that pocket, and blasts it in. It
+  clears a table in about a minute and a half.
+
+![Rocket Pool: the rack from behind the head string](docs/rocket_pool.png)
+
+![The demo lining up the 3 ball](docs/rocket_pool_demo.png)
 
 #### The rocket-jump course
 

@@ -452,6 +452,7 @@ public sealed partial class Game
                 RangeTick(DemoPilot.Tick); // the demo's health and mana come back as yours do
                 TowerTick(DemoPilot.Tick);
                 SoccerTick(DemoPilot.Tick);
+                PoolTick(DemoPilot.Tick);
             }
             return false;
         }
@@ -469,6 +470,7 @@ public sealed partial class Game
         if (Course.Grenades) SetUpGrenadeCourse();
         if (Course.Tower) SetUpTower();
         if (Course.Soccer) SetUpSoccer();
+        if (Course.Pool) SetUpPool();
         ResetRun();
     }
 
@@ -578,6 +580,7 @@ public sealed partial class Game
         if (Practicing && Course.Grenades) ResetCourseTargets();
         if (Practicing && Course.Tower) { TowerHeight = 0; TowerPlatform = 0; _towerCarry = -1; }
         if (Practicing && Course.Soccer) ResetSoccer();
+        if (Practicing && Course.Pool) ResetPool();
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         Recording = new GhostTrack();
@@ -1048,6 +1051,7 @@ public sealed partial class Game
         TrickTick(dt);
         TowerTick(step);
         SoccerTick(step);
+        PoolTick(step);
         RoomLookTick(dt);
         QuakeArenaTick();
         TargetsTick(step);

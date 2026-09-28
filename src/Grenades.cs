@@ -56,6 +56,7 @@ public sealed partial class Game
         };
         GrenadesThrown++;
         if (OnSoccer) SoccerShots++;
+        if (OnPool) PoolShots++;
         Level.Things.Add(pr);
     }
 

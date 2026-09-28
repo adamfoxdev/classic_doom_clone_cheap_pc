@@ -173,6 +173,22 @@ public sealed class Profile
         return board.IndexOf(run) + 1;
     }
 
+    /// <summary>Rocket Pool tables cleared, the best ten for each class (quickest, then fewest shots).</summary>
+    public List<PoolRun> PoolRuns { get; set; } = new();
+
+    public List<PoolRun> PoolBoard(PClass cls) =>
+        PoolRuns.Where(r => r.Class == cls.ToString()).OrderBy(r => r.Time).ThenBy(r => r.Shots).Take(BoardSize).ToList();
+
+    public float PoolBest(PClass cls) => PoolRuns.Where(r => r.Class == cls.ToString()).Select(r => r.Time).DefaultIfEmpty(0).Min();
+
+    public int AddPoolRun(PoolRun run)
+    {
+        PoolRuns.Add(run);
+        var board = PoolBoard(Enum.Parse<PClass>(run.Class));
+        PoolRuns.RemoveAll(r => r.Class == run.Class && !board.Contains(r));
+        return board.IndexOf(run) + 1;
+    }
+
     /// <summary>Shooting range drills, the best ten for each class (highest score, then fewest shots).</summary>
     public List<RangeRun> RangeRuns { get; set; } = new();
 
@@ -334,6 +350,7 @@ public sealed class Profile
             p.EndlessRuns ??= new();
             p.TowerRuns ??= new();
             p.SoccerRuns ??= new();
+            p.PoolRuns ??= new();
             p.RailRuns ??= new();
             p.InstagibRuns ??= new();
             p.RangeRuns ??= new();

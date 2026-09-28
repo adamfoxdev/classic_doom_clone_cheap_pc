@@ -127,7 +127,7 @@ public sealed partial class Game
     /// </summary>
     /// <summary>A rail trial is on (see RailTrials).</summary>
     public bool RailTrial;
-    public bool SafeRockets => (Practicing && (Course.Range || Course.Rockets || Course.Grenades || Course.Tower || Course.Soccer)) || Level?.Quake == true;
+    public bool SafeRockets => (Practicing && (Course.Range || Course.Rockets || Course.Grenades || Course.Tower || Course.Soccer || Course.Pool)) || Level?.Quake == true;
 
     /// <summary>On a fresh range: the full loadout (your class's first weapon in hand), the rack, and the dummies.</summary>
     void SetUpRange()
