@@ -205,7 +205,7 @@ public sealed class DevConsole
         Add("noclip", "", "toggle walking through walls", _ => Toggle("noclip"));
         Add("notarget", "", "toggle monsters ignoring you", _ => Toggle("notarget"));
         Add("freeze", "", "toggle frozen monsters", _ => Toggle("freeze"));
-        Add("give", "<all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher>", "give yourself things", a => Give(a.Length > 1 ? a[1] : "all"));
+        Add("give", "<all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun>", "give yourself things", a => Give(a.Length > 1 ? a[1] : "all"));
         Add("kill", "", "kill every monster on this map", _ =>
         {
             if (!InGame()) return;
@@ -575,13 +575,14 @@ public sealed class DevConsole
         bool any = false;
         if (all || what == "health") { p.Health = p.MaxHealth; any = true; }
         if (all || what == "armor") { p.Armor = 100; any = true; }
-        if (all || what == "weapons") { p.HasWeapon[1] = p.HasWeapon[2] = true; any = true; }
+        if (all || what == "weapons") { Array.Fill(p.HasWeapon, true); any = true; }
         if (all || what == "mana" || what == "weapons") { p.BlueMana = p.GreenMana = 200; any = true; }
         if (all || what == "keys") { p.SteelKey = p.FireKey = true; any = true; }
         if (all || what == "items") { p.Flasks = 9; p.Urns = 3; any = true; }
         if (all || what == "jetpack") { p.HasJetpack = true; p.Fuel = p.MaxFuel; any = true; }
         if (what == "rocketlauncher") { _g.GiveRocketLauncher(); any = true; }
-        if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher>"); return; }
+        if (what == "railgun") { _g.GiveExtra(Railgun.Gun); any = true; }
+        if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun>"); return; }
         Print($"given: {what}");
         _g.Say($"Cheater! ({what})");
         _g.PlaySound(Sfx.Item, 1);

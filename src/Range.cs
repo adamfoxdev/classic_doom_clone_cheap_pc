@@ -19,13 +19,16 @@ public static class ShootingRange
     public const int RackY = 25, RackX0 = 11, RackStep = 2;
     public const float DrillTime = 60f, RespawnTime = 1.5f;
     /// <summary>Health back per second, after this long unhurt.</summary>
-    public const float RegenRate = 25f, RegenDelay = 1.5f;
+    public const float RegenRate = 60f, RegenDelay = 1.5f;
     /// <summary>A mover's slide: half its track's length, and its speed (radians a second through the sway).</summary>
     public const float MoveSpan = 5f, MoveRate = 0.9f;
     /// <summary>The ledges: rocket-jump height (2 cells up), and double that for the far one.</summary>
     public const float LowLedge = 2f, HighLedge = 3.5f;
 
     public enum Kind { Still, Moving, High }
+
+    /// <summary>The key for a weapon on the rack: 1 to 9, then 0 (the rocket launcher) and - (the railgun).</summary>
+    public static string KeyFor(int slot) => slot < 9 ? (slot + 1).ToString() : slot == 9 ? "0" : "-";
 
     public static int Points(Kind k) => k switch { Kind.Moving => 150, Kind.High => 200, _ => 100 };
 
@@ -114,7 +117,11 @@ public sealed partial class Game
     /// <summary>The last drill that ended, and its place on your class's board (0 if off it).</summary>
     public RangeRun LastDrill;
     public int LastDrillPlace;
-    float _unhurt;
+    float _unhurt, _regen;
+    /// <summary>
+    /// The range and the rocket-jump course: mana never runs out, health comes back, and your own rockets can't kill you.
+    /// </summary>
+    public bool SafeRockets => Practicing && (Course.Range || Course.Rockets);
 
     /// <summary>On a fresh range: the full loadout (your class's first weapon in hand), the rack, and the dummies.</summary>
     void SetUpRange()
@@ -150,20 +157,27 @@ public sealed partial class Game
         p.PickupFlash = 1;
         PlaySound(Sfx.Item, 1);
         var w = p.Loadout[pk.Variant];
-        Say($"{w.Name}! (key {(pk.Variant + 1) % 10})" + (w.Rocket ? " Fire at your feet as you jump to rocket jump." : ""));
+        Say($"{w.Name}! (key {ShootingRange.KeyFor(pk.Variant)})" + (w.Rocket ? " Fire at your feet as you jump to rocket jump."
+            : w.Rail ? " One slug goes through everything in its line." : ""));
         SelectWeapon(pk.Variant);
     }
 
     /// <summary>The range, every frame: health coming back, dummies standing back up and moving, and the drill's clock.</summary>
     void RangeTick(float dt)
     {
-        if (!OnRange || Mode != GameMode.Playing) return;
+        if (!SafeRockets || Mode != GameMode.Playing) return;
         var p = P;
         _unhurt += dt;
         if (p.DamageFlash > 0.5f) _unhurt = 0;
         if (_unhurt > ShootingRange.RegenDelay && p.Health < p.MaxHealth)
-            p.Health = Math.Min(p.MaxHealth, p.Health + Math.Max(1, (int)(ShootingRange.RegenRate * dt + RandF())));
+        {
+            _regen += ShootingRange.RegenRate * dt;
+            int heal = (int)_regen;
+            _regen -= heal;
+            p.Health = Math.Min(p.MaxHealth, p.Health + heal);
+        }
         p.BlueMana = p.GreenMana = 200;
+        if (!OnRange) return;
         foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target != null && !m.Alive).ToList())
             if ((m.Target.DownFor += dt) >= ShootingRange.RespawnTime) StandUp(m);
         if (!Drilling) return;

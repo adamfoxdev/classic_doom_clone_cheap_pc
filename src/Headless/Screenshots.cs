@@ -346,6 +346,36 @@ public static partial class Headless
             Shot("131_range_board");
             g.Menu.Close(); g.Paused = false;
             g.Profile.RangeRuns.Clear();
+
+            // the rocket launcher looking right down, its landing ring on the floor; the railgun's slug through a row
+            g.StartPractice(PClass.Mage, ShootingRange.Course);
+            foreach (var pk in g.Level.Things.OfType<Pickup>().Where(k => k.Kind == PickupKind.Arms).ToList()) { g.P.X = pk.X; g.P.Y = pk.Y; Tick(default); }
+            g.P.X = 20.5f; g.P.Y = 21.5f; g.P.Angle = -MathF.PI / 2 + 0.3f;
+            Tick(new Input { Slot = 10 }); Tick(default, 25);
+            g.P.Pitch = -Rockets.LookDown + 12;
+            g.Messages.Clear(); g.Say("Rocket jump: look right down, jump, and fire at your feet.");
+            Tick(default);
+            Shot("133_rocket_aim");
+            Tick(new Input { Slot = 11 }); Tick(default, 30);
+            g.P.X = 8.5f; g.P.Y = 20.5f; g.P.Angle = MathF.Atan2(14.5f - 20.5f, 8.5f - 8.5f); g.P.Pitch = 0; g.P.Cooldown = 0;
+            foreach (var m in g.Level.Things.OfType<Monster>().Where(m => m.Target?.Kind == ShootingRange.Kind.Still)) m.Health = m.MaxHealth = 5000;
+            g.P.Angle = -MathF.PI / 2 + 0.55f;
+            Tick(new Input { Fire = true });
+            Tick(default, 2);
+            g.P.Angle += 0.35f;
+            g.Messages.Clear(); g.Say("Railgun: one slug, 100 to everything in its line.");
+            Tick(default);
+            Shot("134_railgun");
+
+            // the rocket-jump course: the start, the towers ahead; the demo in the air
+            g.StartPractice(PClass.Fighter, RocketCourse.Course);
+            g.P.X = 9.5f; g.P.Y = 5.5f; g.P.Angle = 0.05f; g.P.Pitch = 18f;
+            Tick(default);
+            Shot("135_rocket_course");
+            g.StartDemo();
+            for (int k = 0; k < 35 * 7 + 18; k++) Tick(default);
+            Shot("136_rocket_course_demo");
+            g.EndDemo();
             g.GoToTitle();
         }
 
@@ -855,6 +885,8 @@ public static partial class Headless
         Shot("117_practice_endless");
         g.Menu.Cursor = Array.IndexOf(Courses.All, ShootingRange.Course);
         Shot("132_practice_range");
+        g.Menu.Cursor = Array.IndexOf(Courses.All, RocketCourse.Course);
+        Shot("137_practice_rocketjump");
         g.Menu.Close();
         foreach (var (course, name, cam) in new[]
         {

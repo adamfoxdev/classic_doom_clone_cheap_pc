@@ -105,8 +105,8 @@ public static class Chests
             ('h', 20), ('q', 12), ('b', 18), ('g', 14), ('r', 8), ('u', 4),
         };
         if (modWeight > 0) table.Add(('m', modWeight)); // a weapon mod, now and then
-        if (!p.HasWeapon[1]) table.Add(('w', 5));
-        if (!p.HasWeapon[2]) table.Add(('x', 3));
+        if (p.Loadout == null && !p.HasWeapon[1]) table.Add(('w', 5));
+        if (p.Loadout == null && !p.HasWeapon[2]) table.Add(('x', 3));
         int total = table.Sum(t => t.weight);
         var loot = new List<char>();
         int n = rng.Next(1, 4);

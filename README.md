@@ -165,10 +165,11 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   and terraces you could never jump to. A gauge in the corner of the view shows the fuel; it burns faster while
   climbing, and recharges whenever you're on the ground. Run dry in mid-air and you'll drop, and it won't
   relight until you let go of `Q` and press it again.
-- **Strafe-jumping practice** (**Practice** on the title menu): three timed courses (the Velocity Hangar, Descent
-  and the Circuit), each with a leaderboard, medals, a ghost of your best run and a demo run to watch; Endless, a seeded
-  run of gaps that gets harder until you fall; the Shooting Range, every weapon in the game plus a Quake rocket
-  launcher; and Free Roam, an empty field to move around in. See [Quake movement](#quake-movement) and
+- **Strafe-jumping practice** (**Practice** on the title menu): four timed courses (the Velocity Hangar, Descent,
+  the Circuit and Rocket Jump), each with a leaderboard, medals, a ghost of your best run and a demo run to watch;
+  Endless, a seeded run of gaps that gets harder until you fall; the Shooting Range, every weapon in the game plus a
+  Quake rocket launcher and railgun; and Free Roam, an empty field to move around in. See
+  [Quake movement](#quake-movement), [The rocket-jump course](#the-rocket-jump-course) and
   [The shooting range](#the-shooting-range).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
@@ -279,8 +280,9 @@ Switch to the old direct movement with **Options → Movement** or `quakemove 0`
 | **Velocity Hangar** | A straight hangar of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells. |
 | **Descent** | Platforms dropping away (6 units up to 1) over gaps of 3 to 7 cells: each fall buys the hang time for a wider gap. As the Marine the last needs about 195%, as the Psion 225%. |
 | **Circuit** | One clockwise lap of an 8-wide loop round a walled island, through a checkpoint on each side and back over the finish line behind the start. Strafe into the corners to carry your speed round them. |
+| **Rocket Jump** | Six platforms, each too high or too far to jump to, crossed with the rocket launcher, your only weapon there. See [The rocket-jump course](#the-rocket-jump-course). |
 | **Endless** | 50 platforms over gaps, built from a seed, that get harder as you go. There's no clock to beat: you score the platforms you reach before you fall. See [The endless course](#the-endless-course). |
-| **Shooting Range** | Every weapon on a rack and a Quake rocket launcher, target dummies, and ledges to rocket jump onto. Use starts a one-minute drill with its own board. See [The shooting range](#the-shooting-range). |
+| **Shooting Range** | Every weapon on a rack, with a Quake rocket launcher and railgun, target dummies, and ledges to rocket jump onto. Use starts a one-minute drill with its own board. See [The shooting range](#the-shooting-range). |
 | **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
 
 On the timed courses:
@@ -425,12 +427,12 @@ Race a friend's ghost without being online together: send them your run as a cod
 **Practice → Shooting Range** is a walled yard for trying out weapons. You start by the rack with your class's first
 weapon.
 
-- **The rack:** all ten weapons, whatever your class: each class's three, then the rocket launcher. Walk over one to
-  take it. Keys `1` to `9` pick them in rack order, class by class, and `0` picks the rocket launcher. The
-  rack never empties.
+- **The rack:** all eleven weapons, whatever your class: each class's three, then the rocket launcher and the
+  railgun. Walk over one to take it. Keys `1` to `9` pick them in rack order, class by class; `0` picks the rocket
+  launcher and `-` the railgun. The rack never empties.
 - **On the range:**
   - Mana never runs out.
-  - Your health comes back a second and a half after you're last hurt.
+  - Your health comes back, 60 a second, a second and a half after you're last hurt.
   - Your own rockets can't take you below 1 health.
   - `1`, `2` and `3` pick weapons, not the game speed as on the other courses.
 - **Targets:**
@@ -467,11 +469,65 @@ The rocket launcher follows Quake's rules:
   - Face away from where you want to go: the rocket lands just in front of you and throws you backwards.
   - To go further rather than higher, aim a little less steeply.
   - The push lifts your speed cap for the flight, so a rocket jump carries you faster than you can run.
-- **Aiming down:** the view only tilts so far (about 18 degrees). Past two-thirds of the tilt, the launcher aims
-  steeper than the view, reaching 85 degrees at the end, so you can put a rocket at your feet. Near level, it aims at
-  a monster above or below you, like every other weapon.
-- **Elsewhere:** it's the range's; in the campaign, `give rocketlauncher` in the console adds it on `4`. It uses
-  green mana, 2 a shot, and it isn't kept in a save.
+- **Looking down:** with the launcher in hand you can look much further down than usual, 160 pixels of tilt
+  rather than 70, right down at the floor. Put it away and the view eases back up.
+  - Most of the way down, the rocket goes where the middle of the view points, and the crosshair marks the spot.
+  - For the last stretch of the tilt it swings on steeper than the view, reaching 85 degrees at the bottom, so you
+    can put a rocket at your feet.
+  - An orange ring on the floor shows where it will land. When that's right under you, below the bottom of the view,
+    the ring sits on the bottom edge between two arrows.
+  - Your weapon drops out of the way as you look down past the usual tilt.
+  - Near level, it aims at a monster above or below you, like every other weapon.
+- **Elsewhere:** it's on the range and the rocket-jump course. In the campaign, `give rocketlauncher` in the console
+  adds it on the key after your class's three. It uses green mana, 2 a shot, and it isn't kept in a save.
+
+![Looking right down with the rocket launcher: the landing ring at your feet](docs/rocket_aim.png)
+
+#### The railgun
+
+The railgun is Quake III's:
+
+- **The slug** hits the instant you fire, wherever the middle of the view points. Near level, it aims at a monster
+  above or below you, like the other weapons.
+- **Damage:** 100 to every monster in its line, however many, out to 40 cells or the first wall. A hit knocks each of
+  them back a little.
+- **Its trail:** a white core with a blue spiral wound round it, fading over a second.
+- **Reload:** a second and a half between shots. It uses blue mana, 3 a shot.
+- **Where:** on the range's rack (key `-`). In the campaign, `give railgun` in the console adds it on the key after
+  what you carry. It isn't kept in a save.
+
+![A railgun slug through the range](docs/railgun.png)
+
+#### The rocket-jump course
+
+**Practice → Rocket Jump** is a timed course of six platforms, each too high or too far to reach with a jump. The
+rocket launcher is your only weapon there.
+
+- **The platforms:**
+  1. Two cells up and 3 across.
+  2. Two up and 4 across.
+  3. A drop of 1.5 and 5 across.
+  4. The biggest climb, 2.5 up.
+  5. 1.5 up to the exit.
+- **How to cross each gap:**
+  - Face back the way you came and look right down.
+  - Back up to the edge, holding S.
+  - At the edge, jump and fire together. The blast throws you up and on.
+  - In the air, hold S to carry on, and W to brake over the next platform.
+- **Each platform** tells you how far up (or down) and across the next one is. On a drop, look less far down, so
+  the blast throws you further along.
+- **As on the range:**
+  - Your own rockets can't kill you.
+  - Your health comes back.
+  - Mana never runs out.
+  - A fall lands you on a lift pad, which takes you back to your last platform.
+- **The rest works like the other timed courses:**
+  - The clock, medals and a board: **Leaderboard** has a Rocket Jump page after the Circuit.
+  - A ghost of your best run and ghost codes.
+  - The demo, which gets round in 14.5 seconds for a silver as the Marine. Gold wants a cleaner run.
+
+![The start of the rocket-jump course](docs/rocket_course.png)
+![The demo mid-flight](docs/rocket_course_demo.png)
 
 ### Chaos Arena
 
@@ -1065,7 +1121,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `set <var> <value>` (or just `<var> <value>`) | change a setting, e.g. `speed 1.5`, `fov 90`, `gravity 6` |
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
-| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack\|rocketlauncher` | give yourself things (`rocketlauncher`: the Quake rocket launcher, on `4`) |
+| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack\|rocketlauncher\|railgun` | give yourself things (`rocketlauncher`, `railgun`: the Quake weapons, on the next key) |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|wyrm\|dreadnought\|flask\|...>` | spawn something in front of you (warden to dreadnought are the mini-bosses) |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
@@ -1239,6 +1295,8 @@ in both looks (`76_…`, `77_…`).
 | `src/Practice.cs` | The practice courses: Velocity Hangar, Descent, Circuit and Free Roam |
 | `src/Endless.cs` | The endless practice course: its seeded platforms, falling, and its board |
 | `src/Range.cs` | The shooting range: its map, the weapon rack, target dummies, the drill and its board |
+| `src/RocketCourse.cs` | The rocket-jump practice course: its platforms, hints and demo pilot |
+| `src/Railgun.cs` | The Quake III railgun: its instant slug through everything in line, and its spiral trail |
 | `src/Rockets.cs` | The Quake rocket launcher: its blast, self-damage, knockback, rocket jumps and steep aim |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
