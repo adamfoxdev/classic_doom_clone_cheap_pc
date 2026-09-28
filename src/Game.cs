@@ -2203,7 +2203,7 @@ public sealed partial class Game
         if (Relaxed && m.Alive) { Wander(m, dt, dist); return; }
 
         // Dark Bishop blur: dart sideways, see-through and untouchable
-        if (m.Blurring)
+        if (m.BlurTime > 0)
         {
             m.BlurTime -= dt;
             float s = 6f * m.SpeedMult * Vars.MonsterSpeed * dt;

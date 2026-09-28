@@ -117,8 +117,10 @@ public sealed class Monster : Thing
     public float SpecialCd, SpecialTime, DashX, DashY;
     public int SpecialPhase, NextBlinkHp;
     public Monster Summoner;
-    public bool Blurring => BlurTime > 0;
-    public override int Alpha => Blurring ? 90 : 256;
+    /// <summary>Out of reach: a Dark Bishop's blur, or the Rock Wyrm inside the rock (unseen as well).</summary>
+    public bool Blurring => BlurTime > 0 || Burrowed;
+    public bool Burrowed;
+    public override int Alpha => Burrowed ? 0 : BlurTime > 0 ? 90 : 256;
 
     public Monster(MonsterDef def)
     {

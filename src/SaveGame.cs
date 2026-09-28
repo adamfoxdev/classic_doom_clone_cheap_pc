@@ -110,6 +110,7 @@ public sealed class ThingSave
     // monsters
     public string Def, State;
     public int Health, NextBlinkHp, Summoner = -1;
+    public bool Burrowed;
     public float DamageMult = 1, SpeedMult = 1;
     // pickups and decorations
     public string Kind, Name;
@@ -177,7 +178,7 @@ public static class Saves
             switch (t)
             {
                 case Monster m:
-                    ts.Def = DefNames[m.Def]; ts.Health = m.Health; ts.NextBlinkHp = m.NextBlinkHp;
+                    ts.Def = DefNames[m.Def]; ts.Health = m.Health; ts.NextBlinkHp = m.NextBlinkHp; ts.Burrowed = m.Burrowed;
                     ts.DamageMult = m.DamageMult; ts.SpeedMult = m.SpeedMult;
                     // the dying finish dying; the rest wake up where they were (asleep if they hadn't seen you)
                     ts.State = !m.Alive ? "Dead" : m.State == AiState.Idle ? "Idle" : "Chase";
@@ -216,7 +217,7 @@ public static class Saves
         {
             Thing t = ts.Type switch
             {
-                nameof(Monster) => new Monster(Defs[ts.Def]) { Health = ts.Health, NextBlinkHp = ts.NextBlinkHp, DamageMult = ts.DamageMult, SpeedMult = ts.SpeedMult },
+                nameof(Monster) => new Monster(Defs[ts.Def]) { Health = ts.Health, NextBlinkHp = ts.NextBlinkHp, DamageMult = ts.DamageMult, SpeedMult = ts.SpeedMult, Burrowed = ts.Burrowed, Solid = !ts.Burrowed },
                 nameof(Pickup) => new Pickup(Enum.Parse<PickupKind>(ts.Kind), ts.W, ts.Variant) { Name = ts.Name },
                 nameof(Chest) => new Chest { Opened = ts.Opened },
                 nameof(LoreStone) => new LoreStone { Map = ts.Map, Index = ts.Index, Read = ts.Read },

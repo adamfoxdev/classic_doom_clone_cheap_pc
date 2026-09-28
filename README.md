@@ -73,7 +73,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
   gates open once all its levers are pulled *and* all its plates are covered. Lift a block off a plate and the
   gate drops again.
-- **Mini-bosses** on four of the optional maps, each with a trick of its own. See [Mini-bosses](#mini-bosses).
+- **Mini-bosses** on six of the optional maps, each with a trick of its own. See [Mini-bosses](#mini-bosses).
 - **Chaos Arena** (**Arena** on the title menu): endless wave survival, with its own leaderboard and medals.
   Step on the golden altar to start. Each wave has more monsters and tougher types (Afrits from wave 2,
   Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed scale up every wave, and every fifth
@@ -530,7 +530,7 @@ north-east ledge, at the east end of the quarry's strongroom, and in the Hanging
 
 ### Mini-bosses
 
-Four of the optional maps each have a mini-boss. It's a bigger, recoloured version of one of the usual monsters,
+Six of the optional maps each have a mini-boss. It's a bigger, recoloured version of one of the usual monsters,
 with a trick of its own; a health bar shows low in the view while you fight it.
 
 | Mini-boss (sci-fi) | Where | Its trick |
@@ -539,15 +539,19 @@ with a trick of its own; a health bar shows low in the view while you fight it.
 | **Dust Stalker** (Rogue Harvester) | The Barren World's southern plain | Lowers its head, then charges in a straight line for 28 and a shove. Sidestep and if it hits rock it's stunned for a moment and takes double damage. |
 | **Thornmother** (Hive Queen) | The Verdant Moon's meadow | Floats, fires seekers, and every 8 seconds calls two of her brood, four at most. They fall when she does. |
 | **Drowned Keeper** (Coolant Wraith) | The Hanging Cisterns' floor | Flings fireballs, and each time it loses a fifth of its health it vanishes and reappears somewhere else, usually up on a ledge, so bring the jetpack. |
+| **Rock Wyrm** (Borer Drone) | The Bedrock Depths' tunnels | Swims unseen through the rock around you: you'll see dust where it passes but can't hurt it. It bursts out of the wall beside you, breaking the rubble, bites, and after four seconds dives back in. Hit it while it's out. |
+| **Storm Leviathan** (Void Dreadnought) | The Void Crossing, in flight | Drops out of the dark ahead as you fly, keeps a few lengths in front of you, weaving across the lane, and turns to fire volleys of three. Its loot hangs in the air where it falls. |
 
 - **Loot:** each drops a Mystic Urn and armor and pays 250 XP on top of the kill.
-- **Big Game Hunter:** beating all four earns the achievement, and your profile remembers which you've beaten.
+- **Big Game Hunter:** beating all six earns the achievement, and your profile remembers which you've beaten.
 - **Relaxed style:** they're as peaceful as everything else.
-- **Console:** `summon warden`, `summon stalker`, `summon thornmother` or `summon keeper` brings one to you.
+- **Console:** `summon warden`, `summon stalker`, `summon thornmother`, `summon keeper`, `summon wyrm` or `summon dreadnought` brings one to you.
 
 ![The Quarry Warden, burrowed out into its gallery](docs/quarry_warden.png)
 ![The Dust Stalker](docs/dust_stalker.png)
 ![The Thornmother](docs/thornmother.png)
+![The Rock Wyrm, surfaced in the Depths](docs/rock_wyrm.png)
+![The Storm Leviathan over the Void Crossing](docs/storm_leviathan.png)
 ![The Drowned Keeper](docs/drowned_keeper.png)
 
 ## Story mode
@@ -787,7 +791,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
-| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|flask\|...>` | spawn something in front of you (the last four are the mini-bosses) |
+| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|wyrm\|dreadnought\|flask\|...>` | spawn something in front of you (warden to dreadnought are the mini-bosses) |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |

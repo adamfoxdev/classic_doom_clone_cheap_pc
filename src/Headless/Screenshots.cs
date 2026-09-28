@@ -535,6 +535,42 @@ public static partial class Headless
             Shot(name);
             g.Vars.Freeze = false;
         }
+        {
+            // the Rock Wyrm, just burst out of the rock beside you in the Bedrock Depths
+            g.Warp(Array.FindIndex(g.Hub, l => l.RawName == "Bedrock Depths"));
+            var d = g.Level;
+            var wyrm = d.Things.OfType<Monster>().FirstOrDefault(t => t.Def == MiniBosses.Wyrm);
+            if (wyrm == null) { MiniBosses.Place(d); wyrm = d.Things.OfType<Monster>().First(t => t.Def == MiniBosses.Wyrm); }
+            var (ax, ay) = d.ArrivalCell();
+            float fl = g.P.FloorZ;
+            foreach (var (bx, by) in new[] { (ax + 1, ay), (ax + 2, ay), (ax + 3, ay), (ax + 3, ay - 1), (ax + 3, ay + 1), (ax + 4, ay) })
+                d.DamageBlock(bx, by, 100000, Level.Face.Wall, fl);
+            wyrm.X = ax + 3.5f; wyrm.Y = ay + 0.5f; wyrm.Burrowed = false; wyrm.Solid = true; wyrm.State = AiState.Chase; wyrm.Health = 300;
+            g.Vars.Freeze = true;
+            PlaceCam(ax + 0.5f, ay + 0.5f, fl, 0, 0, 0);
+            Tick(default, 2);
+            PlaceCam(ax + 0.5f, ay + 0.5f, fl, 0, 0, 0);
+            g.Messages.Clear();
+            Shot("111_rock_wyrm");
+            g.Vars.Freeze = false;
+
+            // the Storm Leviathan, weaving ahead of your ship near the end of the Void Crossing
+            g.Warp(Array.FindIndex(g.Hub, l => l.Flight));
+            var lane = g.Level;
+            lane.Things.RemoveAll(t => t is Monster { Def.MiniBoss: null });
+            var ship = lane.Things.OfType<Monster>().FirstOrDefault(t => t.Def == MiniBosses.Dreadnought);
+            if (ship == null) { MiniBosses.Place(lane); ship = lane.Things.OfType<Monster>().First(t => t.Def == MiniBosses.Dreadnought); }
+            g.Vars.Freeze = true;
+            for (int k = 0; k < 3; k++)
+            {
+                g.P.X = 80f; g.P.Y = 6.5f; g.P.Z = 1.1f; g.P.Angle = 0.05f; g.P.Pitch = 4;
+                ship.X = 86.5f; ship.Y = 7.2f; ship.Z = 1.0f; ship.State = AiState.Chase; ship.Health = 420;
+                Tick(default, 1);
+            }
+            g.Messages.Clear();
+            Shot("112_storm_leviathan");
+            g.Vars.Freeze = false;
+        }
 
         // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on
         RenderedArtSheet(Path.Combine(dir, "52_rendered_sheet.png"), SheetItems, 8);

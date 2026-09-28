@@ -29,7 +29,8 @@ public static partial class Headless
                 if (t is Pickup pk && pk.Kind is PickupKind.SteelKey or PickupKind.FireKey or PickupKind.Weapon2 or PickupKind.Weapon3)
                     Check(reach[(int)t.Y * lv.W + (int)t.X], $"{pk.Kind} reachable");
                 if (t is Monster m && m.Def.Boss) Check(reach[(int)t.Y * lv.W + (int)t.X], "boss reachable");
-                Check(!lv.BlocksPoint(t.X, t.Y), $"{t.GetType().Name} at {t.X - 0.5f},{t.Y - 0.5f} not inside a wall");
+                if (t is not Monster { Burrowed: true }) // the Rock Wyrm lives in the rock
+                    Check(!lv.BlocksPoint(t.X, t.Y), $"{t.GetType().Name} at {t.X - 0.5f},{t.Y - 0.5f} not inside a wall");
             }
             // levers must be touchable from an open cell (the Windspire's needs the jetpack to get to)
             var flyReach = lv.Reachable(start.Item1, start.Item2, move: Level.Move.Fly);

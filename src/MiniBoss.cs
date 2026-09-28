@@ -1,7 +1,7 @@
 namespace HexenSharp;
 
 /// <summary>What makes a mini-boss more than a big monster.</summary>
-public enum Special { None, Tunneller, Charger, Summoner, Blinker }
+public enum Special { None, Tunneller, Charger, Summoner, Blinker, Burrower, Dreadnought }
 
 /// <summary>
 /// The optional maps' mini-bosses, one each: bigger, recoloured versions of the usual monsters, each with a trick of
@@ -51,7 +51,29 @@ public static class MiniBosses
         SightRange = 16f, Special = Special.Blinker, MiniBoss = "keeper",
     };
 
-    public static readonly MonsterDef[] All = { Warden, Stalker, Thornmother, Keeper };
+    /// <summary>
+    /// The Bedrock Depths: the Rock Wyrm (a borer drone) swims through the solid rock, unseen and untouchable, with only
+    /// dust to give it away. It bursts out beside you to bite, and after a few seconds dives back into the stone.
+    /// </summary>
+    public static readonly MonsterDef Wyrm = new()
+    {
+        Name = "Rock Wyrm", Art = "wyrm", Health = 420, Speed = 1.6f, Radius = 0.4f, Width = 1.25f, Height = 1.1f,
+        MeleeRange = 1.15f, MeleeMin = 18, MeleeMax = 28, AttackTime = 0.5f, Cooldown = 0.7f, PainChance = 0.1f,
+        Special = Special.Burrower, WakeRange = 10f, MiniBoss = "wyrm",
+    };
+
+    /// <summary>
+    /// The Void Crossing: the Storm Leviathan (a void dreadnought) drops out of the dark near the end of the lane and
+    /// keeps pace just ahead of your ship, weaving across and up and down, firing volleys back at you.
+    /// </summary>
+    public static readonly MonsterDef Dreadnought = new()
+    {
+        Name = "Storm Leviathan", Art = "dreadnought", Health = 600, Speed = 9f, Radius = 0.7f, Width = 2.0f, Height = 1.5f, FlyZ = 1.2f,
+        Missile = ProjKind.BossBall, MissileCount = 3, MissileSpread = 0.2f, AttackTime = 0.6f, Cooldown = 1.6f, PainChance = 0.05f,
+        SightRange = 30f, Special = Special.Dreadnought, MiniBoss = "dreadnought",
+    };
+
+    public static readonly MonsterDef[] All = { Warden, Stalker, Thornmother, Keeper, Wyrm, Dreadnought };
 
     /// <summary>Where each one waits: its map and cell.</summary>
     public static readonly (string map, MonsterDef def, float x, float y)[] Places =
@@ -60,6 +82,8 @@ public static class MiniBosses
         ("Barren World", Stalker, 16.5f, 18.5f),        // the open plain south of the wreck
         ("Verdant Moon", Thornmother, 20.5f, 9.5f),     // the meadow east of the outpost
         ("Hanging Cisterns", Keeper, 18.5f, 9.5f),      // the cistern floor, under the ledges
+        ("Bedrock Depths", Wyrm, 5.5f, 5.5f),           // somewhere in the rock
+        ("Void Crossing", Dreadnought, 88.5f, 6.5f),    // lying in wait near the end of the lane
     };
 
     /// <summary>Puts a map's mini-boss in, if it has one.</summary>
@@ -67,7 +91,7 @@ public static class MiniBosses
     {
         foreach (var (map, def, x, y) in Places)
             if (lv.RawName == map)
-                lv.Things.Add(new Monster(def) { X = x, Y = y, Level = lv, NextBlinkHp = (int)(def.Health * 0.8f) });
+                lv.Things.Add(new Monster(def) { X = x, Y = y, Level = lv, NextBlinkHp = (int)(def.Health * 0.8f), Burrowed = def.Special == Special.Burrower, Solid = def.Special != Special.Burrower });
     }
 
     /// <summary>Each one's look: the monster it's built from and the colour it's washed with.</summary>
@@ -77,6 +101,8 @@ public static class MiniBosses
         ("stalker", "centaur", 230, 190, 120),
         ("thornmother", "bishop", 110, 220, 100),
         ("keeper", "afrit", 90, 170, 255),
+        ("wyrm", "slaughtaur", 150, 130, 110),
+        ("dreadnought", "heresiarch", 230, 80, 170),
     };
 
     /// <summary>Makes the mini-bosses' sprites from the current style's monsters (call once those are built).</summary>
@@ -227,6 +253,12 @@ public sealed partial class Game
                 }
                 return false;
 
+            case Special.Burrower:
+                return WyrmTick(m, dt, dist);
+
+            case Special.Dreadnought:
+                return DreadnoughtTick(m, dt, dist);
+
             case Special.Blinker:
                 if (m.State is AiState.Chase or AiState.Pain && m.Health <= m.NextBlinkHp && m.Health > 0)
                 {
@@ -239,7 +271,92 @@ public sealed partial class Game
         return false;
     }
 
-    public const float SlamRadius = 3f, ChargeSpeed = 9f, StunTime = 1.6f;
+    public const float SlamRadius = 3f, ChargeSpeed = 9f, StunTime = 1.6f, BurrowSpeed = 2.4f, SurfaceTime = 4f;
+
+    /// <summary>
+    /// The Rock Wyrm: it swims through the rock toward you (untouchable, only dust shows where), bursts out of the
+    /// stone beside you, fights for a few seconds, and dives back in.
+    /// </summary>
+    bool WyrmTick(Monster m, float dt, float dist)
+    {
+        bool playerAlive = Mode != GameMode.Dead;
+        if (m.Burrowed)
+        {
+            m.Solid = false;
+            if (m.State == AiState.Idle)
+            {
+                if (playerAlive && !Vars.NoTarget && dist < m.Def.WakeRange) { m.State = AiState.Chase; Say($"Something is moving in the rock..."); Sound(Sfx.Break, m.X, m.Y); }
+                return true;
+            }
+            // through the stone, straight at you; a puff of dust now and then gives it away
+            float tx = P.X - m.X, ty = P.Y - m.Y, l = MathF.Max(0.01f, MathF.Sqrt(tx * tx + ty * ty));
+            float step = BurrowSpeed * Vars.MonsterSpeed * dt;
+            m.X = Math.Clamp(m.X + tx / l * step, 1.5f, Level.W - 1.5f);
+            m.Y = Math.Clamp(m.Y + ty / l * step, 1.5f, Level.H - 1.5f);
+            if ((m.SpecialTime -= dt) <= 0)
+            {
+                m.SpecialTime = 0.35f;
+                SpawnPuff(Art.RubbleChunk, m.X, m.Y, P.FloorZ + 0.2f, 0.35f);
+                if (dist < 6) Sound(Sfx.Push, m.X, m.Y);
+            }
+            if (playerAlive && dist < 1.9f && dist > 0.8f)
+            {
+                // out it comes: the stone where it is gives way at your level
+                int cx = (int)m.X, cy = (int)m.Y;
+                if (Level.Cell(cx, cy) == Level.Rubble) Level.DamageBlock(cx, cy, 100000, Level.Face.Wall, P.FloorZ);
+                if (Level.Cell(cx, cy) != '\0') return true; // bedrock: keep circling
+                m.X = cx + 0.5f; m.Y = cy + 0.5f;
+                m.Burrowed = false; m.Solid = true;
+                m.SpecialTime = SurfaceTime;
+                SetState(m, AiState.Chase);
+                m.AttackCd = 0.4f;
+                Sound(Sfx.Break, m.X, m.Y);
+                Sound(Sfx.BossSight, m.X, m.Y);
+                for (int k = 0; k < 5; k++) SpawnPuff(Art.RubbleChunk, m.X + (RandF() - 0.5f), m.Y + (RandF() - 0.5f), P.FloorZ + 0.3f + RandF() * 0.5f, 0.4f);
+            }
+            return true;
+        }
+        // out in the open: a few seconds of fighting (the clock runs on through its bites), then back into the rock
+        m.SpecialTime -= dt;
+        if (m.SpecialTime <= 0 && m.State is AiState.Chase or AiState.Pain)
+        {
+            m.Burrowed = true; m.Solid = false;
+            m.SpecialTime = 0.35f;
+            SetState(m, AiState.Chase);
+            Sound(Sfx.Break, m.X, m.Y);
+            SpawnPuff(Art.RubbleChunk, m.X, m.Y, P.FloorZ + 0.3f, 0.6f);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The Storm Leviathan: once you're near the end of the lane it keeps a few lengths ahead of you, weaving across the
+    /// lane and up and down, and turns its guns back on you. It never sits on the portal home.
+    /// </summary>
+    bool DreadnoughtTick(Monster m, float dt, float dist)
+    {
+        if (m.State == AiState.Idle)
+        {
+            if (Mode != GameMode.Dead && !Vars.NoTarget && P.X > m.X - 18f) { Wake(m); Say($"The {m.Def.Name} drops out of the dark ahead!"); }
+            return true;
+        }
+        m.Anim += dt;
+        float lane = Level.H - 2f;
+        float wantX = MathF.Min(P.X + DreadnoughtLead, Level.W - 8f);
+        float wantY = 1f + lane * (0.5f + 0.38f * MathF.Sin(m.Anim * 0.9f));
+        float wantZ = 0.5f + 1.6f * (0.5f + 0.5f * MathF.Sin(m.Anim * 1.3f + 1f));
+        float k = MathF.Min(1, dt * 2.5f), maxStep = m.Def.Speed * Vars.MonsterSpeed * dt;
+        m.X += Math.Clamp((wantX - m.X) * k, -maxStep, maxStep);
+        m.Y += Math.Clamp((wantY - m.Y) * k, -maxStep, maxStep);
+        m.Z += (wantZ - m.Z) * k;
+        if (m.State != AiState.Chase) return false; // attacking or in pain: the usual AI fires the volley
+        m.AttackCd -= dt;
+        if (m.AttackCd <= 0 && Mode != GameMode.Dead && !Vars.NoTarget && dist < 18f) SetState(m, AiState.Attack);
+        return true;
+    }
+
+    public const float DreadnoughtLead = 7f;
     public const int SlamDamage = 25, ChargeDamage = 28, MaxBrood = 4;
 
     void EndCharge(Monster m, float cooldown)
@@ -307,7 +424,8 @@ public sealed partial class Game
         {
             float x = m.X + dx, y = m.Y;
             if (Level.BlocksPoint(x, y)) x = m.X;
-            Level.Things.Add(new Pickup(kind, 0.45f) { X = x, Y = y, Level = Level });
+            // in flight, the loot hangs in the lane where it fell, for the ship to fly through
+            Level.Things.Add(new Pickup(kind, 0.45f) { X = x, Y = y, Z = Level.Flight ? m.Z : 0, Level = Level });
         }
         GainXp(MiniBossXp);
         if (!NoXp && !Profile.MiniBosses.Contains(m.Def.MiniBoss)) Profile.MiniBosses.Add(m.Def.MiniBoss);

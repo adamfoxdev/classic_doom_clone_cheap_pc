@@ -19,6 +19,8 @@ public static class Words
         ["Dust Stalker"] = "Rogue Harvester",
         ["Thornmother"] = "Hive Queen",
         ["Drowned Keeper"] = "Coolant Wraith",
+        ["Rock Wyrm"] = "Borer Drone",
+        ["Storm Leviathan"] = "Void Dreadnought",
         ["Hanging Cisterns"] = "Coolant Tanks",
         ["The Hanging Cisterns. Stone weights, pressure plates, and ledges only the winged can reach."] = "The Coolant Tanks. Cargo crates, pressure pads, and gantries only a jetpack can reach.",
         ["Windspire"] = "Comms Spire",
