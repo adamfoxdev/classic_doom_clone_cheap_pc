@@ -157,7 +157,7 @@ public sealed class ArenaState
             g.Say($"Wave {Wave} cleared! Supplies have appeared at the altar.");
             g.GainXp(Game.Xp.PerWave * Wave);
             if (g.ArenaMode) g.ArenaWaveCleared(Wave);
-            if (!Has(ArenaMod.NoSupplies)) Reward(g);
+            if (!Has(ArenaMod.NoSupplies) && !Has(ArenaMod.Instagib) && !Has(ArenaMod.RocketArena)) Reward(g);
             ArsenalDrop(g); // not a supply: it comes even with No supplies
             // after a boss wave, a perk to pick
             if (g.ArenaMode && Wave % 5 == 0)

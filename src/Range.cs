@@ -25,7 +25,7 @@ public static class ShootingRange
     /// <summary>The ledges: rocket-jump height (2 cells up), and double that for the far one.</summary>
     public const float LowLedge = 2f, HighLedge = 3.5f;
 
-    public enum Kind { Still, Moving, High }
+    public enum Kind { Still, Moving, High, Trial }
 
     /// <summary>The key for a weapon on the rack: 1 to 9, then 0, -, =, [ and ] for the Quake weapons.</summary>
     public static string KeyFor(int slot) => slot < 9 ? (slot + 1).ToString() : slot switch { 9 => "0", 10 => "-", 11 => "=", 12 => "[", _ => "]" };
@@ -182,7 +182,8 @@ public sealed partial class Game
         p.BlueMana = p.GreenMana = 200;
         for (int k = 1; k < QuakeAmmo.Kinds; k++) p.Ammo[k] = QuakeAmmo.Max((AmmoKind)k);
         if (!OnRange) return;
-        foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target != null && !m.Alive).ToList())
+        RailTick(dt);
+        foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target is { Kind: not ShootingRange.Kind.Trial } && !m.Alive).ToList())
             if ((m.Target.DownFor += dt) >= ShootingRange.RespawnTime) StandUp(m);
         if (!Drilling) return;
         DrillLeft -= dt;
@@ -225,6 +226,7 @@ public sealed partial class Game
         if (!down) { m.State = AiState.Pain; m.StateTime = 0; return; }
         m.Target.DownFor = 0;
         if (Course.Grenades) { GrenadeTargetDown(); return; }
+        if (m.Target.Kind == ShootingRange.Kind.Trial) { RailTargetDown(m); return; }
         if (!Drilling) return;
         int pts = ShootingRange.Points(m.Target.Kind);
         DrillScore += pts; DrillKills++;
@@ -234,6 +236,7 @@ public sealed partial class Game
     public void StartDrill()
     {
         if (!OnRange) return;
+        if (RailTrial) { RailTrial = false; ClearRailTarget(); }
         foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target != null).ToList()) StandUp(m);
         Drilling = true; DrillLeft = ShootingRange.DrillTime; DrillScore = DrillKills = DrillShots = 0;
         Messages.Clear();

@@ -91,6 +91,8 @@ public static partial class Headless
         QuakeArmsChecks(Check);
         Console.WriteLine("Zoom and movement tricks:");
         TrickChecks(Check);
+        Console.WriteLine("Quake modes:");
+        QuakeModeChecks(Check);
         Console.WriteLine("Game feel:");
         FeelChecks(Check);
         Console.WriteLine("Endless course:");

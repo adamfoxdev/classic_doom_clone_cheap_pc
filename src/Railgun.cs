@@ -74,6 +74,8 @@ public sealed partial class Game
             DamageMonster(m, dmg, p.Weapon);
             RailHits++;
         }
+        InstagibShot(hits.Count);
+        if (RailTrial) TrialShots++;
         if (block is { } b) HitBlock(b.x, b.y, dmg, b.face, slot: SlotAt(z0 + up * end));
 
         // the trail: a white core, a blue spiral wound round it, fading together

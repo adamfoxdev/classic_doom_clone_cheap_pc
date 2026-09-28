@@ -331,6 +331,7 @@ public sealed partial class Game
     /// <summary>A wave is cleared in arena mode: a medal when it reaches one, and a new best past your old one.</summary>
     public void ArenaWaveCleared(int wave)
     {
+        QuakeArenaWave();
         if (Vars.Arcade) Say($"Wave bonus: +{Arcade.Bonus(wave * 1000)}");
         int best = Profile.ArenaBestWave(P.Class);
         var medal = ArenaMedals.For(wave);
@@ -355,6 +356,7 @@ public sealed partial class Game
             return;
         }
         if (DailyMode) { EndDailyRun(a, difficulty); return; }
+        if (InstagibOn) { EndInstagibRun(a); return; }
         LastArena = new ArenaRun
         {
             Waves = a.BestWave, Time = a.ClearedAt, Kills = P.Kills, Name = RunnerName, When = DateTime.Now,
@@ -906,6 +908,8 @@ public sealed partial class Game
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
         ApplyProfile();
         P.Health = P.MaxHealth;
+        RailTrial = false;
+        if (ArenaMode) SetUpQuakeArena();
         RunXp = 0; XpPopup = 0;
         Cheated = false; RunDeaths = 0;
         Intro = null; HitStop = 0; Shake = 0;
@@ -1038,6 +1042,7 @@ public sealed partial class Game
         RangeTick(step);
         TrickTick(dt);
         TowerTick(step);
+        QuakeArenaTick();
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
@@ -1397,7 +1402,7 @@ public sealed partial class Game
                 TryPickup(pk);
 
         // actions
-        if (inp.Use && OnRange) StartDrill();
+        if (inp.Use && OnRange) { if (P.CurWeapon.Rail) StartRailTrial(); else StartDrill(); } // the railgun in hand: a rail trial
         else if (inp.Use) UseLine(pull: inp.Walk);
         if (inp.UseItem) UseItem();
         if (inp.Place) PlaceBlock();
@@ -2807,6 +2812,7 @@ public sealed partial class Game
             if (dmg <= 0) { if (m.State == AiState.Idle) Wake(m); Sound(Sfx.Hit, m.X, m.Y); return; }
         }
         if (m.Def.Special == Special.Charger && m.SpecialPhase == 3) dmg *= 2; // a stunned Stalker is wide open
+        if (InstagibOn && slot >= 0) { m.Shield = 0; dmg = (int)MathF.Ceiling((m.Health + 1) / MathF.Max(0.01f, Vars.Damage)); } // instagib: one slug, one kill
         int dealt = Math.Min(Math.Max(1, (int)MathF.Round(dmg * Vars.Damage)), Math.Max(1, m.Health));
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
         if (slot >= 0)

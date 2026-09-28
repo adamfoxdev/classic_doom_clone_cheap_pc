@@ -117,6 +117,30 @@ public sealed class Profile
         return board.IndexOf(run) + 1;
     }
 
+    /// <summary>Rail trials, the best ten for each class (by score).</summary>
+    public List<RailRun> RailRuns { get; set; } = new();
+    public List<RailRun> RailBoard(PClass cls) => RailRuns.Where(r => r.Class == cls.ToString()).OrderByDescending(r => r.Score).ThenBy(r => r.When).Take(BoardSize).ToList();
+    public int RailBest(PClass cls) => RailRuns.Where(r => r.Class == cls.ToString()).Select(r => r.Score).DefaultIfEmpty(0).Max();
+    public int AddRailRun(RailRun run)
+    {
+        RailRuns.Add(run);
+        var board = RailBoard(Enum.Parse<PClass>(run.Class));
+        RailRuns.RemoveAll(r => r.Class == run.Class && !board.Contains(r));
+        return board.IndexOf(run) + 1;
+    }
+
+    /// <summary>Instagib arena runs, the best ten for each class (most waves, then the longest streak).</summary>
+    public List<InstagibRun> InstagibRuns { get; set; } = new();
+    public List<InstagibRun> InstagibBoard(PClass cls) =>
+        InstagibRuns.Where(r => r.Class == cls.ToString()).OrderByDescending(r => r.Waves).ThenByDescending(r => r.BestStreak).ThenBy(r => r.Time).Take(BoardSize).ToList();
+    public int AddInstagibRun(InstagibRun run)
+    {
+        InstagibRuns.Add(run);
+        var board = InstagibBoard(Enum.Parse<PClass>(run.Class));
+        InstagibRuns.RemoveAll(r => r.Class == run.Class && !board.Contains(r));
+        return board.IndexOf(run) + 1;
+    }
+
     /// <summary>Rocket tower runs, the best ten for each class (highest, then quickest).</summary>
     public List<TowerRun> TowerRuns { get; set; } = new();
 
@@ -293,6 +317,8 @@ public sealed class Profile
             p.DailyRuns ??= new();
             p.EndlessRuns ??= new();
             p.TowerRuns ??= new();
+            p.RailRuns ??= new();
+            p.InstagibRuns ??= new();
             p.RangeRuns ??= new();
             p.KillsBy ??= new();
             p.RematchRuns ??= new();

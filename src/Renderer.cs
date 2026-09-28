@@ -210,6 +210,8 @@ public sealed class Renderer
         if (m.BoardDaily) { DrawDailyBoard(g); return; }
         if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
         if (m.BoardTower) { DrawTowerBoard(g, def); return; }
+        if (m.BoardRail) { DrawRailBoard(g, def); return; }
+        if (m.BoardInstagib) { DrawInstagibBoard(g, def); return; }
         if (m.BoardRange) { DrawRangeBoard(g, def); return; }
         if (m.BoardRematch) { DrawRematchBoard(g); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
@@ -1627,6 +1629,12 @@ public sealed class Renderer
             string line = g.DailyMode ? (g.TodaysRun(g.DailyDate) is { } today ? $"TODAY {today.Score}" : $"DAILY {g.DailyDate:MM-dd}")
                 : best > 0 ? $"BEST {best} WAVE{(best == 1 ? "" : "S")}" : "NO BEST YET";
             Text(W - 4 - Font.Width(line), top + 10, line, Col.Rgb(255, 220, 90));
+            if (g.InstagibOn)
+            {
+                // instagib: the streak of slugs that hit, and the run's best
+                string st = $"STREAK {g.Streak}  BEST {g.BestStreak}";
+                Text(W - 4 - Font.Width(st), top + 30, st, g.Streak >= 5 ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 210, 230));
+            }
             var (next, at) = ArenaMedals.Next(Math.Max(best, a.BestWave));
             if (next != Medal.None)
             {
@@ -1869,7 +1877,14 @@ public sealed class Renderer
         int y = g.Vars.ShowFps ? 12 : 3;
         int best = g.Profile.RangeBest(g.P.Class);
         void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
-        if (g.Drilling)
+        if (g.RailTrial)
+        {
+            int acc = g.TrialShots == 0 ? 100 : (int)MathF.Round(100f * g.TrialHits / g.TrialShots);
+            Right($"RAIL {MathF.Ceiling(g.TrialLeft):0}", 0, g.TrialLeft < 10 ? Col.Rgb(255, 120, 90) : Col.Rgb(240, 236, 220));
+            Right($"SCORE {g.TrialScore}", 10, Col.Rgb(120, 255, 140));
+            Right($"HITS {g.TrialHits}  {acc}%", 20, Col.Rgb(150, 150, 160));
+        }
+        else if (g.Drilling)
         {
             Right($"DRILL {MathF.Ceiling(g.DrillLeft):0}", 0, g.DrillLeft < 10 ? Col.Rgb(255, 120, 90) : Col.Rgb(240, 236, 220));
             Right($"SCORE {g.DrillScore}", 10, Col.Rgb(120, 255, 140));
@@ -1877,7 +1892,7 @@ public sealed class Renderer
         }
         else
         {
-            Right($"{Keys.Name(g.Binds.Get(Act.Use, 0))}: DRILL", 0, Col.Rgb(240, 236, 220));
+            Right($"{Keys.Name(g.Binds.Get(Act.Use, 0))}: {(g.P.CurWeapon.Rail ? "RAIL TRIAL" : "DRILL")}", 0, Col.Rgb(240, 236, 220));
             if (best > 0) Right($"BEST {best}", 10, Col.Rgb(255, 220, 90));
         }
         if (g.RocketJumps > 0) Right($"ROCKET JUMPS {g.RocketJumps}", g.Drilling ? 30 : best > 0 ? 20 : 10, Col.Rgb(255, 170, 80));
@@ -1927,6 +1942,41 @@ public sealed class Renderer
         }
         CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
     }
+
+    /// <summary>A board of rows for one class: a title, a heading line, the columns, and each run's cells (the newest picked out).</summary>
+    void DrawRunBoard<T>(Game g, string title, string sub, string empty, (string head, int x)[] cols, List<T> runs, Func<T, DateTime> when, Func<T, string[]> cells)
+    {
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        CenterText(title, 26, blue);
+        CenterText(sub, 36, gold);
+        if (runs.Count == 0) { CenterText(empty, 70, MenuText); }
+        else
+        {
+            var latest = runs.MaxBy(when);
+            Text(18, 48, "#", MenuDim);
+            foreach (var (head, x) in cols) Text(x, 48, head, MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                uint c = Equals(r, latest) && when(r) != default ? fresh : i == 0 ? gold : MenuText;
+                Text(18, y, $"{i + 1,2}", c);
+                var row = cells(r);
+                for (int k = 0; k < cols.Length; k++) Text(cols[k].x, y, row[k], c);
+            }
+        }
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    void DrawRailBoard(Game g, ClassDef def) =>
+        DrawRunBoard(g, $"RAIL TRIALS   < {def.Name.ToUpperInvariant()} >", "30 SECONDS OF TARGETS, BY SCORE", "NO TRIALS YET. ON THE RANGE, USE WITH THE RAILGUN.",
+            new[] { ("SCORE", 40), ("HITS", 92), ("ACC", 130), ("TIME", 170), ("NAME", 214) }, g.Profile.RailBoard(g.Menu.BoardClass), r => r.When,
+            r => new[] { $"{r.Score}", $"{r.Hits}", $"{r.Accuracy}%", $"{r.Reaction:0.00}", r.Name });
+
+    void DrawInstagibBoard(Game g, ClassDef def) =>
+        DrawRunBoard(g, $"INSTAGIB   < {def.Name.ToUpperInvariant()} >", "WAVES, THEN THE LONGEST STREAK", "NO RUNS YET. ARENA > INSTAGIB, THEN START.",
+            new[] { ("WAVES", 40), ("STREAK", 92), ("KILLS", 146), ("NAME", 192), ("DATE", 258) }, g.Profile.InstagibBoard(g.Menu.BoardClass), r => r.When,
+            r => new[] { $"{r.Waves}", $"{r.BestStreak}", $"{r.Kills}", r.Name, r.When == default ? "-" : r.When.ToString("MM-dd") });
 
     /// <summary>The shooting range's board for one class: the best drills.</summary>
     void DrawRangeBoard(Game g, ClassDef def)

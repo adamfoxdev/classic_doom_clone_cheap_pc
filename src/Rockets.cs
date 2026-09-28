@@ -88,6 +88,7 @@ public sealed partial class Game
         BlastTrick(pr, airborne, pr.HitWall);
         int hurt = (int)(points * Rockets.SelfShare);
         if (SafeRockets) hurt = Math.Min(hurt, p.Health - 1); // practice never kills you: jump all you like
+        if (RocketArenaOn) hurt = 0; // Rocket Arena: your own blasts only push
         if (hurt > 0) DamagePlayer(hurt);
     }
 

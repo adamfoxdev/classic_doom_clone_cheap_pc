@@ -336,7 +336,12 @@ public sealed class MenuSystem
             int n = ArenaModInfo.All.Length;
             if (Cursor < n && (inp.Left || inp.Right || inp.Confirm))
             {
-                _g.ArenaMods ^= ArenaModInfo.All[Cursor];
+                var mod = ArenaModInfo.All[Cursor];
+                _g.ArenaMods ^= mod;
+                // the Quake modes set your weapons, so they don't mix with each other or with melee only
+                if ((_g.ArenaMods & mod) != 0)
+                    foreach (var other in new[] { ArenaMod.Instagib, ArenaMod.RocketArena, ArenaMod.MeleeOnly })
+                        if (other != mod && (ArenaModInfo.Quake(mod) || ArenaModInfo.Quake(other))) _g.ArenaMods &= ~other;
                 _g.SaveSettings();
                 _g.PlaySound(Sfx.Pickup, 0.6f);
                 return;
