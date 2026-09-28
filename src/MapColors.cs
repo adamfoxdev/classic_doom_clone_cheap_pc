@@ -1,7 +1,7 @@
 namespace HexenSharp;
 
 /// <summary>
-/// Recolouring the current map's floor, ceiling (and sky) and fog from the console, to try out what reads best in a
+/// Recolouring the current map's floor, ceiling (and sky), walls (and the faces of steps) and fog from the console, to try out what reads best in a
 /// mode. A colour tints the texture, keeping its pattern with the colour as its average; 'flat' paints it one solid
 /// colour; 'off' puts the map's own back. It lasts until you leave the map (or it's rebuilt, as on Restart).
 /// </summary>
@@ -73,12 +73,12 @@ public static class MapColors
 public sealed partial class Game
 {
     /// <summary>The map's own floor, ceiling, sky and fog, kept while they're recoloured (so 'off' can put them back).</summary>
-    sealed record ThemeLook(Tex FloorIn, Tex FloorOut, Tex CeilIn, Tex Sky, uint Fog);
+    sealed record ThemeLook(Tex FloorIn, Tex FloorOut, Tex CeilIn, Tex Sky, uint Fog, Dictionary<char, Tex> Walls, Tex Riser, int Light);
     readonly System.Runtime.CompilerServices.ConditionalWeakTable<Theme, ThemeLook> _looks = new();
 
-    ThemeLook Look(Theme th) => _looks.GetValue(th, t => new ThemeLook(t.FloorIn, t.FloorOut, t.CeilIn, t.Sky, t.FogColor));
+    ThemeLook Look(Theme th) => _looks.GetValue(th, t => new ThemeLook(t.FloorIn, t.FloorOut, t.CeilIn, t.Sky, t.FogColor, new Dictionary<char, Tex>(t.Walls), t.Riser, t.Light));
 
-    public enum MapSurface { Floor, Ceiling, Fog }
+    public enum MapSurface { Floor, Ceiling, Walls, Fog }
 
     /// <summary>Recolours a surface of the current map (null puts its own back); says what it did.</summary>
     public string SetMapColour(MapSurface what, uint? col, bool flat = false)
@@ -95,11 +95,17 @@ public sealed partial class Game
                 th.CeilIn = col is { } c ? MapColors.Recolour(own.CeilIn, c, flat) : own.CeilIn;
                 th.Sky = col is { } s ? MapColors.Recolour(own.Sky, s, flat) : own.Sky;
                 break;
+            case MapSurface.Walls:
+                // every kind of plain wall (each tinted from its own texture, so bricks stay bricks), and step faces;
+                // doors, levers, blocks, rubble and ore keep their looks, so you can still tell them apart
+                foreach (var (glyph, tex) in own.Walls) th.Walls[glyph] = col is { } w ? MapColors.Recolour(tex, w, flat) : tex;
+                th.Riser = col is { } r ? MapColors.Recolour(own.Riser ?? Art.StepRiser, r, flat) : own.Riser;
+                break;
             case MapSurface.Fog:
                 th.FogColor = col ?? own.Fog;
                 break;
         }
-        string name = what switch { MapSurface.Floor => "floor", MapSurface.Ceiling => "ceiling and sky", _ => "fog" };
+        string name = what switch { MapSurface.Floor => "floor", MapSurface.Ceiling => "ceiling and sky", MapSurface.Walls => "walls", _ => "fog" };
         return col is { } k ? $"{name}: {MapColors.Hex(k)}{(flat && what != MapSurface.Fog ? " (flat)" : "")}" : $"{name}: the map's own";
     }
 
@@ -108,6 +114,185 @@ public sealed partial class Game
     {
         if (Level?.Theme is not { } th) return "no map loaded";
         return $"floor {MapColors.Hex(MapColors.Average(Level.Outdoor.Any(o => o) ? th.OutdoorFloor : th.FloorIn))}  ceiling {MapColors.Hex(MapColors.Average(th.CeilIn))}"
-               + $"  sky {MapColors.Hex(MapColors.Average(th.Sky))}  fog {MapColors.Hex(th.FogColor)}";
+               + $"  walls {MapColors.Hex(MapColors.Average(th.Walls.TryGetValue('#', out var w) ? w : Art.Stone))}  sky {MapColors.Hex(MapColors.Average(th.Sky))}  fog {MapColors.Hex(th.FogColor)}";
+    }
+}
+
+/// <summary>
+/// Whole looks for a room, from the console ('roomlook tron' / 'roomlook matrix'), made for Rocket Soccer's pitch but
+/// good on any map. Tron: black, with glowing cyan lines round every floor cell, wall panel and step, a glowing
+/// horizon, and orange goals (any ice walls). Matrix: black, with green code raining down the walls and the sky,
+/// a faint green grid underfoot, and the goals (ice walls) in denser, paler rain. 'roomlook off' puts the map's own back.
+/// </summary>
+public static class RoomLooks
+{
+    public static readonly string[] Names = { "tron", "matrix" };
+    const int S = Art.TS;
+
+    static uint Glow(int r, int g, int b, float k) => Col.Rgb(Math.Min(255, (int)(r * k)), Math.Min(255, (int)(g * k)), Math.Min(255, (int)(b * k)));
+
+    /// <summary>A panel: a dark fill, and glowing lines round its edges (and across it, every `every` pixels) with a soft halo.</summary>
+    public static Tex Panel(uint fill, (int r, int g, int b) line, int every = 0, float bright = 1f, bool vertical = true)
+    {
+        var t = new Tex(S, S);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                int dx = Math.Min(x, S - 1 - x), dy = Math.Min(y, S - 1 - y);
+                if (every > 0) dy = Math.Min(dy, Math.Abs(y % every - every / 2) == 0 ? 0 : 99);
+                int d = vertical ? Math.Min(dx, dy) : dy;
+                float k = d == 0 ? 1f : d == 1 ? 0.45f : d == 2 ? 0.16f : 0f;
+                t.Px[y * S + x] = k > 0 ? Col.Lerp(fill, Glow(line.r, line.g, line.b, bright), (int)(k * 256)) : fill;
+            }
+        return t;
+    }
+
+    /// <summary>A sky: black overhead, a deep glow toward the horizon, and a bright line along it.</summary>
+    public static Tex Horizon((int r, int g, int b) glow)
+    {
+        var t = new Tex(256, 128);
+        for (int y = 0; y < 128; y++)
+        {
+            float f = y / 127f, k = f * f * f * 0.5f;
+            if (y >= 124) k = 1f; else if (y >= 120) k = 0.55f;
+            uint c = Glow(glow.r, glow.g, glow.b, k);
+            for (int x = 0; x < 256; x++) t.Px[y * 256 + x] = c;
+        }
+        // faint lines across the glow, like a far-off grid
+        for (int y = 96; y < 120; y += 6)
+            for (int x = 0; x < 256; x++) t.Px[y * 256 + x] = Col.Lerp(t.Px[y * 256 + x], Glow(glow.r, glow.g, glow.b, 0.8f), 90);
+        return t;
+    }
+
+    /// <summary>
+    /// Code rain on a texture: columns of little random glyphs, each column with a bright head falling down it and a
+    /// fading trail; the glyphs flicker as they go. Update redraws it for a moment in time.
+    /// </summary>
+    public sealed class Rain
+    {
+        public readonly Tex Tex;
+        readonly int _cols, _rows, _cycle;
+        readonly float[] _speed, _phase;
+        readonly int[] _glyph;
+        readonly ushort[] _shapes;
+        readonly float _density;
+        readonly (int r, int g, int b) _colour;
+        const int CW = 4, CH = 8;
+
+        public Rain(int w, int h, int seed, float density = 1f, (int r, int g, int b)? colour = null)
+        {
+            _colour = colour ?? (30, 255, 90);
+            Tex = new Tex(w, h);
+            _cols = w / CW; _rows = h / CH; _cycle = _rows + 6; _density = density;
+            var rng = new Random(seed);
+            _speed = Enumerable.Range(0, _cols).Select(_ => 4f + (float)rng.NextDouble() * 7f).ToArray();
+            _phase = Enumerable.Range(0, _cols).Select(_ => (float)rng.NextDouble() * 40f).ToArray();
+            _glyph = Enumerable.Range(0, _cols * _rows).Select(_ => rng.Next(32)).ToArray();
+            // 3 by 5 glyphs: random bits, each with a solid stroke so none are empty
+            _shapes = Enumerable.Range(0, 32).Select(_ => (ushort)(rng.Next(1 << 15) | (1 << rng.Next(15)) | 0x1248)).ToArray();
+            Update(0);
+        }
+
+        public void Update(float time)
+        {
+            var px = Tex.Px;
+            Array.Fill(px, Col.Rgb(0, 6, 2));
+            int flick = (int)(time * 9);
+            for (int c = 0; c < _cols; c++)
+            {
+                float head = (time * _speed[c] + _phase[c]) % _cycle;
+                for (int r = 0; r < _rows; r++)
+                {
+                    float behind = head - r;
+                    if (behind < 0) behind += _cycle;
+                    float trail = 7f * _density;
+                    if (behind > trail) continue;
+                    float k = 1 - behind / trail;
+                    uint col = behind < 1 ? Col.Rgb(220, 255, 225) : Glow(_colour.r, _colour.g, _colour.b, 0.25f + 0.85f * k);
+                    int gi = _glyph[r * _cols + c];
+                    if ((c * 7 + r * 13 + flick) % 11 == 0) gi = (gi + flick) & 31; // a flicker as it falls
+                    ushort shape = _shapes[gi];
+                    for (int gy = 0; gy < 5; gy++)
+                        for (int gx = 0; gx < 3; gx++)
+                            if ((shape >> (gy * 3 + gx) & 1) != 0) px[(r * CH + 1 + gy) * Tex.W + c * CW + gx] = col;
+                }
+            }
+        }
+    }
+}
+
+public sealed partial class Game
+{
+    /// <summary>The room look in force ('tron', 'matrix'), on which map's theme, and its code rain (the Matrix's).</summary>
+    public string RoomLook { get; private set; }
+    Theme _roomLookTheme;
+    readonly List<RoomLooks.Rain> _rain = new();
+    float _rainClock, _rainTime;
+
+    /// <summary>Dresses the current map in a room look (null or "off" puts its own back); says what it did.</summary>
+    public string SetRoomLook(string look)
+    {
+        if (Level?.Theme is not { } th) return "no map loaded";
+        var own = Look(th);
+        look = look?.ToLowerInvariant();
+        _rain.Clear();
+        // back to the map's own first, so looks don't stack
+        th.FloorIn = own.FloorIn; th.FloorOut = own.FloorOut; th.CeilIn = own.CeilIn; th.Sky = own.Sky; th.FogColor = own.Fog; th.Riser = own.Riser;
+        foreach (var (g, t) in own.Walls) th.Walls[g] = t;
+        th.Light = own.Light;
+        RoomLook = null; _roomLookTheme = null;
+        if (look is null or "off" or "none") return "room look: the map's own";
+        uint black = Col.Rgb(2, 3, 8);
+        switch (look)
+        {
+            case "tron":
+            {
+                var cyan = (0, 220, 255);
+                th.FloorIn = RoomLooks.Panel(black, cyan);
+                th.FloorOut = th.FloorIn;
+                th.CeilIn = RoomLooks.Panel(Col.Rgb(0, 0, 4), cyan, bright: 0.45f);
+                var wall = RoomLooks.Panel(black, cyan, every: 32);
+                foreach (var g in own.Walls.Keys.ToList()) th.Walls[g] = wall;
+                th.Walls['I'] = RoomLooks.Panel(Col.Rgb(12, 4, 0), (255, 140, 20), every: 16, bright: 1.1f); // the goals: Tron orange
+                th.Riser = RoomLooks.Panel(black, cyan, vertical: false);
+                th.Sky = RoomLooks.Horizon((0, 170, 230));
+                th.FogColor = Col.Rgb(0, 4, 10);
+                th.Light = 256;
+                break;
+            }
+            case "matrix":
+            {
+                var green = (20, 200, 70);
+                th.FloorIn = RoomLooks.Panel(Col.Rgb(0, 8, 3), green, bright: 0.55f);
+                th.FloorOut = th.FloorIn;
+                th.CeilIn = RoomLooks.Panel(Col.Rgb(0, 4, 1), green, bright: 0.3f);
+                var wall = new RoomLooks.Rain(Art.TS, Art.TS, 7);
+                var goal = new RoomLooks.Rain(Art.TS, Art.TS, 11, 2.2f, (170, 255, 200)); // the goals: denser, paler rain
+                var sky = new RoomLooks.Rain(256, 128, 5, 0.8f);
+                _rain.AddRange(new[] { wall, goal, sky });
+                foreach (var g in own.Walls.Keys.ToList()) th.Walls[g] = wall.Tex;
+                th.Walls['I'] = goal.Tex;
+                th.Riser = RoomLooks.Panel(Col.Rgb(0, 8, 3), green, vertical: false);
+                th.Sky = sky.Tex;
+                th.FogColor = Col.Rgb(0, 10, 4);
+                th.Light = 256;
+                break;
+            }
+            default:
+                return $"unknown room look '{look}' (try: {string.Join(", ", RoomLooks.Names)}, off)";
+        }
+        RoomLook = look; _roomLookTheme = th;
+        return $"room look: {look}";
+    }
+
+    /// <summary>Each frame: the Matrix's code rain falls (redrawn fifteen times a second); a look ends with its map.</summary>
+    void RoomLookTick(float dt)
+    {
+        if (RoomLook == null) return;
+        if (Level?.Theme != _roomLookTheme) { RoomLook = null; _rain.Clear(); return; }
+        _rainTime += dt;
+        if ((_rainClock += dt) < 1f / 15f) return;
+        _rainClock = 0;
+        foreach (var r in _rain) r.Update(_rainTime);
     }
 }

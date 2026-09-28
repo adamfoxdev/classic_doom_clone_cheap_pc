@@ -1355,11 +1355,17 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `tower [seed]` | play the endless rocket tower on a new seed, or on the one you name |
 | `floorcolor [colour\|off] [flat]` | recolour this map's floor, indoors and out, to try what reads best: `#rrggbb`, `r g b` (0-255) or a name (`black`, `white`, `grey`, `dark`, `light`, `red`, `green`, `blue`, `navy`, `sky`, `yellow`, `orange`, `purple`, `brown`, `sand`, `teal`). It tints the texture, keeping its pattern; `flat` paints it one solid colour; `off` puts the map's own back. With no colour it shows the current ones. |
 | `ceilcolor [colour\|off] [flat]` | the same for the ceiling and the sky |
+| `wallcolor [colour\|off] [flat]` | the same for the walls (each kind tinted from its own texture) and the faces of steps and ledges; doors, levers, blocks and ore keep their looks |
 | `fogcolor [colour\|off]` | the colour the distance fades to |
-| `mapcolors` | this map's floor, ceiling, sky and fog colours. Recolouring lasts until you leave the map or restart. |
+| `roomlook [tron\|matrix\|off]` | dress the whole map in a look, made for the Rocket Soccer pitch but fine anywhere. `tron`: the 1982 grid, black with glowing cyan lines round every floor cell, wall panel and step, a glowing horizon, and orange goals. `matrix`: black with green code raining down the walls and the sky as you play, a faint green grid underfoot, and the goals in denser, paler rain. `off` puts the map's own back. |
+| `mapcolors` | this map's floor, ceiling, wall, sky and fog colours. Recolouring lasts until you leave the map or restart. |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
-![Rocket Soccer's pitch after floorcolor sand and fogcolor 170 200 230](docs/map_colours.png)
+![Rocket Soccer's pitch after floorcolor sand, wallcolor 90 70 60 and fogcolor 170 200 230](docs/map_colours.png)
+
+![roomlook tron on the Rocket Soccer pitch](docs/roomlook_tron.png)
+
+![roomlook matrix on the Rocket Soccer pitch](docs/roomlook_matrix.png)
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
 `gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off), `crosshair` (0 off, 1 dot, 2 cross, 3 circle),

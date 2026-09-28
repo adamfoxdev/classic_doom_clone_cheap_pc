@@ -347,8 +347,14 @@ public sealed class DevConsole
         }
         Add("floorcolor", "[colour|off] [flat]", "recolour this map's floor (#rrggbb, r g b, or a name; 'flat' for one solid colour, 'off' for its own)", a => Colour(Game.MapSurface.Floor, "floorcolor", a));
         Add("ceilcolor", "[colour|off] [flat]", "recolour this map's ceiling and sky, as floorcolor", a => Colour(Game.MapSurface.Ceiling, "ceilcolor", a));
+        Add("wallcolor", "[colour|off] [flat]", "recolour this map's walls and the faces of its steps, as floorcolor (doors, levers and ore keep their looks)", a => Colour(Game.MapSurface.Walls, "wallcolor", a));
         Add("fogcolor", "[colour|off]", "recolour this map's fog (what the far floor and walls fade to)", a => Colour(Game.MapSurface.Fog, "fogcolor", a));
-        Add("mapcolors", "", "this map's floor, ceiling, sky and fog colours", _ => Print(_g.MapColourReport()));
+        Add("roomlook", "[tron|matrix|off]", "dress this map as the 1982 Tron grid or the Matrix's code rain (made for Rocket Soccer); off for its own", a =>
+        {
+            if (a.Length < 2) { Print($"room look: {_g.RoomLook ?? "the map's own"}  (roomlook tron | matrix | off)"); return; }
+            Print(_g.SetRoomLook(a[1]));
+        });
+        Add("mapcolors", "", "this map's floor, ceiling, walls, sky and fog colours", _ => Print(_g.MapColourReport()));
         Add("tower", "[seed]", "the endless rocket tower: a new seed, or the one you name", a =>
         {
             int seed = 0;

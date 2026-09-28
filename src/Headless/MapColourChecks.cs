@@ -29,6 +29,36 @@ public static partial class Headless
         g.Con.Execute("fogcolor navy", quiet: true);
         check(th.FogColor == Col.Rgb(20, 28, 70), "'fogcolor navy' sets the fog");
 
+        var walls = new Dictionary<char, Tex>(th.Walls);
+        g.Con.Execute("wallcolor teal flat", quiet: true);
+        uint teal = Col.Rgb(40, 140, 140);
+        check(th.Walls.Count == walls.Count && th.Walls.Values.All(w => w.Px.All(c => c == teal)) && th.Riser != null && th.Riser.Px.All(c => c == teal) && Art.Stone.Px.Any(c => c != teal),
+            "'wallcolor teal flat' paints every kind of wall, and the faces of steps, one colour (the shared textures untouched)");
+        g.Con.Execute("wallcolor #804020", quiet: true);
+        uint wa = MapColors.Average(th.Walls['#']);
+        check(Math.Abs(Col.R(wa) - 0x80) < 16 && Math.Abs(Col.B(wa) - 0x20) < 12 && th.Walls['#'].Px.Distinct().Count() > 4, $"'wallcolor #804020' tints them, keeping their pattern ({MapColors.Hex(wa)})");
+        g.Con.Execute("wallcolor off", quiet: true);
+        check(walls.All(kv => th.Walls[kv.Key] == kv.Value) && th.Riser == null, "'wallcolor off' puts the map's own walls back");
+
+        // room looks: the Tron grid and the Matrix's code rain, then back
+        g.Con.Execute("roomlook tron", quiet: true);
+        uint tronFloor = MapColors.Average(th.OutdoorFloor), tronGoal = MapColors.Average(th.Walls['I']);
+        check(g.RoomLook == "tron" && th.OutdoorFloor != floorOut && th.OutdoorFloor.Px.Any(c => Col.B(c) > 200 && Col.R(c) < 40) && Col.R(tronGoal) > Col.B(tronGoal)
+              && th.Walls['#'] != walls['#'] && Col.R(tronFloor) + Col.G(tronFloor) + Col.B(tronFloor) < 150,
+            "'roomlook tron' makes the room black with glowing cyan lines, and the goals orange");
+        g.Con.Execute("roomlook matrix", quiet: true);
+        var rain = th.Walls['#'];
+        uint[] was = (uint[])rain.Px.Clone();
+        for (int k = 0; k < 20; k++) g.Update(new Input(), 1f / 35f);
+        uint ma = MapColors.Average(rain);
+        check(g.RoomLook == "matrix" && Col.G(ma) > Col.R(ma) * 2 && !rain.Px.SequenceEqual(was) && th.Walls['I'] != rain,
+            "'roomlook matrix' rains green code down the walls (and it falls as you play), the goals in their own rain");
+        g.Con.Execute("roomlook off", quiet: true);
+        check(g.RoomLook == null && th.OutdoorFloor == floorOut && th.FloorIn == floorIn && th.Sky == sky && th.FogColor == fog && walls.All(kv => th.Walls[kv.Key] == kv.Value) && th.Riser == null,
+            "'roomlook off' puts the map's own looks back");
+        g.Con.Execute("roomlook disco", quiet: true);
+        check(g.RoomLook == null && th.FloorIn == floorIn, "a look it doesn't know changes nothing");
+
         var before = th.FloorIn;
         g.Con.Execute("floorcolor notacolour", quiet: true);
         check(th.FloorIn == before, "a colour it can't read changes nothing");
