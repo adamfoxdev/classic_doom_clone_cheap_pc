@@ -53,6 +53,11 @@ public static partial class Headless
         uint ma = MapColors.Average(rain);
         check(g.RoomLook == "matrix" && Col.G(ma) > Col.R(ma) * 2 && !rain.Px.SequenceEqual(was) && th.Walls['I'] != rain,
             "'roomlook matrix' rains green code down the walls (and it falls as you play), the goals in their own rain");
+        g.Con.Execute("roomlook vaporwave", quiet: true);
+        uint vf = MapColors.Average(th.OutdoorFloor), vs = MapColors.Average(th.Sky), vg = MapColors.Average(th.Walls['I']);
+        check(g.RoomLook == "vaporwave" && th.OutdoorFloor.Px.Any(c => Col.R(c) > 220 && Col.B(c) > 150 && Col.G(c) < 110) && Col.B(vf) > Col.G(vf)
+              && Col.R(vs) > Col.G(vs) && th.Sky.Px.Any(c => Col.R(c) == 255 && Col.G(c) > 200) && Col.G(vg) > Col.R(vg),
+            "'roomlook vaporwave' lays a hot-pink grid on purple, sets a striped sun in a pink sky, and turns the goals teal");
         g.Con.Execute("roomlook off", quiet: true);
         check(g.RoomLook == null && th.OutdoorFloor == floorOut && th.FloorIn == floorIn && th.Sky == sky && th.FogColor == fog && walls.All(kv => th.Walls[kv.Key] == kv.Value) && th.Riser == null,
             "'roomlook off' puts the map's own looks back");

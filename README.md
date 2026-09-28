@@ -1357,7 +1357,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `ceilcolor [colour\|off] [flat]` | the same for the ceiling and the sky |
 | `wallcolor [colour\|off] [flat]` | the same for the walls (each kind tinted from its own texture) and the faces of steps and ledges; doors, levers, blocks and ore keep their looks |
 | `fogcolor [colour\|off]` | the colour the distance fades to |
-| `roomlook [tron\|matrix\|off]` | dress the whole map in a look, made for the Rocket Soccer pitch but fine anywhere. `tron`: the 1982 grid, black with glowing cyan lines round every floor cell, wall panel and step, a glowing horizon, and orange goals. `matrix`: black with green code raining down the walls and the sky as you play, a faint green grid underfoot, and the goals in denser, paler rain. `off` puts the map's own back. |
+| `roomlook [tron\|matrix\|vaporwave\|off]` | dress the whole map in a look, made for the Rocket Soccer pitch but fine anywhere. `tron`: the 1982 grid, black with glowing cyan lines round every floor cell, wall panel and step, a glowing horizon, and orange goals. `matrix`: black with green code raining down the walls and the sky as you play, a faint green grid underfoot, and the goals in denser, paler rain. `vaporwave`: a hot-pink grid on deep purple underfoot, walls fading from pink to violet behind thin blinds, a striped sun setting in a pink and orange sky, and teal goals. `off` puts the map's own back. |
 | `mapcolors` | this map's floor, ceiling, wall, sky and fog colours. Recolouring lasts until you leave the map or restart. |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
@@ -1366,6 +1366,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 ![roomlook tron on the Rocket Soccer pitch](docs/roomlook_tron.png)
 
 ![roomlook matrix on the Rocket Soccer pitch](docs/roomlook_matrix.png)
+
+![roomlook vaporwave on the Rocket Soccer pitch](docs/roomlook_vaporwave.png)
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
 `gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off), `crosshair` (0 off, 1 dot, 2 cross, 3 circle),
