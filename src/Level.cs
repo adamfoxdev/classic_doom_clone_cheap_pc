@@ -589,7 +589,7 @@ public sealed record MapDef(string Name, string Entry, string ThemeId, string[] 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>
 public static class Maps
 {
-    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire", "barren", "void", "meadow" };
+    public static readonly string[] ThemeIds = { "hall", "ice", "crypt", "arena", "spire", "barren", "void", "meadow", "town" };
 
     public static Theme ThemeById(string id)
     {
@@ -606,6 +606,7 @@ public static class Maps
                 "barren" => (Col.Rgb(96, 52, 34), 18f, 256),
                 "void" => (Col.Rgb(2, 2, 8), 22f, 256),
                 "meadow" => (Col.Rgb(40, 70, 60), 18f, 256),
+                "town" => (Col.Rgb(26, 14, 34), 18f, 256),
                 _ => (Col.Rgb(4, 8, 16), 15f, 256),
             };
         }
@@ -670,6 +671,18 @@ public static class Maps
                 };
                 t.Walls['#'] = Art.Stone; t.Walls['O'] = Art.Marble; t.Walls['B'] = Art.Brick; t.Walls['M'] = Art.Moss;
                 t.Walls['W'] = Art.Wood; t.Walls['I'] = Art.Ice;
+                return t;
+            }
+            case "town":
+            {
+                // Neon Harbor at night: wet streets, lit building fronts, a skyline of towers
+                var t = new Theme
+                {
+                    FloorIn = Art.FloorStone, CeilIn = Art.CeilWood, FloorOut = Art.Street, Sky = Art.SkyCity,
+                    FogColor = Col.Rgb(26, 14, 34), FogDist = 18f, Light = 256,
+                };
+                t.Walls['#'] = Art.Facade; t.Walls['W'] = Art.Wood; t.Walls['B'] = Art.Brick; t.Walls['O'] = Art.Marble;
+                t.Walls['M'] = Art.Moss; t.Walls['I'] = Art.Ice;
                 return t;
             }
             case "meadow":

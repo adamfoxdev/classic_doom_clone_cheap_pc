@@ -219,6 +219,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `Tab` / `M` | Automap |
 | `Esc` | Pause menu (Resume, Options, Restart, Quit) |
 | `K` | Character screen: spend skill points, see your weapons' levels |
+| `J` | Case journal (Story mode) |
 | `H` | Cycle the HUD style: full, compact, minimal, off |
 | `F12` | Save a screenshot |
 | `~` | Developer console |
@@ -378,6 +379,12 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
 - **Medals:** bronze for clearing wave 5, silver for 10, gold for 15, the same for every class and whatever the
   modifiers. Each medal
   means getting past one more round of Heresiarchs. You're told when a wave earns a new medal.
+- **Arsenal upgrades:** after waves 3, 6, 9, 12 and 15 an upgrade appears on the altar (Blessed, Runed, Exalted,
+  Mythic, Divine; Mk II to Mk VI in sci-fi). Each one powers up every weapon you carry for the rest of the run:
+  +35% damage and +12% fire rate per tier, and longer melee reach. From tier 2, melee swings cleave through up to
+  3 monsters (4 from tier 4) and ranged attacks fire 2 extra shots in a fan (4 from tier 4). From tier 3, every
+  shot also splashes. Your weapon glows in the tier's colour, and the HUD shows the tier under the medal line.
+  Upgrades only count in the arena, and each run starts from scratch.
 - **HUD:** under the wave count, the top-right corner shows your best for the class and the next medal you
   don't have yet.
 - **When you die:** it tells you the run's waves, time, kills and score, and where it placed. Press `Enter` to go
@@ -439,6 +446,39 @@ exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
 under the crypt's south-west room, at the east end of the Windspire's
 north-east ledge, and at the east end of the quarry's strongroom.
+
+## Story mode
+
+**Story** on the title menu. You're a private eye working jobs around **Neon Harbor**, a rain-slicked sci-fi town
+of neon signs, lit windows and a skyline of towers. Each case has its own map, and you play it on foot, unarmed.
+There's nothing to shoot; this is detective work.
+
+- **The brief** opens each case: who's been hurt, what's gone missing, who to talk to.
+- **Question people:** walk up to someone and press `E`. Ask where they were (their alibi), or ask about any clue
+  you've found; each clue you find adds a question. Use `Up`/`Down` and `Enter`, and `Esc` to walk away.
+- **Find clues:** glowing yellow evidence tags mark them. Press `E` to examine one; it goes in your journal and
+  becomes something to ask about.
+- **Catch the lies:** ask someone about a clue that contradicts their story and your journal flags it in red.
+  Only the culprit lies.
+- **Watch for patterns:** some clues only make sense together, like a staff roster and a list of spiked drinks at
+  other clubs. Find both and the journal notes the pattern.
+- **The journal** (`J`) keeps everything: people met, alibis, what they said about each clue, the clues themselves,
+  lies and patterns. It tells you when you have the evidence you need.
+- **Accuse** from the conversation menu:
+  - Naming the culprit with the key evidence in hand gets a confession, and the next job comes in.
+  - Naming the culprit without enough proof gets you nowhere, but costs nothing.
+  - Naming the wrong person is a strike. Three strikes and the trail goes cold, and the case starts over.
+
+The case, clue count and strikes sit in the top-right corner. The cases:
+
+1. **The Missing Shipment** (Dockside): a crate of medical nanites vanishes from a warehouse overnight.
+2. **Static on Channel 7** (the Chrome Lounge): a holo-news anchor's drink is spiked. It isn't the first time this
+   month.
+3. **The Ghost in the Grid** (the Grid District): every few nights the whole district blacks out.
+
+Close all three to finish the story.
+
+![Questioning a suspect](docs/story_questioning.png)
 
 ## Map editor
 
@@ -548,6 +588,18 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   - **Off**: nothing but the view. Messages, menus and wave banners still show.
 
   ![Compact HUD](docs/hud_compact.png)
+- **Arcade mode** (or `arcade 0|1` in the console), off by default, keeps your spirits up in a fight, the Chaos
+  Arena especially:
+  - **Damage numbers** pop out of every monster you hit, rising and fading, and a kill adds a `+bonus` on top.
+  - **Score** in the top-right corner: each hit scores ten points per point of damage, times your style multiplier.
+    A kill pays a bonus based on the monster's toughness, and clearing an arena wave pays 1000 per wave number.
+  - **Style rank** under it, from **D** (DULL) through C, B, A and S up to **SS** and **SSS** (STYLISH!!!). It shows
+    the rank, its title, a meter towards the next rank, the multiplier (x1 at D up to x7 at SSS) and your combo of
+    hits. Keep hitting to climb. Kills, switching weapons between hits and hitting from the air all climb faster.
+    The higher ranks take more to climb and drain faster. Stop fighting and the rank drains away; take a hit and it
+    drops a whole grade and your combo breaks.
+
+  ![Arcade mode in the Chaos Arena](docs/arcade_mode.png)
 - **Crosshair** (or `crosshair 0-3` in the console): off (the default), a dot, a cross or a circle, drawn light with
   a dark outline at the centre of the view, where your shots go. It follows the horizon when you look up or down,
   works with any HUD style, and hides on the automap and in the cockpit (which has its own gunsight).
@@ -670,6 +722,8 @@ in both looks (`76_…`, `77_…`).
 | `src/Game.cs` | Game state, player, classes and weapons, monster AI, projectiles, pickups, doors, portals |
 | `src/Level.cs` | Map parsing, doors, rubble, collision, line of sight; the hub's ten maps and the themes |
 | `src/Arena.cs` | Wave survival: wave composition, difficulty scaling, spawning, rewards, and the arena's medals |
+| `src/Story.cs` | Story mode: the cases (maps, suspects, clues, patterns), questioning, the journal and accusations |
+| `src/Arcade.cs` | Arcade mode: damage numbers, score and the style rank |
 | `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
 | `src/Practice.cs` | The practice courses: Velocity Hangar, Descent, Circuit and Free Roam |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |

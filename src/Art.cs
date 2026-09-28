@@ -27,6 +27,11 @@ public static class Art
     /// <summary>The green moon's turf.</summary>
     public static Tex Meadow;
     public static Tex[] Asteroid;
+    /// <summary>Story mode: the townsfolk you question, evidence markers, and Neon Harbor's streets, fronts and skyline.</summary>
+    public static Tex[] People, ClueMark;
+    public static Tex ClueFound, Street, Facade, SkyCity;
+    /// <summary>The arena's arsenal upgrade: a pulsing power core in a spinning ring.</summary>
+    public static Tex[] Upgrade;
     // Flats
     public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor,
         CheckpointFloor, CheckpointFloorOff, LiftFloor;
@@ -69,6 +74,8 @@ public static class Art
         Ship = Enumerable.Range(0, 3).Select(s => BuildShip(s, style == ArtStyle.SciFi)).ToArray();
         BuildBarren(style == ArtStyle.SciFi);
         BuildVoid(style == ArtStyle.SciFi);
+        BuildTown();
+        Upgrade = Enumerable.Range(0, 4).Select(UpgradeFrame).ToArray();
         PillarFrames = new[] { Pillar };
         TreeFrames = new[] { Tree };
         Version++;
@@ -87,6 +94,7 @@ public static class Art
         PickupKind.Weapon2 => WeaponPiece2,
         PickupKind.Weapon3 => WeaponPiece3,
         PickupKind.Jetpack => Jetpack,
+        PickupKind.Upgrade => Upgrade[0],
         _ => Relics[variant % Relics.Length],
     };
 
@@ -324,6 +332,137 @@ public static class Art
             for (int i = 0; i < 9; i++) { float x = r.Range(2f, 62f), y = r.Range(2f, 62f); c.Circle(x, y, 1.2f, bloom); }
             Meadow = c.T;
         }
+    }
+
+    /// <summary>Neon Harbor: wet asphalt, lit building fronts under neon, a skyline, its people and the evidence you find.</summary>
+    static void BuildTown()
+    {
+        {
+            var r = new Rng(1501); var c = new Canvas(TS, TS);
+            for (int i = 0; i < TS * TS; i++) { int v = r.Range(-8, 8); c.T.Px[i] = Col.Rgb(36 + v, 36 + v, 44 + v); }
+            for (int i = 0; i < 12; i++) c.Circle(r.Range(0f, 64f), r.Range(0f, 64f), r.Range(0.6f, 1.4f), Col.Rgb(20, 20, 26));
+            c.Ellipse(18, 44, 9, 3, Col.Rgb(80, 40, 90)); c.Ellipse(18, 44, 6, 1.6f, Col.Rgb(200, 80, 200)); // neon in a puddle
+            c.Ellipse(48, 16, 7, 2.5f, Col.Rgb(30, 70, 90)); c.Ellipse(48, 16, 4, 1.2f, Col.Rgb(90, 220, 255));
+            c.Rect(31, 0, 2, 64, Col.Rgb(90, 88, 60));                                              // faded lane line
+            for (int y = 4; y < 64; y += 16) c.Rect(31, y, 2, 6, Col.Rgb(36, 36, 44));
+            Street = c.T;
+        }
+        {
+            var r = new Rng(1502); var c = new Canvas(TS, TS);
+            c.Clear(Col.Rgb(46, 42, 58));
+            for (int y = 0; y < 64; y += 2) c.Rect(0, y, 64, 1, Col.Rgb(42, 38, 54));
+            for (int wy = 0; wy < 2; wy++)
+                for (int wx = 0; wx < 3; wx++)
+                {
+                    int x = 5 + wx * 20, y = 14 + wy * 24;
+                    bool lit = r.Int(3) > 0;
+                    c.Rect(x - 1, y - 1, 14, 14, Col.Rgb(24, 22, 30));
+                    c.Rect(x, y, 12, 12, lit ? Col.Rgb(230, 190, 110) : Col.Rgb(30, 34, 50));
+                    if (lit) c.Rect(x + 1, y + 1, 4, 10, Col.Rgb(255, 225, 160));
+                    c.Rect(x + 5, y, 1, 12, Col.Rgb(24, 22, 30));
+                }
+            uint neon = r.Int(2) == 0 ? Col.Rgb(255, 70, 200) : Col.Rgb(70, 230, 255);
+            c.Rect(0, 3, 64, 3, Col.Shade(neon, 140)); c.Rect(0, 4, 64, 1, neon);
+            c.Rect(0, 63, 64, 1, Col.Rgb(20, 18, 26));
+            c.Noise(r, 8);
+            Facade = c.T;
+        }
+        {
+            var r = new Rng(1503);
+            var t = new Tex(256, 128);
+            for (int y = 0; y < 128; y++)
+            {
+                float f = y / 127f;
+                uint row = Col.Rgb((int)(20 + 90 * f * f), (int)(10 + 20 * f), (int)(40 + 50 * f));
+                for (int x = 0; x < 256; x++) t.Px[y * 256 + x] = row;
+            }
+            var c = new Canvas(t);
+            for (int i = 0; i < 60; i++) c.T.Set(r.Int(256), r.Int(60), Col.Rgb(180, 170, 200));
+            // the skyline: towers of every height, their windows lit at random, wrapping round
+            for (int x = 0; x < 256;)
+            {
+                int w = r.Range(8, 20), h = r.Range(14, 60);
+                uint bc = Col.Rgb(16 + r.Int(10), 12 + r.Int(8), 26 + r.Int(10));
+                c.Rect(x, 128 - h, w, h, bc);
+                for (int wy = 128 - h + 3; wy < 126; wy += 4)
+                    for (int wx = x + 2; wx < x + w - 1; wx += 3)
+                        if (r.Int(4) == 0) c.T.Set(wx, wy, r.Int(5) == 0 ? Col.Rgb(255, 90, 210) : Col.Rgb(240, 200, 120));
+                x += w + r.Range(0, 3);
+            }
+            SkyCity = t;
+        }
+        People = Enumerable.Range(0, 9).Select(Person).ToArray();
+        ClueMark = new[] { EvidenceTag(255), EvidenceTag(190) };
+        {
+            var c = new Canvas(24, 24);
+            c.Tri(4, 20, 20, 20, 12, 4, Col.Rgb(90, 88, 80));
+            c.Tri(7, 18, 17, 18, 12, 8, Col.Rgb(130, 126, 112));
+            c.Outline(Dark);
+            ClueFound = c.T;
+        }
+    }
+
+    static Tex UpgradeFrame(int f)
+    {
+        var c = new Canvas(32, 32);
+        float pulse = 1 + 0.12f * MathF.Sin(f * MathF.PI / 2);
+        c.Glow(16, 16, 15 * pulse, Col.Rgb(255, 120, 230));
+        c.Circle(16, 16, 7 * pulse, Col.Rgb(255, 200, 250));
+        c.Circle(15, 15, 3.5f, Col.Rgb(255, 255, 255));
+        // a tilted ring spinning round the core
+        for (int k = 0; k < 24; k++)
+        {
+            float a = k * MathF.Tau / 24 + f * MathF.PI / 8;
+            float x = 16 + MathF.Cos(a) * 13, y = 16 + MathF.Sin(a) * 5;
+            if (MathF.Sin(a) < 0 && Math.Abs(x - 16) < 7) continue; // behind the core
+            c.Circle(x, y, 1.1f, k % 3 == 0 ? Col.Rgb(255, 240, 120) : Col.Rgb(200, 140, 255));
+        }
+        return c.T;
+    }
+
+    /// <summary>A bright yellow evidence tag with a question mark, at glow `v` (it pulses between frames).</summary>
+    static Tex EvidenceTag(int v)
+    {
+        var c = new Canvas(24, 24);
+        c.Tri(2, 22, 22, 22, 12, 2, Col.Shade(Col.Rgb(255, 220, 60), v));
+        c.Tri(5, 20, 19, 20, 12, 6, Col.Shade(Col.Rgb(255, 245, 150), v));
+        Font.Draw(c.T.Px, 24, 24, 10, 11, "?", Col.Rgb(40, 30, 10), 1, false);
+        c.Outline(Dark);
+        return c.T;
+    }
+
+    /// <summary>One of Neon Harbor's people: coat, trousers, skin, hair and hat all picked from `look`.</summary>
+    static Tex Person(int look)
+    {
+        (int r, int g, int b)[] coats = { (140, 110, 80), (60, 70, 110), (150, 60, 50), (40, 40, 44), (110, 120, 140), (200, 70, 150), (70, 120, 90), (130, 90, 60), (80, 180, 200) };
+        (int r, int g, int b)[] skins = { (230, 190, 160), (190, 140, 100), (120, 80, 60), (240, 210, 190), (160, 110, 80) };
+        (int r, int g, int b)[] hairs = { (40, 30, 20), (200, 170, 90), (20, 20, 24), (170, 60, 40), (220, 220, 230), (90, 200, 255) };
+        var c = new Canvas(32, 64);
+        var coat = coats[look % coats.Length];
+        var skin = skins[look * 3 % skins.Length];
+        var hair = hairs[look * 5 % hairs.Length];
+        uint cc = Col.Rgb(coat.r, coat.g, coat.b), dk = Col.Rgb(coat.r * 2 / 3, coat.g * 2 / 3, coat.b * 2 / 3);
+        uint sk = Col.Rgb(skin.r, skin.g, skin.b), hr = Col.Rgb(hair.r, hair.g, hair.b);
+        c.Rect(11, 44, 4, 19, Col.Rgb(34, 32, 40)); c.Rect(17, 44, 4, 19, Col.Rgb(34, 32, 40));      // legs
+        c.Rect(10, 61, 6, 3, Col.Rgb(20, 18, 20)); c.Rect(16, 61, 6, 3, Col.Rgb(20, 18, 20));      // shoes
+        c.Tri(8, 48, 24, 48, 16, 18, cc);                                                        // long coat
+        c.Rect(9, 20, 14, 26, cc);
+        c.Rect(15, 22, 2, 24, dk);                                                               // coat seam
+        c.Rect(6, 22, 3, 18, dk); c.Rect(23, 22, 3, 18, dk);                                     // arms
+        c.Rect(6, 40, 3, 3, sk); c.Rect(23, 40, 3, 3, sk);                                       // hands
+        c.Rect(14, 16, 4, 4, sk);                                                                // neck
+        c.Ellipse(16, 11, 5.5f, 6.5f, sk);                                                       // head
+        c.Ellipse(16, 7, 5.5f, 3.5f, hr);                                                        // hair
+        c.Rect(13, 11, 2, 2, Col.Rgb(20, 20, 24)); c.Rect(18, 11, 2, 2, Col.Rgb(20, 20, 24));  // eyes
+        c.Rect(14, 15, 4, 1, Col.Shade(sk, 170));                                                // mouth
+        switch (look % 4)
+        {
+            case 1: c.Rect(8, 4, 16, 2, dk); c.Rect(11, 0, 10, 5, dk); break;                   // fedora
+            case 2: c.Rect(10, 3, 12, 3, Col.Rgb(200, 60, 60)); c.Rect(19, 5, 6, 1, Col.Rgb(200, 60, 60)); break; // cap
+            case 3: c.Rect(10, 10, 12, 3, Col.Rgb(60, 220, 255)); break;                          // visor
+        }
+        c.Outline(Dark);
+        return c.T;
     }
 
     /// <summary>One frame of a tumbling asteroid: a lumpy disc lit from the top left, pocked with craters, turned by `rot`.</summary>

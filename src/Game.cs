@@ -9,7 +9,7 @@ public struct Input
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
     public bool Fire, Walk, JumpHeld, SlideHeld, JetHeld; // held
-    public bool Use, UseItem, Place, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character, CycleHud; // pressed
+    public bool Use, UseItem, Place, Journal, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character, CycleHud; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
@@ -101,6 +101,8 @@ public sealed class Player
     public const int BlockStack = 64;
     /// <summary>Ore you're carrying, by Level.OreGlyphs index (iron, crystal, fuel).</summary>
     public readonly int[] Ore = new int[Level.OreGlyphs.Length];
+    /// <summary>Arsenal upgrades picked up in the arena (0 to Arsenal.MaxTier); they power up every weapon there.</summary>
+    public int ArenaTier;
     public bool[] HasWeapon = { true, false, false };
     public int Weapon, PendingWeapon = -1;
     public float Cooldown, FireAnim, Raise, Bob, BobAmount;
@@ -238,6 +240,7 @@ public sealed class Game
         TestingMap = true;
         Practicing = true;
         ArenaMode = false;
+        StoryMode = false;
         Demo = DemoPaused = DemoSteps = false; Pilot = null; DemoTrack = null; PracticeSpeed = 1f;
         NewGame(cls); // sets the course up (SetUpCourse) once the map is built
         if (!Vars.QuakeMove) Say("Tip: turn on Quake movement in Options to build speed.");
@@ -265,6 +268,7 @@ public sealed class Game
         TestingMap = true;
         Practicing = false; Demo = false; PracticeSpeed = 1f;
         ArenaMode = true;
+        StoryMode = false;
         Style = GameStyle.Classic;
         NewGame(cls);
         int best = Profile.ArenaBestWave(cls);
@@ -276,6 +280,7 @@ public sealed class Game
     /// <summary>A wave is cleared in arena mode: a medal when it reaches one, and a new best past your old one.</summary>
     public void ArenaWaveCleared(int wave)
     {
+        if (Vars.Arcade) Say($"Wave bonus: +{Arcade.Bonus(wave * 1000)}");
         int best = Profile.ArenaBestWave(P.Class);
         var medal = ArenaMedals.For(wave);
         if (medal != ArenaMedals.For(wave - 1) && medal > ArenaMedals.For(best)) { Say($"New medal: {Medals.Name(medal)}!"); PlaySound(Sfx.BossSight, 0.6f); }
@@ -572,6 +577,7 @@ public sealed class Game
         TestingMap = true;
         Practicing = false;
         ArenaMode = false;
+        StoryMode = false;
         NewGame(cls);
         Say($"Play-testing '{map.Name}'.");
     }
@@ -600,6 +606,7 @@ public sealed class Game
     {
         EndArenaRun();
         ArenaMode = false;
+        StoryMode = false; Story = null;
         SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
         Practicing = false; Demo = false; PracticeSpeed = 1f;
@@ -654,10 +661,103 @@ public sealed class Game
     /// <summary>Text of the lore stone being read (the game pauses while it's open).</summary>
     public string ReadingLore;
     Random _loot = new();
+    /// <summary>Score, style rank and damage numbers, shown when Arcade mode is on (always tracked).</summary>
+    public readonly Arcade Arcade = new();
+
+    /// <summary>Story mode (Main menu > Story): private-eye cases around Neon Harbor, one map each.</summary>
+    public bool StoryMode;
+    public int StoryCase;
+    /// <summary>The case in progress: clues, statements, strikes, and who you're talking to.</summary>
+    public StoryState Story;
+
+    /// <summary>Takes on a case: its map, its suspects and clues. Always on foot and unarmed.</summary>
+    public void StartStory(int caseIndex)
+    {
+        StoryCase = Math.Clamp(caseIndex, 0, HexenSharp.Story.Cases.Length - 1);
+        var c = HexenSharp.Story.Cases[StoryCase];
+        HubSource = () => new[] { c.Map.Build() };
+        TestingMap = true;
+        Practicing = false; Demo = false; PracticeSpeed = 1f;
+        ArenaMode = false;
+        StoryMode = true;
+        Style = GameStyle.Classic;
+        NewGame(PClass.Fighter); // sets the case up (SetUpCase) once the map is built
+    }
+
+    void SetUpCase()
+    {
+        var c = HexenSharp.Story.Cases[StoryCase];
+        Story = new StoryState(c);
+        foreach (var s in c.Suspects) Level.Things.Add(new Npc(s) { Level = Level });
+        foreach (var clue in c.Clues) Level.Things.Add(new ClueMark(clue) { Level = Level });
+        Level.Things.RemoveAll(t => t is Monster or Chest);
+        Messages.Clear();
+        Say($"Case {StoryCase + 1}: {c.Title}");
+        ReadingLore = $"Case {StoryCase + 1}: {c.Title}\n\n{c.Brief}\n\nE: question people and examine clues.  J: your journal.";
+    }
+
+    /// <summary>The culprit's confessed and you've closed the dialogue: on to the next job, or the end of the story.</summary>
+    public void CaseSolved()
+    {
+        if (StoryCase + 1 >= HexenSharp.Story.Cases.Length) { Mode = GameMode.Victory; PlaySound(Sfx.Relic, 1); return; }
+        StartStory(StoryCase + 1);
+        Say("A new job comes in over the wire.");
+    }
+
+    /// <summary>Three wrong accusations: the trail goes cold and the case starts over.</summary>
+    public void CaseGoesCold()
+    {
+        PlaySound(Sfx.PlayerDeath, 0.6f);
+        StartStory(StoryCase);
+        Say("Three wrong calls. The trail went cold, so you start the case over.");
+    }
+
+    /// <summary>E in story mode: talk to the person or examine the clue you're facing, if any.</summary>
+    bool TryDetective()
+    {
+        if (Story == null) return false;
+        Thing best = null;
+        float bestD = 1.6f;
+        foreach (var t in Level.Things)
+        {
+            if (t is not (Npc or ClueMark)) continue;
+            float d = Dist(t.X, t.Y, P.X, P.Y);
+            if (d >= bestD || MathF.Abs(AngleDiff(MathF.Atan2(t.Y - P.Y, t.X - P.X), P.Angle)) > 0.6f) continue;
+            best = t; bestD = d;
+        }
+        if (best is Npc n) HexenSharp.Story.Talk(this, n);
+        else if (best is ClueMark m) HexenSharp.Story.Examine(this, m);
+        return best != null;
+    }
+
+    /// <summary>Talking or reading the journal pauses play: returns true while it has the input.</summary>
+    bool StoryInput(Input inp)
+    {
+        var s = Story;
+        if (s == null || Mode != GameMode.Playing) return false;
+        if (s.JournalOpen)
+        {
+            if (inp.Journal || inp.Pause || inp.Confirm || inp.Use) s.JournalOpen = false;
+            return true;
+        }
+        if (s.Talking != null)
+        {
+            var opts = HexenSharp.Story.Options(s);
+            if (inp.Up) { s.Cursor = (s.Cursor + opts.Count - 1) % opts.Count; PlaySound(Sfx.Swing, 0.4f); }
+            if (inp.Down) { s.Cursor = (s.Cursor + 1) % opts.Count; PlaySound(Sfx.Swing, 0.4f); }
+            s.Cursor = Math.Clamp(s.Cursor, 0, opts.Count - 1);
+            if (inp.Pause) HexenSharp.Story.Choose(this, "bye");
+            else if (inp.Confirm || inp.Use) HexenSharp.Story.Choose(this, opts[s.Cursor].key);
+            return true;
+        }
+        if (inp.Journal) { s.JournalOpen = true; PlaySound(Sfx.Lore, 0.5f); return true; }
+        return false;
+    }
 
     public void NewGame(PClass cls)
     {
         EndArenaRun(); // Restart, or trying again after dying
+        Arcade.Reset();
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
         if (ArenaMode && (ArenaMods & ArenaMod.RandomClass) != 0) cls = (PClass)_loot.Next(3); // a fresh roll every run
@@ -672,7 +772,7 @@ public sealed class Game
         string NextName() => names[nameIndex++ % names.Count];
         foreach (var lv in Hub)
         {
-            if (!Practicing && !ArenaMode) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses and the arena stay clear
+            if (!Practicing && !ArenaMode && !StoryMode) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses, the arena and cases stay clear
             ChestsTotal += lv.Things.Count(t => t is Chest);
 
             // treasure in secret nooks: a relic when relaxed, a Mystic Urn in classic
@@ -715,6 +815,7 @@ public sealed class Game
         }
         else if (!TestingMap) Say($"You are the {P.Def.Name}. Find a way through the hub.");
         if (Practicing) SetUpCourse(); // starting a course, or Restart on one
+        if (StoryMode) SetUpCase();
     }
 
     static Thing Place(Thing t, Thing at, Level lv)
@@ -757,6 +858,7 @@ public sealed class Game
             if (inp.Use || inp.Confirm || inp.Pause || inp.Fire || inp.Jump) ReadingLore = null;
             return;
         }
+        if (StoryInput(inp)) return;
 
         switch (Mode)
         {
@@ -778,7 +880,7 @@ public sealed class Game
                 return;
             case GameMode.Victory:
                 // a play-tested map starts over, so you can keep iterating; the hub goes back to the title
-                if (inp.Confirm) { if (TestingMap) NewGame(P.Class); else GoToTitle(); }
+                if (inp.Confirm) { if (StoryMode) GoToTitle(); else if (TestingMap) NewGame(P.Class); else GoToTitle(); }
                 return;
         }
 
@@ -804,6 +906,7 @@ public sealed class Game
         PlayTime += dt;
         UpdatePlayer(inp, dt);
         UpdateWorld(dt);
+        Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
 
         if (Mode == GameMode.Dead)
@@ -1033,9 +1136,9 @@ public sealed class Game
             float sx = dx / steps, sy = dy / steps;
             for (int i = 0; i < steps; i++)
             {
-                if (sx != 0 && !Blocked(p.X + sx, p.Y, p.Radius, null)) p.X += sx;
+                if (sx != 0 && !Blocked(p.X + sx, p.Y, p.Radius, null, p.SlideTime > 0)) p.X += sx;
                 else if (sx != 0) { sx = 0; p.VX = 0; }
-                if (sy != 0 && !Blocked(p.X, p.Y + sy, p.Radius, null)) p.Y += sy;
+                if (sy != 0 && !Blocked(p.X, p.Y + sy, p.Radius, null, p.SlideTime > 0)) p.Y += sy;
                 else if (sy != 0) { sy = 0; p.VY = 0; }
             }
         }
@@ -1144,7 +1247,7 @@ public sealed class Game
 
         p.Cooldown -= dt;
         p.FireAnim = MathF.Max(0, p.FireAnim - dt);
-        if (inp.Fire && !Relaxed && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
+        if (inp.Fire && !Relaxed && !StoryMode && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
     }
 
     void SelectWeapon(int w)
@@ -1177,32 +1280,38 @@ public sealed class Game
         }
         if (powered && w.Mana == 1) p.BlueMana -= ManaCost(w);
         if (powered && w.Mana == 2) p.GreenMana -= ManaCost(w);
-        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate * Profile.FireRateMult * (1 + 0.2f * PerkRank(Perk.RapidFire)));
+        int tier = ArsenalTier;
+        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate * Profile.FireRateMult * Arsenal.FireRate(tier) * (1 + 0.2f * PerkRank(Perk.RapidFire)));
         p.FireAnim = 0.22f;
         PlaySound(w.Sound, 1);
         WakeNear(p.X, p.Y, 10f);
 
         if (w.Melee)
         {
-            Monster best = null;
-            float bestD = float.MaxValue;
+            // an upgraded arsenal reaches further, and from the second upgrade cleaves through several at once
+            float range = w.Range + Arsenal.Reach(tier);
+            var hits = new List<(Monster m, float d)>();
             foreach (var t in Level.Things)
             {
                 if (t is not Monster m || !m.Alive || m.Blurring) continue;
                 float d = Dist(m.X, m.Y, p.X, p.Y);
-                if (d > w.Range + m.Radius) continue;
+                if (d > range + m.Radius) continue;
                 float diff = AngleDiff(MathF.Atan2(m.Y - p.Y, m.X - p.X), p.Angle);
-                if (MathF.Abs(diff) > 0.45f || !Level.Sight(p.X, p.Y, m.X, m.Y)) continue;
-                if (d < bestD) { bestD = d; best = m; }
+                if (MathF.Abs(diff) > 0.45f + (tier >= 2 ? 0.25f : 0f) || !Level.Sight(p.X, p.Y, m.X, m.Y)) continue;
+                hits.Add((m, d));
             }
-            if (best != null)
+            if (hits.Count > 0)
             {
-                int dmg = (int)MathF.Round(Rand(w.DmgMin, w.DmgMax) * PlayerDamageMult(p.Weapon));
-                if (!powered) dmg /= 2;
-                float bz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
-                if (powered && w.Mana > 0) SpawnPuff(Art.Bolt[1], best.X, best.Y, bz, 0.4f);
-                else SpawnPuff(Art.Fireball[1], best.X, best.Y, bz, 0.25f);
-                DamageMonster(best, dmg, p.Weapon);
+                foreach (var (best, _) in hits.OrderBy(h => h.d).Take(Arsenal.Cleave(tier)))
+                {
+                    int dmg = (int)MathF.Round(Rand(w.DmgMin, w.DmgMax) * PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier));
+                    if (!powered) dmg /= 2;
+                    float bz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
+                    if (tier > 0) SpawnPuff(Art.Lightning[1], best.X, best.Y, bz, 0.35f + 0.08f * tier);
+                    else if (powered && w.Mana > 0) SpawnPuff(Art.Bolt[1], best.X, best.Y, bz, 0.4f);
+                    else SpawnPuff(Art.Fireball[1], best.X, best.Y, bz, 0.25f);
+                    DamageMonster(best, dmg, p.Weapon);
+                }
                 PlaySound(Sfx.Hit, 1);
             }
             else
@@ -1216,13 +1325,16 @@ public sealed class Game
 
         float launchZ = p.FloorZ + p.Z + 0.32f;
         float? vz = VerticalAim(launchZ, w.Speed);
-        float mult = PlayerDamageMult(p.Weapon);
-        for (int i = 0; i < w.Count; i++)
+        float mult = PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier);
+        // upgrades add shots to the volley, fanned out either side of your aim
+        int count = w.Count + Arsenal.ExtraShots(tier);
+        float spread = w.Spread > 0 ? w.Spread : 0.07f;
+        for (int i = 0; i < count; i++)
         {
-            float a = p.Angle + (i - (w.Count - 1) / 2f) * w.Spread;
+            float a = p.Angle + (i - (count - 1) / 2f) * spread;
             var pr = new Projectile
             {
-                Kind = w.Proj, FromPlayer = true, Splash = w.Splash, Owner = null, Slot = p.Weapon,
+                Kind = w.Proj, FromPlayer = true, Splash = Arsenal.Splash(w.Splash, tier), Owner = null, Slot = p.Weapon,
                 DmgMin = (int)MathF.Round(w.DmgMin * mult), DmgMax = (int)MathF.Round(w.DmgMax * mult),
                 X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = launchZ,
                 VX = MathF.Cos(a) * w.Speed, VY = MathF.Sin(a) * w.Speed, Level = Level,
@@ -1349,7 +1461,7 @@ public sealed class Game
     void UseLine(bool pull)
     {
         var p = P;
-        if (TryReadLore() || TryOpenChest() || TryUseShip()) return;
+        if (TryDetective() || TryReadLore() || TryOpenChest() || TryUseShip()) return;
         if (Level.Dig && MineTarget(1.3f) is (var mx, var my, var mf, var ms))
         {
             if (p.Cooldown <= 0) { HitBlock(mx, my, Level.RubbleHp / 3 + 1, mf, slot: ms); p.Cooldown = 0.45f; }
@@ -1650,6 +1762,8 @@ public sealed class Game
     }
 
     internal float PlayerDamageMult(int slot) => Profile.DamageMult * Profile.WeaponMult(P.Class, slot) * (1 + 0.2f * PerkRank(Perk.Might));
+    /// <summary>Your arsenal upgrades, which only count in the arena they were won in.</summary>
+    public int ArsenalTier => Level?.Arena != null ? P.ArenaTier : 0;
 
     /// <summary>Play-testing a custom map, or on a practice course, earns no experience; the arena does.</summary>
     bool NoXp => TestingMap && !ArenaMode;
@@ -1739,6 +1853,16 @@ public sealed class Game
                 pk.Removed = true;
                 p.PickupFlash = 1;
                 PlaySound(Sfx.Relic, 1);
+                Say(msg);
+                return;
+            case PickupKind.Upgrade:
+                if (p.ArenaTier >= Arsenal.MaxTier) return;
+                p.ArenaTier++;
+                msg = $"Arsenal upgrade: {Words.T(Arsenal.Name(p.ArenaTier))}! {Arsenal.Describe(p.ArenaTier)}";
+                pk.Removed = true;
+                p.PickupFlash = 1;
+                PlaySound(Sfx.BossSight, 0.7f);
+                PlaySound(Sfx.Item, 1);
                 Say(msg);
                 return;
             case PickupKind.Jetpack:
@@ -1938,7 +2062,7 @@ public sealed class Game
     }
 
     /// <summary>Would a circle at (x,y) hit a wall or a solid thing (other than `self`)?</summary>
-    bool Blocked(float x, float y, float r, Thing self)
+    bool Blocked(float x, float y, float r, Thing self, bool phaseMonsters = false)
     {
         if (Level.BlocksCircle(x, y, r)) return true;
         // steps: you can walk up MaxStep; jumping (or flying) lifts you higher
@@ -1951,6 +2075,7 @@ public sealed class Game
         {
             if (t == self || !t.Solid || t.Removed) continue;
             if (t is Monster m && !m.Alive) continue;
+            if (phaseMonsters && t is Monster) continue;
             float rr = r + t.Radius;
             float dx = t.X - x, dy = t.Y - y;
             if (dx * dx + dy * dy < rr * rr)
@@ -2408,7 +2533,10 @@ public sealed class Game
     void DamageMonster(Monster m, int dmg, int slot = -1)
     {
         if (!m.Alive || dmg <= 0 || m.Blurring) return;
+        int dealt = Math.Min(Math.Max(1, (int)MathF.Round(dmg * Vars.Damage)), Math.Max(1, m.Health));
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
+        if (slot >= 0)
+            Arcade.Hit(m.X, m.Y, Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH, dealt, slot, m.Health <= 0, m.Def.Health, m.Def.Boss, !P.OnGround);
         if (m.State == AiState.Idle) Wake(m);
         if (m.Health <= 0)
         {
@@ -2465,6 +2593,7 @@ public sealed class Game
         p.Armor -= saved;
         p.Health -= dmg - saved;
         p.DamageFlash = MathF.Min(1, p.DamageFlash + 0.4f + dmg / 40f);
+        Arcade.Hurt();
         if (p.Health <= 0)
         {
             p.Health = 0;

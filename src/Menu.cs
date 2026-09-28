@@ -63,7 +63,7 @@ public sealed class MenuSystem
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Practice", "Arena", "Leaderboard", "Character", "Options", "Quit" },
+        MenuPage.Main => new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" },
         MenuPage.Pause => _g.Practicing
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : _g.ArenaMode
@@ -74,7 +74,7 @@ public sealed class MenuSystem
         MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Back").ToArray(),
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
-        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Back" },
+        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
     };
 
@@ -95,6 +95,7 @@ public sealed class MenuSystem
             9 => v.QuakeMove ? "QUAKE" : "CLASSIC",
             10 => v.Ghost ? "ON" : "OFF",
             11 => v.StrafeHelp switch { 0 => "OFF", 1 => "PRACTICE", _ => "ALWAYS" },
+            12 => v.Arcade ? "ON" : "OFF",
             _ => "",
         };
     }
@@ -217,6 +218,10 @@ public sealed class MenuSystem
                     v.StrafeHelp = (v.StrafeHelp + dir + 3) % 3;
                     Say(v.StrafeHelp switch { 0 => "No strafe helper.", 1 => "Strafe helper on the practice course.", _ => "Strafe helper everywhere." });
                     break;
+                case 12:
+                    v.Arcade = !v.Arcade;
+                    Say(v.Arcade ? "Arcade mode: damage numbers, score and a style rank. Keep the combo going!" : "Arcade mode off.");
+                    break;
                 default: if (inp.Confirm) Back(); return;
             }
             _g.PlaySound(Sfx.Pickup, 0.6f);
@@ -254,6 +259,7 @@ public sealed class MenuSystem
             switch (items[Cursor])
             {
                 case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
+                case "Story": Close(); _g.StartStory(0); break;
                 case "Practice": Show(MenuPage.Courses); break;
                 case "Arena": Show(MenuPage.ArenaSetup); Cursor = ArenaModInfo.All.Length; break;
                 case "Leaderboard": Show(MenuPage.Leaderboard); break;
@@ -309,6 +315,7 @@ public static class Settings
         yield return "quakemove " + (g.Vars.QuakeMove ? 1 : 0);
         yield return "ghost " + (g.Vars.Ghost ? 1 : 0);
         yield return "strafehelp " + g.Vars.StrafeHelp;
+        yield return "arcade " + (g.Vars.Arcade ? 1 : 0);
         yield return "name " + g.RunnerName;
         yield return "arenamods " + ArenaModInfo.Letters(g.ArenaMods);
     }
