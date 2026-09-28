@@ -451,6 +451,7 @@ public sealed partial class Game
                 UpdateWorld(DemoPilot.Tick);
                 RangeTick(DemoPilot.Tick); // the demo's health and mana come back as yours do
                 TowerTick(DemoPilot.Tick);
+                SoccerTick(DemoPilot.Tick);
             }
             return false;
         }
@@ -467,6 +468,7 @@ public sealed partial class Game
         if (Course.Rockets) SetUpRocketCourse();
         if (Course.Grenades) SetUpGrenadeCourse();
         if (Course.Tower) SetUpTower();
+        if (Course.Soccer) SetUpSoccer();
         ResetRun();
     }
 
@@ -575,6 +577,7 @@ public sealed partial class Game
         RunTime = 0; RunStarted = false; EndlessReached = 0;
         if (Practicing && Course.Grenades) ResetCourseTargets();
         if (Practicing && Course.Tower) { TowerHeight = 0; TowerPlatform = 0; _towerCarry = -1; }
+        if (Practicing && Course.Soccer) ResetSoccer();
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         Recording = new GhostTrack();
@@ -848,6 +851,7 @@ public sealed partial class Game
     {
         EndArenaRun(); // Restart, or trying again after dying
         Arcade.Reset();
+        TrickAge = 99f; // (no callout left over from the last game)
         Hub = HubSource();
         // every die this run rolls comes from one seed, so a replay of it (see Replay) plays out the same
         RunSeed = FixedSeed ?? Environment.TickCount;
@@ -1043,6 +1047,7 @@ public sealed partial class Game
         RangeTick(step);
         TrickTick(dt);
         TowerTick(step);
+        SoccerTick(step);
         QuakeArenaTick();
         TargetsTick(step);
         CheckBossIntros();
@@ -2296,6 +2301,7 @@ public sealed partial class Game
                     if (!Vars.Freeze || !m.Alive) UpdateMonster(m, dt);
                     break;
                 case Projectile pr: UpdateProjectile(pr, dt); break;
+                case SoccerBall ball: BallTick(ball, dt); break;
                 case Puff pf: pf.Tick(dt); break;
                 case Asteroid a: a.Z = MathF.Max(0.05f, a.BaseZ + MathF.Sin(PlayTime * a.Bob + a.Phase) * 0.5f); break;
             }
@@ -2608,6 +2614,7 @@ public sealed partial class Game
             }
             if (pr.FromPlayer)
             {
+                if (HitsBall(pr.X, pr.Y, pr.Z, pr.Radius)) { Explode(pr, null); return; } // Rocket Soccer: the ball takes it
                 foreach (var t in Level.Things)
                     if (t is Asteroid a && !a.Removed && Dist(a.X, a.Y, pr.X, pr.Y) < a.Radius + pr.Radius && MathF.Abs(a.MidZ - pr.Z) < a.SpriteH * 0.5f)
                     {

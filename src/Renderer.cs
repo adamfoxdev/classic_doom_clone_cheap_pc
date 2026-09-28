@@ -168,29 +168,34 @@ public sealed class Renderer
 
             case MenuPage.Courses:
                 CenterText("PRACTICE", 14, Col.Rgb(230, 190, 80), 2);
-                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 34 + i * 11, i == m.Cursor);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 30 + i * 9, i == m.Cursor);
                 if (m.Cursor < Courses.All.Length)
                 {
                     var course = Courses.All[m.Cursor];
-                    foreach (var (line, k) in Wrap(course.About, 50).Select((l, k) => (l, k))) CenterText(line, 116 + k * 10, Col.Rgb(170, 200, 255));
-                    if (course.Timed) DrawMedalTable(g, course, 140);
+                    foreach (var (line, k) in Wrap(course.About, 50).Select((l, k) => (l, k))) CenterText(line, 130 + k * 9, Col.Rgb(170, 200, 255));
+                    if (course.Timed) DrawMedalTable(g, course, 150);
                     if (course.Endless)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.EndlessBest(c)}");
-                        CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                        CenterText("BEST: " + string.Join("   ", bests), 152, Col.Rgb(230, 190, 80));
                     }
                     if (course.Tower)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.TowerBest(c):0.0}");
-                        CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                        CenterText("BEST: " + string.Join("   ", bests), 152, Col.Rgb(230, 190, 80));
+                    }
+                    if (course.Soccer)
+                    {
+                        var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.SoccerBest(c)}");
+                        CenterText("MOST GOALS: " + string.Join("   ", bests), 152, Col.Rgb(230, 190, 80));
                     }
                     if (course.Range)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.RangeBest(c)}");
-                        CenterText("BEST DRILL: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                        CenterText("BEST DRILL: " + string.Join("   ", bests), 152, Col.Rgb(230, 190, 80));
                     }
                 }
-                CenterText("ARROWS + ENTER    ESC: BACK", 186, MenuDim);
+                CenterText("ARROWS + ENTER    ESC: BACK", 191, MenuDim);
                 break;
         }
 
@@ -210,6 +215,7 @@ public sealed class Renderer
         if (m.BoardDaily) { DrawDailyBoard(g); return; }
         if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
         if (m.BoardTower) { DrawTowerBoard(g, def); return; }
+        if (m.BoardSoccer) { DrawSoccerBoard(g, def); return; }
         if (m.BoardRail) { DrawRailBoard(g, def); return; }
         if (m.BoardInstagib) { DrawInstagibBoard(g, def); return; }
         if (m.BoardRange) { DrawRangeBoard(g, def); return; }
@@ -1215,7 +1221,7 @@ public sealed class Renderer
             float screenX = W / 2f * (1 + tX / depth);
             float scale = Proj / depth;
             float sw = t.SpriteW * scale, sh = t.SpriteH * scale;
-            float baseZ = t is Projectile or Puff or GhostRunner ? t.Z : lv.FloorAt(t.X, t.Y) + t.Z;
+            float baseZ = t is Projectile or Puff or GhostRunner or SoccerBall ? t.Z : lv.FloorAt(t.X, t.Y) + t.Z;
             float left = screenX - sw / 2, top = _horizon - (baseZ + t.SpriteH - _eyeZ) * scale;
             int x0 = Math.Max(0, (int)MathF.Ceiling(left)), x1 = Math.Min(W, (int)MathF.Ceiling(left + sw));
             int y0 = Math.Max(0, (int)MathF.Ceiling(top)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(top + sh));
@@ -1782,6 +1788,7 @@ public sealed class Renderer
         if (g.OnEndless && style != HudStyle.Off) DrawEndlessHud(g);
         if (g.OnRange && style != HudStyle.Off) DrawRangeHud(g);
         if (g.OnTower && style != HudStyle.Off) DrawTowerHud(g);
+        if (g.OnSoccer && style != HudStyle.Off) DrawSoccerHud(g);
         if (g.LastTrick != Trick.None && g.TrickAge < Tricks.CalloutTime && style != HudStyle.Off)
         {
             // a trick's name across the view, fading as it goes
@@ -1966,6 +1973,38 @@ public sealed class Renderer
             }
         }
         CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    void DrawSoccerBoard(Game g, ClassDef def) =>
+        DrawRunBoard(g, $"ROCKET SOCCER   < {def.Name.ToUpperInvariant()} >", "GOALS IN TWO MINUTES, THEN FEWEST SHOTS", "NO MATCHES YET. PICK PRACTICE > ROCKET SOCCER.",
+            new[] { ("GOALS", 40), ("SHOTS", 92), ("NAME", 146), ("DATE", 258) }, g.Profile.SoccerBoard(g.Menu.BoardClass), r => r.When,
+            r => new[] { $"{r.Goals}", $"{r.Shots}", r.Name, r.When == default ? "-" : r.When.ToString("MM-dd") });
+
+    /// <summary>
+    /// A match: the clock and goals at the top right, and an arrow along the top edge pointing to the lit goal (the
+    /// way to shoot), with how far off the ball is from it.
+    /// </summary>
+    void DrawSoccerHud(Game g)
+    {
+        int y = g.Vars.ShowFps ? 12 : 3;
+        int best = g.Profile.SoccerBest(g.P.Class);
+        void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
+        int secs = (int)MathF.Ceiling(MathF.Max(0, g.SoccerLeft));
+        Right($"{secs / 60}:{secs % 60:00}", 0, !g.RunStarted ? Col.Rgb(150, 150, 160) : secs <= 10 ? Col.Rgb(255, 110, 90) : Col.Rgb(240, 236, 220));
+        Right($"GOALS {g.SoccerGoals}", 10, Col.Rgb(120, 255, 140));
+        if (best > 0) Right($"BEST {best}", 20, Col.Rgb(255, 220, 90));
+        // the lit goal: an arrow at the top, turned toward it
+        var (gx, gy) = Soccer.Mouth(g.LitGoal);
+        var p = g.P;
+        float rel = Game.AngleDiff(MathF.Atan2(gy - p.Y, gx - p.X), p.Angle);
+        float half = g.ViewFov * MathF.PI / 360f;
+        int ax = Math.Clamp(W / 2 + (int)(MathF.Tan(Math.Clamp(rel, -half, half)) / MathF.Tan(half) * (W / 2 - 40)), 40, W - 40);
+        uint lit = Col.Rgb(90, 190, 255);
+        string label = g.LitGoal == 0 ? "WEST GOAL" : "EAST GOAL";
+        bool ahead = MathF.Abs(rel) < half;
+        string mark = ahead ? "v" : rel > 0 ? ">" : "<";
+        Text(ax - Font.Width(label) / 2, 36, label, lit);
+        Text(ax - Font.Width(mark) / 2, 44, mark, lit);
     }
 
     void DrawRailBoard(Game g, ClassDef def) =>

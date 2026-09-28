@@ -55,6 +55,7 @@ public sealed partial class Game
             Level = Level, SpriteW = 0.2f, SpriteH = 0.2f, Life = Grenades.Fuse, Radius = 0.08f,
         };
         GrenadesThrown++;
+        if (OnSoccer) SoccerShots++;
         Level.Things.Add(pr);
     }
 
@@ -98,6 +99,7 @@ public sealed partial class Game
             if (pr.Z > ceiling) { pr.Z = ceiling; if (pr.VZ > 0) pr.VZ = -pr.VZ * Grenades.Bounce; }
             // a monster it touches sets it off (not the one that threw it), and a monster's sets off on you
             if (!pr.FromPlayer && Mode == GameMode.Playing && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z)) { Explode(pr, null); return; }
+            if (HitsBall(pr.X, pr.Y, pr.Z, pr.Radius)) { Explode(pr, null); return; } // Rocket Soccer: on the ball it goes off
             foreach (var t in Level.Things)
                 if (t is Monster m && m != pr.Owner && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
                 {

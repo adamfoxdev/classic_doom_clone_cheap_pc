@@ -284,6 +284,8 @@ Switch to the old direct movement with **Options → Movement** or `quakemove 0`
 | **Rocket Jump** | Six platforms, each too high or too far to jump to, crossed with the rocket launcher, your only weapon there. See [The rocket-jump course](#the-rocket-jump-course). |
 | **Grenades** | Three targets to knock down with the grenade launcher, one behind a wall and two up on ledges, then grenade jumps up to the exit. See [The grenade course](#the-grenade-course). |
 | **Endless** | 50 platforms over gaps, built from a seed, that get harder as you go. There's no clock to beat: you score the platforms you reach before you fall. See [The endless course](#the-endless-course). |
+| **Rocket Tower** | An endless climb up shafts of platforms from a seed, rocket jump by rocket jump. One fall ends the run. See [The rocket tower](#the-rocket-tower). |
+| **Rocket Soccer** | A walled pitch with two goals, two kicker ramps and a big ball, to blast into the lit goal with rockets and grenades. Two-minute matches with their own board. See [Rocket Soccer](#rocket-soccer). |
 | **Shooting Range** | Every weapon on a rack, with a Quake rocket launcher, railgun and grenade launcher, target dummies, and ledges to rocket jump onto. Use starts a one-minute drill with its own board. See [The shooting range](#the-shooting-range). |
 | **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
 
@@ -651,6 +653,30 @@ The grenade launcher is Quake's:
 - **Seeds:** each pick rolls a new one; `tower 1234` in the console plays seed 1234.
 
 ![The rocket tower, the demo partway up](docs/rocket_tower.png)
+
+#### Rocket Soccer
+
+**Practice → Rocket Soccer** is a walled pitch with a goal at each end and a big ball. You move the ball with the
+rocket launcher (1) and the grenade launcher (2).
+
+- **Blasts** shove the ball away from them, hardest when a rocket hits it square. A rocket under the ball lifts it
+  into the air. You can also run into it to dribble.
+- **The lit goal:** a sparkle at its posts and an arrow on the screen show which goal to score in.
+  - Score in it and the other goal lights.
+  - The wrong goal just sends the ball back to the centre spot.
+  - The goals are six cells wide under a crossbar, so a ball flying high bounces off.
+- **The ramps:** two kicker ramps in midfield rise to two cells and drop off sheer at the top. A ball rolled up one
+  flies off the top toward a goal. The north one faces east and the south one west. From the high end, their sheer
+  faces bounce the ball back.
+- **A match** is two minutes from the first touch. The top-right corner shows the clock, your goals and your best.
+  At full time the match goes on your class's board (a Rocket Soccer page on the Leaderboard, by goals and then fewest
+  shots), and a new one waits for its first touch.
+- **As on the other rocket courses:** your blasts can't kill you, and your health and ammo come back.
+- **The demo** gets behind the ball, lines it up with the lit goal, and blasts it in.
+
+![Rocket Soccer: lined up on the ball in front of the lit goal](docs/rocket_soccer.png)
+
+![The ball flying off a kicker ramp](docs/soccer_ramp.png)
 
 #### The rocket-jump course
 

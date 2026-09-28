@@ -56,6 +56,7 @@ public sealed partial class Game
         int slot = pr.FromPlayer ? pr.Slot : -1;
         SpawnPuff(Art.Fireball[1], pr.X, pr.Y, pr.Z, 1.4f);
         AddShake(0.25f);
+        BallBlast(pr);
         foreach (var t in Level.Things.ToList())
         {
             if (t is not Monster m || !m.Alive || m == direct) continue;
@@ -140,6 +141,7 @@ public sealed partial class Game
             Level = Level, SpriteW = 0.28f, SpriteH = 0.28f, Life = 8f,
         };
         Level.Things.Add(pr);
+        if (OnSoccer) SoccerShots++;
     }
 
     /// <summary>The climb angle a rocket fired now would take (ignoring the aim at a monster).</summary>
