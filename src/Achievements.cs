@@ -54,6 +54,9 @@ public static class Achievements
             g => Pr(g).Weapons.Values.Any(w => w.Level >= Profile.MaxWeaponLevel),
             g => (Pr(g).Weapons.Values.Select(w => w.Level).DefaultIfEmpty(1).Max(), Profile.MaxWeaponLevel)),
         new("case_closed", "Case Closed", "Solve every case in Story mode", 300, g => Pr(g).StoryWins >= 1),
+        new("big_game", "Big Game Hunter", "Defeat every mini-boss on the optional maps", 500,
+            g => HexenSharp.MiniBosses.All.All(d => Pr(g).MiniBosses.Contains(d.MiniBoss)),
+            g => (HexenSharp.MiniBosses.All.Count(d => Pr(g).MiniBosses.Contains(d.MiniBoss)), HexenSharp.MiniBosses.All.Length)),
     };
 
     public static AchievementDef Find(string id) => All.FirstOrDefault(a => a.Id == id);

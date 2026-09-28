@@ -71,6 +71,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
   gates open once all its levers are pulled *and* all its plates are covered. Lift a block off a plate and the
   gate drops again.
+- **Mini-bosses** on four of the optional maps, each with a trick of its own. See [Mini-bosses](#mini-bosses).
 - **Chaos Arena** (**Arena** on the title menu): endless wave survival, with its own leaderboard and medals.
   Step on the golden altar to start. Each wave has more monsters and tougher types (Afrits from wave 2,
   Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed scale up every wave, and every fifth
@@ -482,6 +483,28 @@ between Winnowing Hall's great hall and courtyard (open it from the courtyard si
 under the crypt's south-west room, at the east end of the Windspire's
 north-east ledge, at the east end of the quarry's strongroom, and in the Hanging Cisterns' antechamber.
 
+### Mini-bosses
+
+Four of the optional maps each have a mini-boss. It's a bigger, recoloured version of one of the usual monsters,
+with a trick of its own; a health bar shows low in the view while you fight it.
+
+| Mini-boss (sci-fi) | Where | Its trick |
+|---|---|---|
+| **Quarry Warden** (Mining Mech) | Deepdelve Quarry, sealed in the cave in the middle of the rock field | Wakes when you come within 7 cells, even through rock, and burrows through the rubble to you. Up close it raises its fists and slams the ground for 25: jump just as they come down and it misses. |
+| **Dust Stalker** (Rogue Harvester) | The Barren World's southern plain | Lowers its head, then charges in a straight line for 28 and a shove. Sidestep and if it hits rock it's stunned for a moment and takes double damage. |
+| **Thornmother** (Hive Queen) | The Verdant Moon's meadow | Floats, fires seekers, and every 8 seconds calls two of her brood, four at most. They fall when she does. |
+| **Drowned Keeper** (Coolant Wraith) | The Hanging Cisterns' floor | Flings fireballs, and each time it loses a fifth of its health it vanishes and reappears somewhere else, usually up on a ledge, so bring the jetpack. |
+
+- **Loot:** each drops a Mystic Urn and armor and pays 250 XP on top of the kill.
+- **Big Game Hunter:** beating all four earns the achievement, and your profile remembers which you've beaten.
+- **Relaxed style:** they're as peaceful as everything else.
+- **Console:** `summon warden`, `summon stalker`, `summon thornmother` or `summon keeper` brings one to you.
+
+![The Quarry Warden, burrowed out into its gallery](docs/quarry_warden.png)
+![The Dust Stalker](docs/dust_stalker.png)
+![The Thornmother](docs/thornmother.png)
+![The Drowned Keeper](docs/drowned_keeper.png)
+
 ## Story mode
 
 **Story** on the title menu. You're a private eye working jobs around **Neon Harbor**, a rain-slicked sci-fi town
@@ -602,7 +625,7 @@ points with `Enter`. Every skill has 10 ranks:
 harder per level. The game announces each level-up, and the character screen shows every weapon's level and
 progress.
 
-**Achievements:** there are 20, listed under **Character → Achievements**. Each pays experience once, when it
+**Achievements:** there are 21, listed under **Character → Achievements**. Each pays experience once, when it
 unlocks, with a banner and a message; this works anywhere, practice and the arena included. The list shows which
 you've got and when, and how far along you are with the ones that build up.
 
@@ -628,6 +651,7 @@ you've got and when, and how far along you are with the ones that build up.
 | Veteran | Reach level 10 | 150 |
 | Master of Arms | Raise a weapon to level 10 | 250 |
 | Case Closed | Solve every case in Story mode | 300 |
+| Big Game Hunter | Defeat every mini-boss on the optional maps | 500 |
 
 - **Hub game only:** the one-game ones (secrets, lore) count only in a game through the hub, not on practice
   courses, in the arena or on custom maps.
@@ -717,7 +741,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
-| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
+| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|flask\|...>` | spawn something in front of you (the last four are the mini-bosses) |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
@@ -832,6 +856,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
+| `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
 | `src/Achievements.cs` | The achievements: what each takes, its experience, and the checks that unlock them |
 | `src/Gamepad.cs` | Gamepad layout: sticks, triggers and buttons turned into game input |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |

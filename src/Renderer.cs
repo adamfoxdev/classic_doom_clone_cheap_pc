@@ -55,6 +55,7 @@ public sealed class Renderer
         DrawMessages(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
+        if (g.Vars.Hud != HudStyle.Off && !g.ShowMap) DrawBossBar(g);
         DrawAchievementBanner(g);
         if (g.Story != null) DrawStory(g);
         if (g.Vars.Arcade && !g.ShowMap) DrawArcade(g);
@@ -412,6 +413,17 @@ public sealed class Renderer
         }
         else MenuItem("Back", 168, true);
         CenterText("UP/DOWN: BROWSE    ESC: BACK", 188, MenuDim);
+    }
+
+    /// <summary>The health of the mini-boss (or Heresiarch) you're fighting, low in the view: its name over a red bar.</summary>
+    void DrawBossBar(Game g)
+    {
+        if (g.BossInFight() is not { } b) return;
+        string name = b.Def.Name.ToUpperInvariant();
+        int w = 144, x = (W - w) / 2, y = ViewH - 22; // clear of the level bar in the corner
+        Darken(x - 4, y - 3, w + 8, 20, 170);
+        CenterText(name, y, Col.Rgb(255, 210, 120));
+        Bar(x, y + 11, w, 4, b.Health / (float)b.Def.Health, Col.Rgb(220, 50, 40));
     }
 
     /// <summary>A freshly unlocked achievement, for a few seconds under the top of the view.</summary>

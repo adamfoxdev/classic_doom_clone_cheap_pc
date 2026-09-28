@@ -102,6 +102,8 @@ public static class Headless
         SpireChecks(Check);
         Console.WriteLine("Hanging Cisterns:");
         CisternChecks(Check);
+        Console.WriteLine("Mini-bosses:");
+        MiniBossChecks(Check);
         Console.WriteLine("Deepdelve Quarry and rubble:");
         QuarryChecks(Check);
         VerticalAimChecks(Check);
@@ -699,6 +701,126 @@ public static class Headless
         ("high ledge", 4.5f, new[] { (false, 25, 5, 'S'), (false, 24, 6, 'W'), (false, 23, 6, 'W'), (false, 21, 5, 'S'), (false, 21, 6, 'S'), (false, 21, 7, 'S'), (false, 24, 8, 'E'),
             (false, 25, 8, 'E'), (false, 26, 8, 'E'), (false, 25, 6, 'S'), (false, 24, 8, 'E'), (false, 25, 8, 'E'), (false, 27, 7, 'S'), (false, 26, 9, 'E') }),
     };
+
+    static void MiniBossChecks(Action<bool, string> check)
+    {
+        // one on each optional map, awake to their own look in both styles
+        var hub = Maps.BuildHub();
+        foreach (var (map, def, x, y) in MiniBosses.Places)
+        {
+            var lv = hub.First(l => l.RawName == map);
+            var m = lv.Things.OfType<Monster>().SingleOrDefault(t => t.Def == def);
+            check(m != null && !lv.BlocksCircle(m.X, m.Y, def.Radius) && m.State == AiState.Idle, $"the {def.Name} waits in the {map}");
+        }
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            Art.Init(style);
+            bool looks = MiniBosses.All.All(d => Art.Monsters.TryGetValue(d.Art, out var set) && set.Length == Art.Monsters["ettin"].Length
+                && set.All(t => t.Px.Count(px => Col.A(px) != 0) > 50));
+            bool own = !Art.Monsters["warden"][0].Px.SequenceEqual(Art.Monsters["ettin"][0].Px);
+            check(looks && own, $"each has its own recoloured sprites ({style})");
+        }
+        Art.Init(ArtStyle.SciFi);
+        check(Words.T("Quarry Warden") == "Mining Mech" && Words.T("Thornmother") == "Hive Queen", "and sci-fi names");
+
+        Game Fresh(string map, float px, float py)
+        {
+            var gg = new Game { FixedSeed = 1 };
+            gg.NewGame(PClass.Fighter);
+            gg.Warp(Array.FindIndex(gg.Hub, l => l.RawName == map));
+            gg.Level.Things.RemoveAll(t => t is Monster { Def.MiniBoss: null });
+            gg.P.X = px; gg.P.Y = py; gg.P.FloorZ = gg.Level.FloorAt(px, py); gg.P.Health = 400; gg.P.MaxHealth = 400;
+            return gg;
+        }
+        void Run(Game gg, int frames, Func<bool> until = null) { for (int k = 0; k < frames && (until == null || !until()); k++) gg.Update(default, 1f / 35f); }
+
+        // the Quarry Warden hears you through the rock, burrows to you, and slams the ground
+        var g = Fresh("Deepdelve Quarry", 14.5f, 4.5f);
+        var w = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Warden);
+        int rubble0 = g.Level.Cells.Count(c => c == Level.Rubble);
+        Run(g, 5);
+        check(w.State != AiState.Idle && !g.Level.Sight(w.X, w.Y, g.P.X, g.P.Y), "the Quarry Warden wakes when you come near, though the rock hides you");
+        float d0 = Game.Dist(w.X, w.Y, g.P.X, g.P.Y);
+        Run(g, 35 * 25, () => Game.Dist(w.X, w.Y, g.P.X, g.P.Y) < 2.4f);
+        check(g.Level.Cells.Count(c => c == Level.Rubble) < rubble0 && Game.Dist(w.X, w.Y, g.P.X, g.P.Y) < 2.4f, $"it burrows through the rubble to you ({d0:0.0} -> {Game.Dist(w.X, w.Y, g.P.X, g.P.Y):0.0} away, {rubble0 - g.Level.Cells.Count(c => c == Level.Rubble)} blocks)");
+        w.SpecialCd = 0;
+        int hp = g.P.Health;
+        Run(g, 35 * 2, () => w.SpecialPhase == 1);
+        Run(g, 35, () => w.SpecialPhase == 0);
+        check(w.SpecialCd > 3f && hp - g.P.Health >= Game.SlamDamage, $"up close it slams the ground ({hp - g.P.Health} damage)");
+        w.SpecialCd = 0; w.X = g.P.X + 1.6f; w.Y = g.P.Y; w.AttackCd = 5;
+        Run(g, 35, () => w.SpecialPhase == 1);
+        Run(g, 35, () => w.SpecialTime < 0.3f); // time the jump: in the air when the fists come down
+        hp = g.P.Health;
+        g.Update(new Input { Jump = true }, 1f / 35f);
+        for (int k = 0; k < 35 && w.SpecialPhase == 1; k++) g.Update(new Input { JumpHeld = true }, 1f / 35f);
+        check(w.SpecialPhase == 0 && g.P.Health == hp, "jump as it brings its fists down and the slam misses");
+
+        // the Dust Stalker winds up and charges; dodge it into a wall and it's stunned and takes double damage
+        g = Fresh("Barren World", 16.5f, 12.5f);
+        var st = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Stalker);
+        Run(g, 35 * 6, () => st.SpecialPhase == 2);
+        check(st.SpecialPhase == 2, "the Dust Stalker winds up, then charges");
+        hp = g.P.Health;
+        Run(g, 35 * 2, () => st.SpecialPhase != 2);
+        check(hp - g.P.Health >= Game.ChargeDamage - 2, $"standing in its way hurts ({hp - g.P.Health} damage)");
+        st.SpecialCd = 0; st.X = 16.5f; st.Y = 12.5f; st.AttackCd = 5; g.P.X = 16.5f; g.P.Y = 7.5f;
+        Run(g, 35 * 6, () => st.SpecialPhase == 2);
+        g.P.X = 21.5f; // sidestep: it thunders on past, into the rocks up north
+        Run(g, 35 * 3, () => st.SpecialPhase == 3);
+        check(st.SpecialPhase == 3, "sidestep and it runs into the rocks, stunned");
+        int shp = st.Health;
+        g.DamageMonster(st, 20, 0);
+        check(shp - st.Health == 40, "and takes double damage while it's dazed");
+
+        // the Thornmother calls her brood, four at most, and they die with her
+        g = Fresh("Verdant Moon", 14.5f, 9.5f);
+        var tm = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Thornmother);
+        g.Vars.God = true;
+        Run(g, 35 * 9);
+        int brood = g.Level.Things.Count(t => t is Monster o && o.Summoner == tm && o.Alive);
+        Run(g, 35 * 30);
+        int brood2 = g.Level.Things.Count(t => t is Monster o && o.Summoner == tm && o.Alive);
+        check(brood == 2 && brood2 == Game.MaxBrood, $"the Thornmother calls her brood, two at a time, four at most ({brood}, then {brood2})");
+        g.Vars.God = false;
+        int xp0 = g.Profile.TotalXp;
+        g.DamageMonster(tm, 100000, 0);
+        check(!tm.Alive && g.Level.Things.All(t => t is not Monster o || o.Summoner != tm || !o.Alive), "when she falls, her brood falls with her");
+        var drops = g.Level.Things.OfType<Pickup>().Where(pk => Game.Dist(pk.X, pk.Y, tm.X, tm.Y) < 1).Select(pk => pk.Kind).ToList();
+        check(drops.Contains(PickupKind.Urn) && drops.Contains(PickupKind.Armor), "she drops a Mystic Urn and armour");
+        check(g.Profile.TotalXp - xp0 >= Game.MiniBossXp && g.Profile.MiniBosses.Contains("thornmother"), $"and pays {Game.MiniBossXp} XP on top, remembered in your profile");
+
+        // the Drowned Keeper blinks away as it's hurt, up onto the ledges
+        g = Fresh("Hanging Cisterns", 12.5f, 9.5f);
+        var kp = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Keeper);
+        Run(g, 10);
+        check(g.BossInFight() == kp, "a mini-boss you're fighting gets a health bar");
+        var r = new Renderer();
+        r.Render(g);
+        check(r.Fb.Count(px => px == Col.Rgb(220, 50, 40)) > 100, "drawn low in the view");
+        float kx = kp.X, ky = kp.Y;
+        g.DamageMonster(kp, 70, 0);
+        Run(g, 2);
+        check(Game.Dist(kx, ky, kp.X, kp.Y) > 2 && Game.Dist(kp.X, kp.Y, g.P.X, g.P.Y) >= 5 && g.Level.FloorAt(kp.X, kp.Y) > 0,
+              $"the Drowned Keeper blinks away when hurt, up onto a ledge ({g.Level.FloorAt(kp.X, kp.Y)} up)");
+
+        // relaxed: they're as peaceful as the rest
+        var rel = new Game { FixedSeed = 1, Style = GameStyle.Relaxed };
+        rel.NewGame(PClass.Fighter);
+        rel.Warp(Array.FindIndex(rel.Hub, l => l.RawName == "Deepdelve Quarry"));
+        rel.P.X = 14.5f; rel.P.Y = 4.5f;
+        int rr = rel.Level.Cells.Count(c => c == Level.Rubble);
+        Run(rel, 35 * 10);
+        check(rel.Level.Cells.Count(c => c == Level.Rubble) == rr, "in the relaxed style they leave you (and the rock) alone");
+
+        // all four: Big Game Hunter; and the console can summon them
+        var hunter = new Game { FixedSeed = 1, Profile = new Profile { MiniBosses = MiniBosses.All.Select(d => d.MiniBoss).ToList() } };
+        Achievements.Check(hunter);
+        check(hunter.Profile.Achievements.ContainsKey("big_game"), "beating all four is Big Game Hunter");
+        hunter.NewGame(PClass.Fighter);
+        hunter.Con.Execute("summon stalker");
+        check(hunter.Level.Things.OfType<Monster>().Any(m => m.Def == MiniBosses.Stalker && m.State != AiState.Idle), "'summon stalker' brings one to you");
+    }
 
     static void CisternChecks(Action<bool, string> check)
     {
@@ -4503,6 +4625,37 @@ public static class Headless
             g.Messages.Clear();
             Shot("103_cisterns_ledge");
             g.P.Flying = false;
+        }
+
+        // the mini-bosses, each awake and facing you in its own map, with its health bar
+        foreach (var (name, map, dx, dy, pitch) in new[]
+        {
+            ("104_quarry_warden", "Deepdelve Quarry", -2.6f, 0f, 0f),
+            ("105_dust_stalker", "Barren World", 0f, -3.2f, 0f),
+            ("106_thornmother", "Verdant Moon", -3.2f, 0.6f, 6f),
+            ("107_drowned_keeper", "Hanging Cisterns", -3.0f, 0.4f, 6f),
+        })
+        {
+            g.Warp(Array.FindIndex(g.Hub, l => l.RawName == map));
+            var boss = g.Level.Things.OfType<Monster>().FirstOrDefault(t => t.Def.MiniBoss != null);
+            if (boss == null)
+            {
+                // an earlier shot cleared this map's monsters: put its mini-boss back
+                MiniBosses.Place(g.Level);
+                boss = g.Level.Things.OfType<Monster>().First(t => t.Def.MiniBoss != null);
+            }
+            g.Level.Things.RemoveAll(t => t is Monster { Def.MiniBoss: null });
+            // the quarry's warden is shown having burrowed out into its gallery
+            if (map == "Deepdelve Quarry") { boss.X = 14.5f; boss.Y = 3.5f; }
+            float cx = boss.X + dx, cy = boss.Y + dy;
+            g.Vars.Freeze = true;
+            PlaceCam(cx, cy, g.Level.FloorAt(cx, cy), 0, MathF.Atan2(boss.Y - cy, boss.X - cx), pitch);
+            boss.State = AiState.Chase; boss.Health = (int)(boss.Def.Health * 0.7f);
+            Tick(default, 2);
+            PlaceCam(cx, cy, g.Level.FloorAt(cx, cy), 0, MathF.Atan2(boss.Y - cy, boss.X - cx), pitch);
+            g.Messages.Clear();
+            Shot(name);
+            g.Vars.Freeze = false;
         }
 
         // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on

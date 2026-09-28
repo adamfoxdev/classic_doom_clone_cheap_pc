@@ -982,7 +982,7 @@ public static class Maps
         }),
             (1, 1, 5, 7, '3'), (7, 1, 24, 13, '7'));
 
-    public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
+    public static Level[] BuildHub() => Hub.Select(d => { var lv = d.Build(); MiniBosses.Place(lv); return lv; }).ToArray();
 
     /// <summary>Every built-in map, for exporting and the editor: the hub's, then the Chaos Arena.</summary>
     public static IEnumerable<MapDef> Builtin => Hub.Append(ChaosArena);

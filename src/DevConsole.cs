@@ -502,10 +502,13 @@ public sealed class DevConsole
     void Summon(string what)
     {
         if (!InGame()) return;
+        // the mini-bosses by their first word: warden, stalker, thornmother, keeper
+        var boss = what == null ? null : MiniBosses.All.FirstOrDefault(d => d.Art.StartsWith(what, StringComparison.OrdinalIgnoreCase));
+        if (boss != null) { Print(_g.SummonMonster(boss) ? $"summoned {boss.Name}" : "no room in front of you"); return; }
         var match = what == null ? default : Summonable.FirstOrDefault(s => s.name.StartsWith(what, StringComparison.OrdinalIgnoreCase));
         if (match.name == null)
         {
-            Print("usage: summon <" + string.Join("|", Summonable.Select(s => s.name)) + ">");
+            Print("usage: summon <" + string.Join("|", Summonable.Select(s => s.name).Concat(MiniBosses.All.Select(d => d.Art))) + ">");
             return;
         }
         Print(_g.Summon(match.glyph) ? $"summoned {match.name}" : "no room in front of you");

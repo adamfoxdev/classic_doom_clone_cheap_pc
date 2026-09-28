@@ -149,7 +149,7 @@ public sealed class Checkpoint
     public float X, Y, Floor, Angle;
 }
 
-public sealed class Game
+public sealed partial class Game
 {
     public GameMode Mode = GameMode.Title;
     public Level[] Hub;
@@ -2201,6 +2201,8 @@ public sealed class Game
             if (m.State == AiState.Chase) return;
         }
 
+        if (m.Def.Special != Special.None && m.Alive && MiniBossTick(m, dt, dist)) return;
+
         switch (m.State)
         {
             case AiState.Idle:
@@ -2598,9 +2600,10 @@ public sealed class Game
     }
 
     /// <summary>Hurts a monster. `slot` is the weapon you hit it with (-1 when it wasn't you), for experience.</summary>
-    void DamageMonster(Monster m, int dmg, int slot = -1)
+    internal void DamageMonster(Monster m, int dmg, int slot = -1)
     {
         if (!m.Alive || dmg <= 0 || m.Blurring) return;
+        if (m.Def.Special == Special.Charger && m.SpecialPhase == 3) dmg *= 2; // a stunned Stalker is wide open
         int dealt = Math.Min(Math.Max(1, (int)MathF.Round(dmg * Vars.Damage)), Math.Max(1, m.Health));
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
         if (slot >= 0)
@@ -2612,6 +2615,7 @@ public sealed class Game
             Sound(Sfx.Death, m.X, m.Y);
             P.Kills++;
             if (slot >= 0) KilledWith(m, slot);
+            if (m.Def.MiniBoss != null) MiniBossDown(m);
             int blood = PerkRank(Perk.Bloodthirst);
             if (blood > 0 && slot >= 0) P.Health = Math.Min(P.MaxHealth, P.Health + 4 * blood);
             if (slot >= 0) ChainLightning(m, dmg, slot);
@@ -2732,9 +2736,13 @@ public sealed class Game
     }
 
     /// <summary>Spawns a thing (by map glyph) a short distance in front of the player.</summary>
-    public bool Summon(char glyph)
+    public bool Summon(char glyph) => SummonThing(ThingFactory.Create(glyph, 0, 0));
+
+    /// <summary>Puts a monster (a mini-boss, say) in front of you, awake.</summary>
+    public bool SummonMonster(MonsterDef def) => SummonThing(new Monster(def) { NextBlinkHp = (int)(def.Health * 0.8f) });
+
+    bool SummonThing(Thing t)
     {
-        var t = ThingFactory.Create(glyph, 0, 0);
         if (t == null) return false;
         for (float d = 1.6f; d >= 0.6f; d -= 0.2f)
         {

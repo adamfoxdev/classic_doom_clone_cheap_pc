@@ -40,6 +40,8 @@ public sealed class Profile
     public int StoryWins { get; set; }
     public List<string> ClassWins { get; set; } = new();
     public int ChestsOpened { get; set; }
+    /// <summary>The mini-bosses you've beaten (their ids), for the achievement.</summary>
+    public List<string> MiniBosses { get; set; } = new();
     /// <summary>Unlocked achievements, by id, with when.</summary>
     public Dictionary<string, DateTime> Achievements { get; set; } = new();
     /// <summary>Best practice course times by class, from before the leaderboard; folded into CourseRuns when read.</summary>
@@ -203,6 +205,7 @@ public sealed class Profile
             p.Weapons ??= new();
             p.ArenaRuns ??= new();
             p.ClassWins ??= new();
+            p.MiniBosses ??= new();
             p.Achievements ??= new();
             // runs saved before scores: 100 a wave, as a run with no modifiers scores
             foreach (var board in p.ArenaRuns.Values)
