@@ -836,6 +836,7 @@ public sealed partial class Game
         P.Health = P.MaxHealth;
         RunXp = 0; XpPopup = 0;
         Cheated = false; RunDeaths = 0;
+        Intro = null; HitStop = 0; Shake = 0;
         _nightmareThroughout = Difficulties.Of(Vars) == Difficulty.Nightmare;
         P.FloorZ = Level.FloorUnder(P.X, P.Y, P.Radius);
         Messages.Clear();
@@ -950,8 +951,10 @@ public sealed partial class Game
 
         PlayTime += dt;
         AutoSaveTick(dt);
-        UpdatePlayer(inp, dt);
-        UpdateWorld(dt);
+        float step = FeelStep(dt); // a hit-stop, or a boss intro's slow motion
+        UpdatePlayer(inp, step);
+        UpdateWorld(step);
+        CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
 
@@ -2628,6 +2631,7 @@ public sealed partial class Game
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
         if (slot >= 0)
             Arcade.Hit(m.X, m.Y, Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH, dealt, slot, m.Health <= 0, m.Def.Health, m.Def.Boss, !P.OnGround);
+        if (slot >= 0) FeelHit(m, dealt, m.Health <= 0);
         if (m.State == AiState.Idle) Wake(m);
         if (m.Health <= 0)
         {
@@ -2685,6 +2689,7 @@ public sealed partial class Game
         p.Armor -= saved;
         p.Health -= dmg - saved;
         p.DamageFlash = MathF.Min(1, p.DamageFlash + 0.4f + dmg / 40f);
+        FeelHurt(dmg);
         Arcade.Hurt();
         if (p.Health <= 0)
         {

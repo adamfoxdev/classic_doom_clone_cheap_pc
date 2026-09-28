@@ -81,6 +81,10 @@ public sealed class GameVars
     public int StrafeHelp = 1;
     /// <summary>Arcade mode: damage numbers, a score and a style rank for every hit.</summary>
     public bool Arcade;
+    /// <summary>Game feel (Options > Effects): screen shake 0 off, 1 normal, 2 strong; a hit-stop on heavy blows;
+    /// damage numbers outside arcade mode; the boss intro cards; and music that swells in a fight.</summary>
+    public int Shake = 1;
+    public bool HitStop = true, DamageNumbers, BossIntros = true, DynamicMusic = true;
     /// <summary>Music volume, 0 (off) to 1.</summary>
     public float Music = 0.6f;
     /// <summary>Gamepad look speed multiplier (the right stick).</summary>
@@ -125,6 +129,11 @@ public sealed class GameVars
         new("fullbright", "disable lighting and fog", v => B(v.FullBright), (v, x) => v.FullBright = x != 0, true),
         new("showfps", "show frames per second", v => B(v.ShowFps), (v, x) => v.ShowFps = x != 0, true),
         new("arcade", "arcade mode: damage numbers, score and style rank", v => B(v.Arcade), (v, x) => v.Arcade = x != 0, true),
+        new("shake", "screen shake: 0 off, 1 normal, 2 strong", v => v.Shake, (v, x) => v.Shake = Math.Clamp((int)MathF.Round(x), 0, 2)),
+        new("hitstop", "a split-second freeze on heavy blows", v => B(v.HitStop), (v, x) => v.HitStop = x != 0, true),
+        new("damagenumbers", "damage numbers pop out of what you hit (always on in arcade mode)", v => B(v.DamageNumbers), (v, x) => v.DamageNumbers = x != 0, true),
+        new("bossintros", "a name card and a camera beat when a boss wakes", v => B(v.BossIntros), (v, x) => v.BossIntros = x != 0, true),
+        new("dynamicmusic", "the music swells when monsters are onto you", v => B(v.DynamicMusic), (v, x) => v.DynamicMusic = x != 0, true),
         new("hud", "HUD style: 0 full, 1 compact, 2 minimal, 3 off", v => (int)v.Hud, (v, x) => v.Hud = (HudStyle)Math.Clamp((int)MathF.Round(x), 0, 3)),
         new("crosshair", "crosshair: 0 off, 1 dot, 2 cross, 3 circle", v => (int)v.Crosshair, (v, x) => v.Crosshair = (CrosshairStyle)Math.Clamp((int)MathF.Round(x), 0, 3)),
     };

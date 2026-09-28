@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements, Effects }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -57,7 +57,7 @@ public sealed class MenuSystem
 
     void Back()
     {
-        if (Page is MenuPage.Options or MenuPage.Bindings) _g.SaveSettings();
+        if (Page is MenuPage.Options or MenuPage.Bindings or MenuPage.Effects) _g.SaveSettings();
         if (_back.Count > 0) { (Page, Cursor) = _back.Pop(); Column = 0; Capturing = false; return; }
         if (Page is MenuPage.Pause or MenuPage.Character) { Close(); _g.Paused = false; }
     }
@@ -86,7 +86,8 @@ public sealed class MenuSystem
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Achievements").Append("Back").ToArray(),
         MenuPage.Achievements => HexenSharp.Achievements.All.Select(a => a.Name).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
-        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Difficulty", "Music volume", "Back" },
+        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Difficulty", "Music volume", "Effects", "Back" },
+        MenuPage.Effects => new[] { "Screen shake", "Hit-stop", "Damage numbers", "Boss intros", "Dynamic music", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
     };
 
@@ -94,6 +95,16 @@ public sealed class MenuSystem
     public string Value(int item)
     {
         var v = _g.Vars;
+        if (Page == MenuPage.Effects)
+            return item switch
+            {
+                0 => v.Shake switch { 0 => "OFF", 1 => "NORMAL", _ => "STRONG" },
+                1 => v.HitStop ? "ON" : "OFF",
+                2 => v.Arcade ? "ON (ARCADE)" : v.DamageNumbers ? "ON" : "OFF",
+                3 => v.BossIntros ? "ON" : "OFF",
+                4 => v.DynamicMusic ? "ON" : "OFF",
+                _ => "",
+            };
         return item switch
         {
             1 => v.Sens.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture),
@@ -268,6 +279,28 @@ public sealed class MenuSystem
                 case 14:
                     v.Music = MathF.Round(Math.Clamp(v.Music + 0.1f * dir, 0f, 1f), 1);
                     break;
+                case 15: if (inp.Confirm) Show(MenuPage.Effects); return;
+                default: if (inp.Confirm) Back(); return;
+            }
+            _g.PlaySound(Sfx.Pickup, 0.6f);
+            return;
+        }
+
+        if (Page == MenuPage.Effects && (inp.Left || inp.Right || inp.Confirm))
+        {
+            int dir = inp.Left ? -1 : 1;
+            var v = _g.Vars;
+            switch (Cursor)
+            {
+                case 0:
+                    v.Shake = (v.Shake + dir + 3) % 3;
+                    Say(v.Shake switch { 0 => "No screen shake.", 1 => "Screen shake: normal.", _ => "Screen shake: strong." });
+                    if (v.Shake > 0) _g.AddShake(0.5f); // a taste of it
+                    break;
+                case 1: v.HitStop = !v.HitStop; Say(v.HitStop ? "Heavy blows freeze the action for a split second." : "No hit-stop."); break;
+                case 2: v.DamageNumbers = !v.DamageNumbers; Say(v.DamageNumbers ? "Damage numbers pop out of what you hit." : v.Arcade ? "Arcade mode keeps its damage numbers." : "No damage numbers."); break;
+                case 3: v.BossIntros = !v.BossIntros; Say(v.BossIntros ? "A name card when a boss wakes." : "No boss intros."); break;
+                case 4: v.DynamicMusic = !v.DynamicMusic; Say(v.DynamicMusic ? "The music swells when monsters are onto you." : "The music stays calm."); break;
                 default: if (inp.Confirm) Back(); return;
             }
             _g.PlaySound(Sfx.Pickup, 0.6f);
@@ -381,6 +414,11 @@ public static class Settings
         yield return "strafehelp " + g.Vars.StrafeHelp;
         yield return "arcade " + (g.Vars.Arcade ? 1 : 0);
         yield return "music " + g.Vars.Music.ToString("0.##", inv);
+        yield return "shake " + g.Vars.Shake;
+        yield return "hitstop " + (g.Vars.HitStop ? 1 : 0);
+        yield return "damagenumbers " + (g.Vars.DamageNumbers ? 1 : 0);
+        yield return "bossintros " + (g.Vars.BossIntros ? 1 : 0);
+        yield return "dynamicmusic " + (g.Vars.DynamicMusic ? 1 : 0);
         yield return "padlook " + g.Vars.PadLook.ToString("0.##", inv);
         yield return "renderthreads " + Renderer.Threads;
         // a preset is saved; console tweaks to the damage settings last only the session

@@ -231,7 +231,7 @@ public static class Saves
             if (t == null) continue;
             t.X = ts.X; t.Y = ts.Y; t.Z = ts.Z; t.Level = lv;
             if (t is Monster m && ts.State == "Dead") { m.State = AiState.Dead; m.Solid = false; m.Health = Math.Min(m.Health, 0); }
-            else if (t is Monster mc && ts.State == "Chase") mc.State = AiState.Chase;
+            else if (t is Monster mc && ts.State == "Chase") { mc.State = AiState.Chase; mc.Introduced = true; } // met before the save
             if (t is Ship sh) { ts.Delivered?.CopyTo(sh.Delivered, 0); lv.Ship = sh; }
             lv.Things.Add(t);
         }

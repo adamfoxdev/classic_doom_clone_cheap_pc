@@ -41,8 +41,11 @@ public sealed unsafe class Audio : IDisposable
         }
     }
 
-    /// <summary>Keeps the music going: call once a frame with the track to play (null for none) and its volume (0-1).</summary>
-    public void UpdateMusic(string track, float volume)
+    /// <summary>
+    /// Keeps the music going: call once a frame with the track to play (null for none), its volume (0-1) and how much
+    /// of its tension layer to bring in (0-1).
+    /// </summary>
+    public void UpdateMusic(string track, float volume, float intensity = 0)
     {
         if (!_musicOn)
         {
@@ -54,6 +57,7 @@ public sealed unsafe class Audio : IDisposable
             _mixer.Warm(Art.Style == ArtStyle.SciFi ? ArtStyle.Fantasy : ArtStyle.SciFi);
         }
         _mixer.Play(volume > 0 ? track : null, Art.Style);
+        _mixer.Intensity = intensity;
         while (Raylib.IsAudioStreamProcessed(_music))
         {
             _mixer.Fill(_musicBuf, Math.Clamp(volume, 0f, 1f) * 0.6f);
