@@ -263,6 +263,40 @@ public static partial class Headless
             g.Menu.Close();
             g.GoToTitle();
 
+            // rematches: four beaten, three with times; then a fight against the Hive Queen, and the Mining Mech's board
+            var savedBosses = g.Profile.MiniBosses.ToList();
+            g.Profile.MiniBosses.Clear();
+            g.Profile.MiniBosses.AddRange(new[] { "warden", "stalker", "thornmother", "keeper" });
+            foreach (var (boss, n, cls, t, d) in new[] { ("warden", g.RunnerName, "Fighter", 48.2f, 20), ("warden", "ACE-1", "Mage", 55.9f, 21), ("warden", g.RunnerName, "Cleric", 61.4f, 24),
+                                                      ("stalker", g.RunnerName, "Fighter", 37.5f, 22), ("thornmother", "NOVA", "Mage", 72.0f, 23) })
+                g.Profile.AddRematchRun(new RematchRun { Boss = boss, Name = n, Class = cls, Time = t, When = new DateTime(2026, 9, d) });
+            g.Menu.Show(MenuPage.ArenaSetup);
+            g.Menu.Show(MenuPage.Rematch);
+            g.Menu.Cursor = 2;
+            Shot("123_rematch_menu");
+            g.Menu.Close();
+            g.StartRematch(PClass.Mage, MiniBosses.Thornmother);
+            {
+                var tq = g.Level.Things.OfType<Monster>().Single();
+                g.Vars.Freeze = true; g.Vars.BossIntros = false;
+                PlaceCam(tq.X - 4f, tq.Y + 0.5f, g.Level.FloorAt(tq.X - 4f, tq.Y + 0.5f), 0, MathF.Atan2(-0.5f, 4f), 6f);
+                tq.State = AiState.Chase; tq.Health = (int)(tq.MaxHealth * 0.55f);
+                g.RematchTime = 23.46f;
+                Tick(default, 2);
+                g.Messages.Clear();
+                Shot("124_rematch_fight");
+                g.Vars.Freeze = false; g.Vars.BossIntros = true;
+            }
+            g.Paused = true;
+            g.Menu.Show(MenuPage.Pause);
+            g.Menu.Show(MenuPage.Leaderboard);
+            g.Menu.BoardBoss = 0;
+            Shot("125_rematch_board");
+            g.Menu.Close(); g.Paused = false;
+            g.GoToTitle();
+            g.Profile.RematchRuns.Clear();
+            g.Profile.MiniBosses.Clear(); g.Profile.MiniBosses.AddRange(savedBosses);
+
             // the endless course: a few platforms in, looking on down the gaps; then its board
             g.StartEndless(PClass.Fighter, 1234);
             var ep = g.Course.Platforms;
@@ -632,6 +666,46 @@ public static partial class Headless
             g.Level.Things.RemoveAll(t => t is Monster);
             g.Arcade.Floaters.Clear();
 
+            // weapon mods: the four lying in the hall, one fitted (its tag by the level bar) and a charge building
+            g.Warp(0);
+            g.Level.Things.RemoveAll(t => t is Monster or Pickup);
+            PlaceCam(10.5f, 5.5f, g.Level.FloorAt(10.5f, 5.5f), 0, 0, 0);
+            foreach (var (m, k) in WeaponMods.All.Select((m, k) => (m, k)))
+            {
+                var pk = Game.MakeMod(m, 13.2f + k * 0.2f, 4.1f + k * 0.95f);
+                pk.Level = g.Level;
+                g.Level.Things.Add(pk);
+            }
+            var had = g.P.Mods[g.P.Weapon];
+            g.P.Mods[g.P.Weapon] = WeaponMod.Charged; g.P.Charging = true; g.P.Charge = 0.65f;
+            g.Messages.Clear();
+            Shot("121_weapon_mods");
+            g.P.Mods[g.P.Weapon] = had; g.P.Charging = false; g.P.Charge = 0;
+            g.Level.Things.RemoveAll(t => t is Pickup { Kind: PickupKind.Mod });
+
+            // New Game+: the Hanging Cisterns flooding, you wading in it
+            {
+                var ng = new Game { FixedSeed = 1, AchievementsOn = false, Profile = new Profile { NgUnlocked = 1 } };
+                ng.StartNewGamePlus(PClass.Cleric, 1);
+                ng.Warp(Array.FindIndex(ng.Hub, l => l.RawName == "Hanging Cisterns"));
+                ng.Level.Things.RemoveAll(t => t is Monster);
+                ng.P.X = 12.5f; ng.P.Y = 9.5f; ng.P.FloorZ = ng.Level.FloorAt(12.5f, 9.5f); ng.P.Angle = 0.3f; ng.P.Pitch = 10;
+                ng.P.Health = 1000;
+                ng.Update(default, 1f / 35f);
+                ng.HazardClock = Game.FloodEvery - Game.FloodLength + 1;
+                for (int k = 0; k < 20; k++) ng.Update(default, 1f / 35f);
+                ng.Messages.Clear(); ng.P.DamageFlash = 0; ng.Shake = 0;
+                ng.Say(Words.T("The water is rising! Get up on a ledge!"));
+                var rr = new Renderer();
+                rr.Render(ng);
+                var big = new uint[Renderer.W * 3 * Renderer.H * 3];
+                for (int y = 0; y < Renderer.H * 3; y++)
+                    for (int x = 0; x < Renderer.W * 3; x++)
+                        big[y * Renderer.W * 3 + x] = rr.Fb[(y / 3) * Renderer.W + x / 3];
+                Png.Save(Path.Combine(dir, "126_ngplus_flood.png"), big, Renderer.W * 3, Renderer.H * 3);
+                Console.WriteLine("wrote " + Path.Combine(dir, "126_ngplus_flood.png"));
+            }
+
             // Options > Effects
             g.Paused = true;
             g.Menu.Show(MenuPage.Options);
@@ -824,6 +898,12 @@ public static partial class Headless
             g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
             g.Menu.Cursor = 1;
             Shot("100_achievements");
+            // the codex: a good few found, the Siege Strider picked out
+            foreach (var (id, n) in new[] { ("ettin", 96), ("afrit", 71), ("centaur", 28), ("slaughtaur", 9), ("bishop", 7), ("warden", 1), ("thornmother", 1) })
+                g.Profile.KillsBy[id] = n;
+            g.Menu.Show(MenuPage.Codex);
+            g.Menu.Cursor = Array.IndexOf(Codex.All, Codex.Find("slaughtaur"));
+            Shot("122_codex");
             g.Menu.Close(); g.Paused = false;
             // the banner as one unlocks
             g.Messages.Clear();

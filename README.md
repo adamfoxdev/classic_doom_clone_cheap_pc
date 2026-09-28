@@ -86,6 +86,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   1–3 random items (health, mana, armor, flasks, rarely an urn or a weapon piece you're missing). Watch out,
   roughly one in eight is a trap and a monster bursts out. Seen chests show on the automap, and the victory
   screen tallies how many you opened.
+- **Weapon mods** turn up in about one chest in 25. See [Weapon mods](#weapon-mods).
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
 - **Deepdelve Quarry** (the **Asteroid Mine** in sci-fi): an optional dig-your-way-through level, through portal
@@ -364,6 +365,23 @@ On the timed courses:
 ![Free Roam](docs/free_roam.png)
 ![The practice course leaderboard](docs/leaderboard.png)
 
+#### Ghost codes
+
+Race a friend's ghost without being online together: send them your run as a code, and they race it.
+- **Sharing a run:** open the console (`~`) and type `ghostcode`.
+  - **On a timed course:** it shares your best there as your class.
+  - **On the endless course:** it shares your last run on that seed.
+  - **What you get:** the code is printed, copied to the clipboard and saved as a `.hxghost` file in the
+    `ghosts` folder next to your profile. A 13-second run is about 700 characters.
+- **Racing one:** copy their code and type `ghostload`: it reads the code off the clipboard. `ghostload <file>`
+  loads a `.hxghost` file from your ghosts folder, or from anywhere by its path.
+  - **Where it takes you:** to the code's course, or its endless seed, if you're not already there. You race as
+    your class, or theirs if you load from the title.
+  - **Whose ghost:** theirs runs in place of your own, until you type `ghostclear`.
+- **What's in a code:** the course and seed, the class, the name, the time, and the path, one point every 50 ms to
+  within 1/64 of a cell. It's compressed, in URL-safe text; line breaks from pasting don't matter, and a damaged code
+  is refused.
+
 #### The endless course
 
 **Practice → Endless** builds a fresh course from a random seed each time you pick it. It's a run of platforms,
@@ -526,6 +544,45 @@ highest tier you've opened.
   Feeling**.
 - **Only the campaign:** the relaxed style, practice, the arena and Story mode don't have tiers.
 - **Saving:** a New Game+ campaign saves and continues like any other; the title's Continue line names the tier.
+- **Weapon mods** are commoner in New Game+ chests, and every New Game+ mini-boss drops one. See
+  [Weapon mods](#weapon-mods).
+- **Hazards:** three maps turn against you in New Game+. Each tells you what's changed as you arrive.
+
+  | Map | Hazard |
+  |---|---|
+  | **Bedrock Depths** | Stand still on a tunnel floor you've dug and it cracks after 0.6 s, then gives way at 1.3 s: it drops a step under you, for 5 damage. Each spot only drops once, so you can always step back out. Keep moving and it holds. |
+  | **Windspire** | Every 9 seconds a gust blows for 2.5 s, in a new direction each time, and a GUST banner shows. It nudges you on the ground and pushes hard up on the heights, at up to 1.8 cells a second, so mind the edges. |
+  | **Hanging Cisterns** | Every 40 seconds the floor floods for 8 s, with a warning 4 s ahead. Standing in it hurts, 4 damage every half second, and tints the view. Get up on a ledge until it drains. |
+
+  ![A flood in the Cisterns](docs/ngplus_flood.png)
+- **Ambushes:** a second run doesn't stay empty behind you.
+  - **When:** walk back to somewhere you last stood more than 45 seconds ago, with nothing already after you, and
+    for the next few seconds an ambush may come. The game looks every 2 seconds, with a 50% chance each time.
+  - **Who:** a few of that map's own monsters, toughened for the tier, appear 5 to 9 cells away, out of sight if
+    they can. There are 2 at tier 1, 3 at tier 2 and 4 from tier 3.
+  - **How often:** at least 60 seconds between ambushes at tier 1 (8 fewer a tier, 30 at least), and at most 2 plus
+    the tier on each map. None during a boss fight.
+
+## Weapon mods
+
+Rare attachments that change how a weapon behaves. There are four, each a glowing emblem in its own colour:
+
+| Mod (fantasy / sci-fi) | What it does |
+|---|---|
+| **Rune of Piercing** / **Piercing Core** (gold) | Shots go on through two more monsters after the first; melee blows cleave one more. |
+| **Storm Rune** / **Arc Coil** (blue) | A third of your hits arc on to the two nearest monsters within 4 cells, for half the damage. |
+| **Rune of Gathering** / **Capacitor** (pink) | Hold Fire to charge (a bar fills under the crosshair, full in 0.8 s); let go to fire for up to 2.5x damage, and a bigger shot. A tap still fires as usual. |
+| **Frost Rune** / **Cryo Emitter** (pale blue) | A hit slows the monster to half speed for 2.5 seconds. |
+
+- **Where they come from:** chests, rarely (about one in 25 in a first campaign), and more often in New Game+
+  (about one in 10 at tier 1 and one in 6 at tier 2). In New Game+ every mini-boss drops one too.
+- **Fitting one:** walk over it and it fits the weapon in your hand, replacing that weapon's mod if it had one. Each
+  weapon carries one mod at most, so switch to the weapon you want it on before you pick it up. One your weapon
+  already has stays on the floor.
+- **On the HUD:** the weapon in hand's mod shows by the level bar, in its colour.
+- **Saving:** your weapons' mods are kept in the save, for the rest of the campaign.
+
+![Weapon mods in the hall, and a Capacitor charging](docs/weapon_mods.png)
 
 ## Walkthrough (spoilers)
 
@@ -619,6 +676,24 @@ with a trick of its own; a health bar shows low in the view while you fight it.
 ![The Thornmother](docs/thornmother.png)
 ![The Rock Wyrm, surfaced in the Depths](docs/rock_wyrm.png)
 ![The Storm Leviathan over the Void Crossing](docs/storm_leviathan.png)
+
+#### Rematches
+
+**Arena → Rematch** lets you fight any mini-boss you've beaten again, against the clock.
+- **The fight:** you pick a class and fight it alone on its own map, starting a little way off. The other monsters
+  and the chests are gone. In the Void Crossing the Leviathan waits 30 cells down the lane, not at the far end.
+- **The clock:** it runs from the start until the boss falls, and shows in the top-right corner with your best
+  against that boss.
+- **The board:** each boss has a board of its ten quickest wins, any class. See it under **Leaderboard**
+  (Left/Right picks the boss) or next to each name on the Rematch page.
+- **Nothing to farm:** a rematch pays no experience and drops no loot. It isn't saved, and doesn't count toward
+  the codex.
+- **Another go:** Restart on the pause menu, or dying, starts it over.
+- **Locked:** a boss you haven't beaten in the campaign shows as `???` until you have.
+
+![The Rematch page](docs/rematch_menu.png)
+![A rematch against the Hive Queen, with the clock](docs/rematch_fight.png)
+![A rematch board](docs/rematch_board.png)
 ![The Drowned Keeper](docs/drowned_keeper.png)
 
 ## Story mode
@@ -783,6 +858,18 @@ you've got and when, and how far along you are with the ones that build up.
 - **Saving:** they're kept in your profile.
 
 ![Achievements](docs/achievements.png)
+
+**Codex:** **Character → Codex** is a bestiary of all 12 monsters: the six regulars, the Heresiarch and the six
+mini-bosses.
+- **Locked entries:** each shows as `???`, with the monster as a black silhouette, until you first kill one.
+  The game tells you when a new entry opens.
+- **An open entry** shows the monster, how many you've killed, its health, a line of lore in the style you're
+  playing, and how to beat it.
+- **What counts:** your kills with your own weapons, in the campaign and the arena, not on practice courses or
+  play-tested maps. A mini-boss you beat before the codex existed is already in it.
+- **Saving:** your kills of each are kept in your profile.
+
+![The codex](docs/codex.png)
 ![An achievement unlocking](docs/achievement_banner.png)
 
 ## Options and key bindings
@@ -890,6 +977,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `profile [reset]` | show your level, skills and totals, or start your progress over |
 | `name [name]` | show or set the name your practice course times go on the leaderboard under |
 | `demo` | on a practice course, start the demo run from the beginning |
+| `ghostcode` | share your best on this timed course (or your last endless run) as a code: printed, copied and saved to a file |
+| `ghostload [file]` | race a friend's ghost from the code on the clipboard, or a `.hxghost` file; `ghostclear` goes back to your own |
 | `endless [seed]` | play the endless practice course on a new seed, or on the one you name |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
@@ -1011,6 +1100,12 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
 | `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
+| `src/GhostCodes.cs` | Ghost codes: packing a run into a line of text, and racing a friend's |
+| `src/Director.cs` | The New Game+ director: ambushes when you backtrack through places you've been |
+| `src/Hazards.cs` | New Game+ hazards: the Depths' crumbling floors, the Windspire's gusts and the Cisterns' floods |
+| `src/Rematch.cs` | Mini-boss rematches: starting one, the clock, and each boss's board |
+| `src/Codex.cs` | The monster codex: each monster's lore and how to beat it, and your kills of each |
+| `src/WeaponMods.cs` | Weapon mods: the four, their chest odds, fitting them, and piercing, chain, charge and frost |
 | `src/NewGamePlus.cs` | New Game+: what each tier does to the hub, and going round again |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
 | `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |
@@ -1021,7 +1116,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches, hazards, the director, ghost codes |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

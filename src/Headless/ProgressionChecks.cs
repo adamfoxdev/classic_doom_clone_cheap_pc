@@ -245,7 +245,7 @@ public static partial class Headless
         check(ui.Binds.Get(Act.Character, 0) == Keys.Letter('K'), "K is the character key");
         ui.Update(new Input { Character = true }, 1f / 35f);
         check(ui.Paused && ui.Menu.Page == MenuPage.Character, "K opens the character screen and pauses");
-        check(ui.Menu.Items(MenuPage.Character).SequenceEqual(new[] { "Vitality", "Power", "Agility", "Focus", "Thrusters", "Achievements", "Back" }), "it lists the five skills, then Achievements");
+        check(ui.Menu.Items(MenuPage.Character).SequenceEqual(new[] { "Vitality", "Power", "Agility", "Focus", "Thrusters", "Achievements", "Codex", "Back" }), "it lists the five skills, then Achievements and the Codex");
         ui.Update(new Input { Confirm = true }, 1f / 35f);
         check(ui.Profile.Rank(Skill.Vitality) == 1 && ui.P.MaxHealth == 110 && ui.Profile.Points == 0, "Enter spends a point on the selected skill");
         ui.Update(new Input { Confirm = true }, 1f / 35f);

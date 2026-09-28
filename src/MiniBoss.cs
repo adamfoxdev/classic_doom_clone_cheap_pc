@@ -114,7 +114,7 @@ public static class MiniBosses
     }
 
     /// <summary>Recolours a sprite: each pixel keeps its brightness but takes on the colour, with the brightest kept a little hotter.</summary>
-    static Tex Wash(Tex src, int r, int g, int b)
+    public static Tex Wash(Tex src, int r, int g, int b)
     {
         var t = new Tex(src.W, src.H);
         for (int i = 0; i < src.Px.Length; i++)
@@ -418,6 +418,13 @@ public sealed partial class Game
     /// <summary>A mini-boss falls: its loot, its experience, and it's crossed off your list for good.</summary>
     void MiniBossDown(Monster m)
     {
+        if (Rematch != null)
+        {
+            // a rematch: just the time, no loot or experience
+            foreach (var t in Level.Things.OfType<Monster>().Where(o => o.Summoner == m && o.Alive).ToList()) DamageMonster(t, 100000);
+            RematchDown();
+            return;
+        }
         Say($"The {m.Def.Name} falls!");
         PlaySound(Sfx.BossSight, 0.8f);
         foreach (var (kind, dx) in new[] { (PickupKind.Urn, -0.35f), (PickupKind.Armor, 0.35f) })
@@ -426,6 +433,13 @@ public sealed partial class Game
             if (Level.BlocksPoint(x, y)) x = m.X;
             // in flight, the loot hangs in the lane where it fell, for the ship to fly through
             Level.Things.Add(new Pickup(kind, 0.45f) { X = x, Y = y, Z = Level.Flight ? m.Z : 0, Level = Level });
+        }
+        if (NgTier > 0)
+        {
+            // in New Game+ a weapon mod too
+            var mod = MakeMod(RandomMod(), m.X, Level.BlocksPoint(m.X, m.Y + 0.4f) ? m.Y : m.Y + 0.4f);
+            mod.Z = Level.Flight ? m.Z : 0; mod.Level = Level;
+            Level.Things.Add(mod);
         }
         GainXp(MiniBossXp);
         if (!NoXp && !Profile.MiniBosses.Contains(m.Def.MiniBoss)) Profile.MiniBosses.Add(m.Def.MiniBoss);

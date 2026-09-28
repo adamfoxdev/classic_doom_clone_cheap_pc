@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements, Effects }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements, Effects, Codex, Rematch }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -27,6 +27,9 @@ public sealed class MenuSystem
     public bool BoardDaily;
     /// <summary>The Leaderboard page shows the endless course's board.</summary>
     public bool BoardEndless;
+    /// <summary>The Leaderboard page shows a mini-boss's rematch board: which one (in MiniBosses.All).</summary>
+    public bool BoardRematch;
+    public int BoardBoss;
     public int BoardDay;
 
     public MenuSystem(Game g) { _g = g; }
@@ -44,6 +47,8 @@ public sealed class MenuSystem
             BoardArena = _g.ArenaMode && !_g.DailyMode;
             BoardDaily = _g.DailyMode;
             BoardEndless = _g.OnEndless;
+            BoardRematch = _g.Rematch != null;
+            BoardBoss = _g.Rematch != null ? Array.IndexOf(MiniBosses.All, _g.Rematch) : 0;
             BoardDay = 0;
         }
     }
@@ -82,8 +87,10 @@ public sealed class MenuSystem
             : new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Courses => Courses.All.Select(c => c.Name).Append("Back").ToArray(),
-        MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Daily challenge").Append("Back").ToArray(),
-        MenuPage.Character => Profile.Skills.Select(SkillName).Append("Achievements").Append("Back").ToArray(),
+        MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Daily challenge").Append("Rematch").Append("Back").ToArray(),
+        MenuPage.Rematch => MiniBosses.All.Select(d => _g.Profile.MiniBosses.Contains(d.MiniBoss) ? d.Name : "???").Append("Back").ToArray(),
+        MenuPage.Character => Profile.Skills.Select(SkillName).Append("Achievements").Append("Codex").Append("Back").ToArray(),
+        MenuPage.Codex => HexenSharp.Codex.All.Select(e => HexenSharp.Codex.Unlocked(_g.Profile, e) ? e.Def.Name : "???").Append("Back").ToArray(),
         MenuPage.Achievements => HexenSharp.Achievements.All.Select(a => a.Name).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Difficulty", "Music volume", "Effects", "Back" },
@@ -153,6 +160,12 @@ public sealed class MenuSystem
         if (inp.Up) { Cursor = (Cursor + items.Length - 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
         if (inp.Down) { Cursor = (Cursor + 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
 
+        if (Page == MenuPage.Codex)
+        {
+            if (inp.Confirm && Cursor == items.Length - 1) Back();
+            return;
+        }
+
         if (Page == MenuPage.Achievements)
         {
             if (Cursor < Scroll) Scroll = Cursor;
@@ -187,7 +200,7 @@ public sealed class MenuSystem
         {
             if (Cursor >= Profile.Skills.Length)
             {
-                if (inp.Confirm) { if (items[Cursor] == "Achievements") Show(MenuPage.Achievements); else Back(); }
+                if (inp.Confirm) { if (items[Cursor] == "Achievements") Show(MenuPage.Achievements); else if (items[Cursor] == "Codex") Show(MenuPage.Codex); else Back(); }
                 return;
             }
             var skill = Profile.Skills[Cursor];
@@ -203,6 +216,7 @@ public sealed class MenuSystem
             {
                 // on the daily board, Left goes back a day (Right forward, up to today); elsewhere, the class
                 if (BoardDaily) BoardDay = Math.Max(0, BoardDay + (inp.Left ? 1 : -1));
+                else if (BoardRematch) BoardBoss = (BoardBoss + (inp.Left ? MiniBosses.All.Length - 1 : 1)) % MiniBosses.All.Length;
                 else BoardClass = (PClass)(((int)BoardClass + (inp.Left ? 2 : 1)) % 3);
                 _g.PlaySound(Sfx.Swing, 0.5f);
             }
@@ -210,12 +224,13 @@ public sealed class MenuSystem
             {
                 // the timed courses, then the endless course, the arena and the daily challenge, round and round
                 var timed = Courses.Timed;
-                int n = timed.Length + 3;
-                int i = BoardEndless ? timed.Length : BoardArena ? timed.Length + 1 : BoardDaily ? timed.Length + 2 : Array.IndexOf(timed, BoardCourse);
+                int n = timed.Length + 4;
+                int i = BoardEndless ? timed.Length : BoardRematch ? timed.Length + 1 : BoardArena ? timed.Length + 2 : BoardDaily ? timed.Length + 3 : Array.IndexOf(timed, BoardCourse);
                 i = (i + (inp.Up ? n - 1 : 1)) % n;
                 BoardEndless = i == timed.Length;
-                BoardArena = i == timed.Length + 1;
-                BoardDaily = i == timed.Length + 2;
+                BoardRematch = i == timed.Length + 1;
+                BoardArena = i == timed.Length + 2;
+                BoardDaily = i == timed.Length + 3;
                 if (i < timed.Length) BoardCourse = timed[i];
                 BoardDay = 0;
                 _g.PlaySound(Sfx.Swing, 0.5f);
@@ -336,7 +351,20 @@ public sealed class MenuSystem
                 _g.StartDaily();
                 _g.PlaySound(Sfx.Teleport, 1);
             }
+            else if (items2[Cursor] == "Rematch") Show(MenuPage.Rematch);
             else Back();
+            return;
+        }
+
+        if (Page == MenuPage.Rematch)
+        {
+            if (!inp.Confirm) return;
+            if (Cursor >= MiniBosses.All.Length) { Back(); return; }
+            var boss = MiniBosses.All[Cursor];
+            if (!_g.Profile.MiniBosses.Contains(boss.MiniBoss)) { Say("Beat it in the campaign first."); _g.PlaySound(Sfx.Locked, 0.6f); return; }
+            _g.PlaySound(Sfx.Item, 0.8f);
+            _g.Style = GameStyle.Classic; _g.PendingPractice = _g.PendingArena = false; _g.PendingRematch = boss;
+            Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
             return;
         }
 
@@ -353,7 +381,7 @@ public sealed class MenuSystem
                 case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
                 case "New Game+":
                     // the highest tier you've opened, in classic style; pick a class and go
-                    _g.Style = GameStyle.Classic; _g.NgTier = _g.Profile.NgUnlocked; _g.PendingPractice = _g.PendingArena = false;
+                    _g.Style = GameStyle.Classic; _g.NgTier = _g.Profile.NgUnlocked; _g.PendingPractice = _g.PendingArena = false; _g.PendingRematch = null;
                     Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
                     break;
                 case "Story": Close(); _g.StartStory(0); break;
@@ -368,7 +396,7 @@ public sealed class MenuSystem
         }
         switch (Page, Cursor)
         {
-            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.NgTier = 0; _g.PendingPractice = _g.PendingArena = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.NgTier = 0; _g.PendingPractice = _g.PendingArena = false; _g.PendingRematch = null; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
             case (MenuPage.Courses, var c) when c < Courses.All.Length:
                 _g.Style = GameStyle.Classic; _g.PendingPractice = true; _g.PendingArena = false; _g.PendingCourse = Courses.All[c];
                 Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;

@@ -45,6 +45,8 @@ public sealed class Profile
     public int ChestsOpened { get; set; }
     /// <summary>The mini-bosses you've beaten (their ids), for the achievement.</summary>
     public List<string> MiniBosses { get; set; } = new();
+    /// <summary>Your kills of each monster, by its art id, for the codex.</summary>
+    public Dictionary<string, int> KillsBy { get; set; } = new();
     /// <summary>Unlocked achievements, by id, with when.</summary>
     public Dictionary<string, DateTime> Achievements { get; set; } = new();
     /// <summary>Best practice course times by class, from before the leaderboard; folded into CourseRuns when read.</summary>
@@ -80,6 +82,21 @@ public sealed class Profile
         runs.Insert(place, new CourseRun { Time = time, Name = name, When = when });
         if (runs.Count > BoardSize) runs.RemoveAt(runs.Count - 1);
         return place + 1;
+    }
+
+    /// <summary>Mini-boss rematches won: each boss's ten quickest, any class.</summary>
+    public List<RematchRun> RematchRuns { get; set; } = new();
+
+    public List<RematchRun> RematchBoard(string boss) =>
+        RematchRuns.Where(r => r.Boss == boss).OrderBy(r => r.Time).Take(BoardSize).ToList();
+
+    /// <summary>Adds a rematch won; its place on that boss's board, or 0 if it didn't make the ten.</summary>
+    public int AddRematchRun(RematchRun run)
+    {
+        RematchRuns.Add(run);
+        var board = RematchBoard(run.Boss);
+        RematchRuns.RemoveAll(r => r.Boss == run.Boss && !board.Contains(r));
+        return board.IndexOf(run) + 1;
     }
 
     /// <summary>Endless course runs, the best ten for each class (most platforms, then quickest).</summary>
@@ -232,6 +249,8 @@ public sealed class Profile
             p.MiniBosses ??= new();
             p.DailyRuns ??= new();
             p.EndlessRuns ??= new();
+            p.KillsBy ??= new();
+            p.RematchRuns ??= new();
             p.Achievements ??= new();
             // runs saved before scores: 100 a wave, as a run with no modifiers scores
             foreach (var board in p.ArenaRuns.Values)

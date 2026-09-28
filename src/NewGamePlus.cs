@@ -82,7 +82,7 @@ public sealed partial class Game
     public void StartNewGamePlus(PClass cls, int tier)
     {
         HubSource = Maps.BuildHub;
-        TestingMap = false; Practicing = false; ArenaMode = false; StoryMode = false; Story = null; Demo = false;
+        TestingMap = false; Practicing = false; ArenaMode = false; StoryMode = false; Story = null; Demo = false; Rematch = null;
         Style = GameStyle.Classic;
         NgTier = Math.Clamp(tier, 1, NgPlus.MaxTier);
         NewGame(cls);

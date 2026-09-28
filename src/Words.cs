@@ -22,6 +22,8 @@ public static class Words
         ["Rock Wyrm"] = "Borer Drone",
         ["Storm Leviathan"] = "Void Dreadnought",
         ["Hanging Cisterns"] = "Coolant Tanks",
+        ["New Game+: the cisterns flood now and then. Get up on a ledge when they do."] = "New Game+: the tanks flood with coolant now and then. Get up on a gantry when they do.",
+        ["The water is rising! Get up on a ledge!"] = "Coolant flood! Get up on a gantry!",
         ["The Hanging Cisterns. Stone weights, pressure plates, and ledges only the winged can reach."] = "The Coolant Tanks. Cargo crates, pressure pads, and gantries only a jetpack can reach.",
         ["Windspire"] = "Comms Spire",
         ["The Windspire. Only the winged may reach the beacon at its crown."] = "The Comms Spire. Only a jetpack will get you to the summit console.",

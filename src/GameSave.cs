@@ -63,7 +63,7 @@ public sealed partial class Game
         if (!Enum.TryParse<PClass>(s.Player.Class, out var cls) || !Enum.TryParse<GameStyle>(s.Style, out var style)) return false;
         // a fresh hub, the usual way; then everything the save remembers goes back over it
         HubSource = Maps.BuildHub;
-        TestingMap = false; Practicing = false; ArenaMode = false; StoryMode = false; Story = null; Demo = false;
+        TestingMap = false; Practicing = false; ArenaMode = false; StoryMode = false; Story = null; Demo = false; Rematch = null;
         Style = style;
         NgTier = s.NgTier;
         NewGame(cls);
@@ -80,6 +80,7 @@ public sealed partial class Game
         p.Health = ps.Health; p.Armor = ps.Armor; p.BlueMana = ps.BlueMana; p.GreenMana = ps.GreenMana; p.Flasks = ps.Flasks; p.Urns = ps.Urns;
         p.Kills = ps.Kills; p.ChestsOpened = ps.ChestsOpened; p.Relics = ps.Relics; p.LoreRead = ps.LoreRead; p.Secrets = ps.Secrets;
         p.Blocks = ps.Blocks; ps.Ore?.CopyTo(p.Ore, 0); p.HasWeapon = (bool[])ps.HasWeapon.Clone();
+        if (ps.Mods is { Length: 3 }) p.Mods = ps.Mods.Select(m => Enum.IsDefined((WeaponMod)m) ? (WeaponMod)m : WeaponMod.None).ToArray();
         p.Weapon = p.HasWeapon[ps.Weapon] ? ps.Weapon : 0; p.PendingWeapon = -1;
         p.SteelKey = ps.SteelKey; p.FireKey = ps.FireKey; p.HasJetpack = ps.HasJetpack; p.Fuel = ps.Fuel;
         // standing on the portal you arrived by: it waits until you step off

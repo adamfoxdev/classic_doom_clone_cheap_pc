@@ -65,6 +65,18 @@ public static partial class Headless
         ArenaModeChecks(Check);
         Console.WriteLine("Save and continue:");
         SaveChecks(Check);
+        Console.WriteLine("Ghost codes:");
+        GhostCodeChecks(Check);
+        Console.WriteLine("New Game+ director:");
+        DirectorChecks(Check);
+        Console.WriteLine("New Game+ hazards:");
+        HazardChecks(Check);
+        Console.WriteLine("Mini-boss rematches:");
+        RematchChecks(Check);
+        Console.WriteLine("Monster codex:");
+        CodexChecks(Check);
+        Console.WriteLine("Weapon mods:");
+        ModChecks(Check);
         Console.WriteLine("Game feel:");
         FeelChecks(Check);
         Console.WriteLine("Endless course:");

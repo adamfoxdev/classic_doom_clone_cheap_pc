@@ -94,16 +94,17 @@ public static class Chests
     public static readonly Dictionary<char, string> LootNames = new()
     {
         ['h'] = "Crystal Vial", ['q'] = "Quartz Flask", ['u'] = "Mystic Urn", ['b'] = "Blue Mana",
-        ['g'] = "Green Mana", ['r'] = "Mesh Armor", ['w'] = "a weapon piece", ['x'] = "a weapon piece",
+        ['g'] = "Green Mana", ['r'] = "Mesh Armor", ['w'] = "a weapon piece", ['x'] = "a weapon piece", ['m'] = "a weapon mod",
     };
 
     /// <summary>Rolls 1-3 items. Weapon pieces only drop for weapons the player doesn't have yet.</summary>
-    public static List<char> RollLoot(Random rng, Player p)
+    public static List<char> RollLoot(Random rng, Player p, int modWeight = 0)
     {
         var table = new List<(char glyph, int weight)>
         {
             ('h', 20), ('q', 12), ('b', 18), ('g', 14), ('r', 8), ('u', 4),
         };
+        if (modWeight > 0) table.Add(('m', modWeight)); // a weapon mod, now and then
         if (!p.HasWeapon[1]) table.Add(('w', 5));
         if (!p.HasWeapon[2]) table.Add(('x', 3));
         int total = table.Sum(t => t.weight);
@@ -117,7 +118,7 @@ public static class Chests
                 if (roll < w) { loot.Add(g); break; }
                 roll -= w;
             }
-            if (loot[^1] is 'w' or 'x') table.RemoveAll(t => t.glyph == loot[^1]); // one of each at most
+            if (loot[^1] is 'w' or 'x' or 'm') table.RemoveAll(t => t.glyph == loot[^1]); // one of each at most
             total = table.Sum(t => t.weight);
         }
         return loot;

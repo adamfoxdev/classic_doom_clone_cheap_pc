@@ -49,10 +49,12 @@ public sealed class Renderer
         DrawWeapon(g);
         DrawScreenTint(g);
         DrawCrosshair(g);
+        DrawChargeMeter(g);
         if (g.Vars.Hud != HudStyle.Off && !g.ShowMap) DrawStrafeHelper(g);
         if (g.ShowMap) DrawAutomap(g);
         DrawHud(g);
         DrawMessages(g);
+        if (!g.ShowMap) DrawHazardBanner(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
         if (g.Intro != null && !g.ShowMap) DrawBossIntro(g, g.Intro);
@@ -92,7 +94,7 @@ public sealed class Renderer
         var m = g.Menu;
         var page = m.Page.Value;
         var items = m.Items(page);
-        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard or MenuPage.Achievements ? 246 : 230);
+        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard or MenuPage.Achievements or MenuPage.Codex ? 246 : 230);
 
         switch (page)
         {
@@ -143,6 +145,14 @@ public sealed class Renderer
                 DrawCharacter(g);
                 break;
 
+            case MenuPage.Rematch:
+                DrawRematchMenu(g);
+                break;
+
+            case MenuPage.Codex:
+                DrawCodex(g);
+                break;
+
             case MenuPage.Achievements:
                 DrawAchievements(g);
                 break;
@@ -173,7 +183,7 @@ public sealed class Renderer
                 break;
         }
 
-        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.Effects or MenuPage.ArenaSetup or MenuPage.Achievements))
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.Effects or MenuPage.ArenaSetup or MenuPage.Achievements or MenuPage.Codex or MenuPage.Rematch))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
     }
 
@@ -188,6 +198,7 @@ public sealed class Renderer
         if (m.BoardArena) { DrawArenaBoard(g, def); return; }
         if (m.BoardDaily) { DrawDailyBoard(g); return; }
         if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
+        if (m.BoardRematch) { DrawRematchBoard(g); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
         var (tg, ts, tb) = m.BoardCourse.MedalTimes(m.BoardClass);
         string targets = $"GOLD {tg:0.0}   SILVER {ts:0.0}   BRONZE {tb:0.0}";
@@ -219,6 +230,40 @@ public sealed class Renderer
         }
         CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
         CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>A mini-boss's rematch board: the ten quickest wins against it, any class.</summary>
+    void DrawRematchBoard(Game g)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        var boss = MiniBosses.All[m.BoardBoss];
+        CenterText($"REMATCH   < {boss.Name.ToUpperInvariant()} >", 26, blue);
+        CenterText("QUICKEST WINS, ANY CLASS", 36, gold);
+        var runs = g.Profile.RematchBoard(boss.MiniBoss);
+        if (runs.Count == 0)
+        {
+            CenterText("NO WINS YET.", 70, MenuText);
+            CenterText("ARENA > REMATCH ON THE TITLE MENU.", 82, MenuDim);
+        }
+        else
+        {
+            var latest = runs.MaxBy(r => r.When);
+            Text(18, 48, "#", MenuDim); Text(40, 48, "TIME", MenuDim); Text(90, 48, "CLASS", MenuDim); Text(172, 48, "NAME", MenuDim); Text(250, 48, "DATE", MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
+                string cls = Enum.TryParse<PClass>(r.Class, out var pc) ? ClassDef.All[(int)pc].Name.ToUpperInvariant() : r.Class;
+                Text(18, y, $"{i + 1,2}", c);
+                Text(40, y, $"{r.Time:0.00}", c);
+                Text(90, y, cls, c);
+                Text(172, y, r.Name, c);
+                Text(250, y, r.When == default ? "-" : r.When.ToString("yyyy-MM-dd"), c);
+            }
+        }
+        CenterText("LEFT/RIGHT: BOSS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
     }
 
     /// <summary>The endless course's board for one class: the runs that reached the most platforms, then the quickest.</summary>
@@ -305,7 +350,7 @@ public sealed class Renderer
         int n = ArenaModInfo.All.Length;
         for (int i = 0; i < items.Length; i++)
         {
-            int y = 44 + i * 12 + (i >= n ? 6 : 0);
+            int y = 41 + i * 11 + (i >= n ? 5 : 0);
             bool sel = i == m.Cursor;
             if (i >= n) { MenuItem(items[i], y, sel); continue; }
             var mod = ArenaModInfo.All[i];
@@ -437,7 +482,12 @@ public sealed class Renderer
             if (i >= Profile.Skills.Length)
             {
                 // Achievements (with how many you've got) and Back
-                string label = items[i] == "Achievements" ? $"ACHIEVEMENTS  {pr.Achievements.Count}/{Achievements.All.Length}" : items[i];
+                string label = items[i] switch
+                {
+                    "Achievements" => $"ACHIEVEMENTS  {pr.Achievements.Count}/{Achievements.All.Length}",
+                    "Codex" => $"CODEX  {Codex.Found(pr)}/{Codex.All.Length}",
+                    _ => items[i],
+                };
                 MenuItem(label, y + 2, sel);
                 continue;
             }
@@ -466,6 +516,104 @@ public sealed class Renderer
         if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), 174, Col.Rgb(120, 255, 140));
         else CenterText("ENTER: SPEND A POINT    ESC: BACK", 174, MenuDim);
         CenterText($"KILLS {pr.TotalKills}    WINS {pr.Wins}    TOTAL XP {pr.TotalXp}", 186, MenuDim);
+    }
+
+    /// <summary>Arena > Rematch: the six mini-bosses, the ones you've beaten with your best time against them.</summary>
+    void DrawRematchMenu(Game g)
+    {
+        var m = g.Menu;
+        var items = m.Items(MenuPage.Rematch);
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255);
+        CenterText("REMATCH", 10, gold, 2);
+        CenterText("BEAT A MINI-BOSS AGAIN, AGAINST THE CLOCK", 30, MenuDim);
+        for (int i = 0; i < items.Length; i++)
+        {
+            bool sel = i == m.Cursor, back = i == items.Length - 1;
+            int y = 48 + i * 14 + (back ? 6 : 0);
+            if (back) { MenuItem(items[i], y, sel); continue; }
+            var boss = MiniBosses.All[i];
+            bool open = g.Profile.MiniBosses.Contains(boss.MiniBoss);
+            if (sel) Rect(30, y - 2, 260, 11, Col.Rgb(70, 40, 20));
+            Text(38, y, items[i].ToUpperInvariant(), sel ? MenuSel : open ? MenuText : MenuDim);
+            var best = g.Profile.RematchBoard(boss.MiniBoss).FirstOrDefault();
+            string right = !open ? "NOT BEATEN YET" : best != null ? $"BEST {best.Time:0.00}" : "NO TIME YET";
+            Text(282 - Font.Width(right), y, right, open ? (best != null ? gold : blue) : MenuDim);
+        }
+        if (m.Cursor < MiniBosses.All.Length)
+        {
+            var boss = MiniBosses.All[m.Cursor];
+            string where = g.Profile.MiniBosses.Contains(boss.MiniBoss) ? Words.T(Rematches.Map(boss)).ToUpperInvariant() : "BEAT IT IN THE CAMPAIGN TO UNLOCK IT";
+            CenterText(where, 154, blue);
+        }
+        if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), 168, Col.Rgb(120, 255, 140));
+        CenterText("ENTER: FIGHT   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>
+    /// The monster codex: the list down the left (??? for those you haven't killed yet), and the highlighted one on the
+    /// right: its picture, kills and health, a line of lore, and how to beat it.
+    /// </summary>
+    void DrawCodex(Game g)
+    {
+        var m = g.Menu;
+        var pr = g.Profile;
+        var items = m.Items(MenuPage.Codex);
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255);
+        CenterText("CODEX", 6, gold, 2);
+        CenterText($"FOUND {Codex.Found(pr)}/{Codex.All.Length}", 26, blue);
+        for (int i = 0; i < items.Length; i++)
+        {
+            bool sel = i == m.Cursor, back = i == items.Length - 1;
+            int y = 40 + i * 11 + (back ? 4 : 0);
+            if (sel) Rect(10, y - 2, 112, 10, Col.Rgb(70, 40, 20));
+            string label = items[i].ToUpperInvariant();
+            Text(14, y, label.Length > 18 ? label[..18] : label, sel ? MenuSel : back ? MenuText : items[i] == "???" ? MenuDim : MenuText);
+        }
+        if (m.Cursor < Codex.All.Length)
+        {
+            var e = Codex.All[m.Cursor];
+            bool open = Codex.Unlocked(pr, e);
+            int x = 132;
+            Rect(x, 40, 50, 50, Col.Rgb(24, 20, 18));
+            if (Art.Monsters.TryGetValue(e.Def.Art, out var frames)) SpriteBox(frames[0], x + 1, 41, 48, 48, !open);
+            int tx = x + 58;
+            if (open)
+            {
+                string name = e.Def.Name.ToUpperInvariant();
+                Text(tx, 42, name.Length > 20 ? name[..20] : name, MenuSel);
+                Text(tx, 55, $"KILLS {Codex.Kills(pr, e)}", blue);
+                Text(tx, 65, $"HEALTH {e.Def.Health}", MenuText);
+                if (e.Def.MiniBoss != null) Text(tx, 75, "MINI-BOSS", gold);
+                else if (e.Def.Boss) Text(tx, 75, "BOSS", gold);
+                int y = 98;
+                foreach (var line in Wrap(e.Text.ToUpperInvariant(), 30)) { Text(x, y, line, MenuText); y += 10; }
+                y += 4;
+                Text(x, y, "HOW TO BEAT IT", gold);
+                y += 10;
+                foreach (var line in Wrap(e.Weakness.ToUpperInvariant(), 30)) { Text(x, y, line, blue); y += 10; }
+            }
+            else
+            {
+                Text(tx, 42, "???", MenuDim);
+                Text(tx, 55, "KILL ONE TO", MenuDim);
+                Text(tx, 65, "OPEN THIS ENTRY", MenuDim);
+            }
+        }
+        CenterText("UP/DOWN: BROWSE   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>Draws a sprite scaled to fit a box (keeping its shape, standing on the bottom), or as a black silhouette.</summary>
+    void SpriteBox(Tex t, int x, int y, int w, int h, bool silhouette)
+    {
+        float s = MathF.Min(w / (float)t.W, h / (float)t.H);
+        int dw = (int)(t.W * s), dh = (int)(t.H * s), ox = x + (w - dw) / 2, oy = y + h - dh;
+        for (int j = 0; j < dh; j++)
+            for (int i = 0; i < dw; i++)
+            {
+                uint c = t.Px[(int)(j / s) * t.W + (int)(i / s)];
+                if (Col.A(c) == 0 || (uint)(ox + i) >= W || (uint)(oy + j) >= H) continue;
+                Fb[(oy + j) * W + ox + i] = silhouette ? Col.Rgb(8, 6, 6) : c;
+            }
     }
 
     /// <summary>The achievements: each one's name and experience, ticked when earned, with the highlighted one's details below.</summary>
@@ -1157,6 +1305,18 @@ public sealed class Renderer
     /// The aiming mark, where your shots go: the centre of the view, on the horizon, so it follows vertical look.
     /// Light with a dark outline so it reads on any wall. The cockpit has its own gunsight.
     /// </summary>
+    /// <summary>A Charged mod building up: a short bar under the middle of the view, filling as you hold Fire.</summary>
+    void DrawChargeMeter(Game g)
+    {
+        var p = g.P;
+        if (!p.Charging || p.Charge <= 0 || g.ShowMap) return;
+        int w = 30, x = W / 2 - w / 2, y = (int)MathF.Round(ViewH / 2f + p.Pitch) + 10;
+        if (y < 0 || y + 4 >= ViewH) return;
+        Rect(x - 1, y - 1, w + 2, 5, Col.Rgb(20, 16, 16));
+        uint c = p.Charge >= 1 ? Col.Rgb(255, 255, 255) : WeaponMods.Colour(WeaponMod.Charged);
+        Rect(x, y, (int)(w * p.Charge), 3, c);
+    }
+
     void DrawCrosshair(Game g)
     {
         var style = g.Vars.Crosshair;
@@ -1240,6 +1400,16 @@ public sealed class Renderer
         if (p.PickupFlash > 0) Tint(Col.Rgb(255, 210, 90), (int)(p.PickupFlash * 60));
         if (p.TeleportFlash > 0) Tint(Col.Rgb(255, 255, 255), (int)(p.TeleportFlash * 200));
         if (g.Mode == GameMode.Dead) Tint(Col.Rgb(120, 0, 0), 90);
+        if (g.InCoolant) Tint(Col.Rgb(40, 200, 220), 70); // wading in the flood
+    }
+
+    /// <summary>A New Game+ hazard in progress: a banner under the top of the view.</summary>
+    void DrawHazardBanner(Game g)
+    {
+        string text = g.Gusting ? "GUST" : g.Flooding ? "FLOOD" : null;
+        if (text == null) return;
+        uint c = g.Gusting ? Col.Rgb(200, 220, 240) : Col.Rgb(90, 230, 240);
+        CenterText(text, 30, (int)(g.Time * 4) % 2 == 0 ? c : Col.Shade(c, 180));
     }
 
     void Tint(uint c, int amt)
@@ -1547,6 +1717,7 @@ public sealed class Renderer
         DrawSpeed(g);
         if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
         if (g.OnEndless && style != HudStyle.Off) DrawEndlessHud(g);
+        if (g.Rematch != null && style != HudStyle.Off) DrawRematchClock(g);
         if (g.Practicing) DrawDemoBanner(g);
         switch (style)
         {
@@ -1606,6 +1777,16 @@ public sealed class Renderer
             Text(W - 4 - Font.Width(next) - 9, ny, next, Medals.Colour(medal));
             MedalDot(W - 9, ny + 1, medal);
         }
+    }
+
+    /// <summary>In a rematch: the clock, and your best against this boss.</summary>
+    void DrawRematchClock(Game g)
+    {
+        var best = g.Profile.RematchBoard(g.Rematch.MiniBoss).FirstOrDefault(r => r.Name == g.RunnerName);
+        string time = $"TIME {g.RematchTime:0.00}";
+        int y = g.Vars.ShowFps ? 12 : 3;
+        Text(W - 4 - Font.Width(time), y, time, g.RematchWon ? Col.Rgb(120, 255, 140) : Col.Rgb(240, 236, 220));
+        if (best != null) { string top = $"BEST {best.Time:0.00}"; Text(W - 4 - Font.Width(top), y + 10, top, Col.Rgb(255, 220, 90)); }
     }
 
     /// <summary>On the endless course: the platform you're on out of the course's, your best, and the seed.</summary>
@@ -1765,6 +1946,8 @@ public sealed class Renderer
         int bx = 8 + Font.Width(lv);
         Bar(bx, y + 2, 48, 3, pr.Level >= Profile.MaxLevel ? 1f : pr.Xp / (float)Profile.XpToNext(pr.Level), Col.Rgb(230, 190, 80));
         if (pr.Points > 0) Text(bx + 52, y, "+", Col.Rgb(120, 255, 140));
+        // the weapon in hand's mod, if it has one
+        if (g.ModOf(g.P.Weapon) is var mod && mod != WeaponMod.None) Text(bx + 60, y, WeaponMods.Tag(mod), WeaponMods.Colour(mod));
         if (g.XpPopupTime > 0) Text(4, y - 10, $"+{g.XpPopup} XP", Col.Rgb(255, 230, 120));
     }
 
@@ -1949,6 +2132,7 @@ public sealed class Renderer
         StoneBackdrop(g.Time);
         CenterText("CHOOSE YOUR CLASS", 10, Col.Rgb(230, 170, 50), 2);
         if (g.PendingArena) CenterText(Words.T("THE CHAOS ARENA: SURVIVE THE WAVES"), 28, Col.Rgb(230, 120, 255));
+        else if (g.PendingRematch is { } rb) CenterText($"REMATCH: {rb.Name.ToUpperInvariant()}", 28, Col.Rgb(255, 150, 90));
         else if (g.PendingPractice) CenterText($"PRACTICE: {g.PendingCourse.Name.ToUpperInvariant()}", 28, Col.Rgb(170, 200, 255));
         else if (g.NgTier > 0) CenterText($"{NgPlus.Name(g.NgTier)}: {NgPlus.Short(g.NgTier)}", 28, Col.Rgb(255, 120, 90));
         else CenterText(g.Relaxed ? "RELAXED MODE" : "CLASSIC MODE", 28, g.Relaxed ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 150, 120));

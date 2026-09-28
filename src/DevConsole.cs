@@ -334,6 +334,44 @@ public sealed class DevConsole
             Print($"endless course, seed {_g.Course.Seed}");
             Open = false;
         });
+        Add("ghostcode", "", "share a run: your best on this timed course (as this class), or your last endless run; prints a code, saves it to a file and copies it", a =>
+        {
+            var code = _g.ShareableGhost(out string why);
+            if (code == null) { Print("ghostcode: " + why); return; }
+            string text = code.Encode(), path = null;
+            try { path = _g.SaveGhostFile(code); } catch (IOException e) { Print("ghostcode: couldn't save the file: " + e.Message); }
+            _g.CopyText?.Invoke(text);
+            Print($"{code.Name}, {code.Time:0.00}s on {code.Course}{(code.Seed > 0 ? " seed " + code.Seed : "")}:");
+            for (int i = 0; i < text.Length; i += 60) Print(text.Substring(i, Math.Min(60, text.Length - i)));
+            Print((_g.CopyText != null ? "copied to the clipboard" : "") + (path != null ? (_g.CopyText != null ? "; " : "") + "saved to " + path : ""));
+        });
+        Add("ghostload", "[file]", "race a friend's ghost: from the code on the clipboard, or a .hxghost file (in your ghosts folder or a path); it takes you to its course or endless seed", a =>
+        {
+            string arg = a.Length < 2 ? null : string.Join(" ", a[1..]);
+            string text = arg;
+            if (arg == null)
+            {
+                text = _g.PasteText?.Invoke();
+                if (string.IsNullOrWhiteSpace(text)) { Print("ghostload: copy a ghost code first, or give the name of a .hxghost file"); return; }
+            }
+            else if (!arg.StartsWith(GhostCode.Prefix))
+            {
+                string file = File.Exists(arg) ? arg : Path.Combine(_g.GhostDir, arg);
+                if (!File.Exists(file)) { Print("ghostload: that isn't a ghost code or a file"); return; }
+                text = File.ReadAllText(file);
+            }
+            var code = GhostCode.Decode(text);
+            if (code == null) { Print("ghostload: that code is damaged or incomplete"); return; }
+            if (!_g.LoadGhost(code, out string why)) { Print("ghostload: " + why); return; }
+            Print($"racing {code.Name}'s ghost: {code.Time:0.00}s on {code.Course}{(code.Seed > 0 ? " seed " + code.Seed : "")}");
+            Open = false;
+        });
+        Add("ghostclear", "", "stop racing a loaded ghost (back to your own)", a =>
+        {
+            _g.Rival = null;
+            _g.ShowGhost();
+            Print("racing your own ghost again");
+        });
         Add("name", "[name]", "the name your practice course times go on the leaderboard under", a =>
         {
             if (a.Length < 2) { Print($"name = {_g.RunnerName}"); return; }
