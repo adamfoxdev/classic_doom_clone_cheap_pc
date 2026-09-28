@@ -11,7 +11,7 @@ public static class Railgun
     public const float Reach = 40f, Width = 0.1f;
     public static readonly WeaponDef Gun = new()
     {
-        Name = "Railgun", Proj = ProjKind.Bolt, DmgMin = 100, DmgMax = 100, Cooldown = 1.5f, Mana = 1, Cost = 3,
+        Name = "Railgun", Proj = ProjKind.Bolt, DmgMin = 100, DmgMax = 100, Cooldown = 1.5f, Ammo = AmmoKind.Slugs, Cost = 1,
         Rail = true, ArtIndex = Art.RailgunArt, Sound = Sfx.Shoot,
     };
 }

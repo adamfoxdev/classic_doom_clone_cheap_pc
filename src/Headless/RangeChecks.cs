@@ -12,10 +12,10 @@ public static partial class Headless
         g = new Game { FixedSeed = 1, AchievementsOn = false };
         g.StartPractice(PClass.Cleric, ShootingRange.Course);
         var p = g.P;
-        check(g.OnRange && p.Weapons.Length == 12 && p.HasWeapon.Count(h => h) == 1 && p.CurWeapon == ClassDef.All[1].Weapons[0],
+        check(g.OnRange && p.Weapons.Length == 14 && p.HasWeapon.Count(h => h) == 1 && p.CurWeapon == ClassDef.All[1].Weapons[0],
             "on the shooting range, every weapon in the game is there to take, starting with your class's first in hand");
         var rack = g.Level.Things.OfType<Pickup>().Where(k => k.Kind == PickupKind.Arms).ToList();
-        check(rack.Count == 12 && rack.Select(k => k.Variant).Distinct().Count() == 12, "the rack holds all twelve: three for each class, the rocket launcher, the railgun and the grenade launcher");
+        check(rack.Count == 14 && rack.Select(k => k.Variant).Distinct().Count() == 14, "the rack holds all fourteen: three for each class and the five Quake weapons");
         foreach (var pk in rack) { p.X = pk.X; p.Y = pk.Y; p.FloorZ = 0; Tick(new Input()); }
         check(p.HasWeapon.All(h => h) && rack.All(k => !k.Removed), "walking along the rack takes every weapon, and the rack stays full");
         Tick(new Input { Slot = 10 }); Tick(new Input(), 10);
@@ -256,17 +256,5 @@ public static partial class Headless
             $"the demo lobs down all three and grenade jumps up both ledges in {g.DemoTime:0.00}s (silver is {gSilver:0.0}; lowest health {low})");
         check(g.CourseTargetsLeft == 3, "and the targets stand back up for your go");
 
-        // a borrowed rocket launcher isn't saved with the campaign
-        string dir = Path.Combine(Path.GetTempPath(), $"hexensharp-range-{Environment.ProcessId}");
-        Directory.CreateDirectory(dir);
-        string path = Path.Combine(dir, "save.json");
-        g = new Game { FixedSeed = 1, AchievementsOn = false, SavePath = path };
-        g.NewGame(PClass.Fighter);
-        g.GiveRocketLauncher();
-        Tick(new Input(), 10);
-        g.SaveNow();
-        var back = new Game { FixedSeed = 1, AchievementsOn = false, SavePath = path, Profile = g.Profile };
-        check(back.Continue() && back.P.Weapons.Length == 3 && back.P.HasWeapon.Length == 3 && !back.P.CurWeapon.Rocket, "the rocket launcher from the console isn't kept in a save");
-        Directory.Delete(dir, true);
     }
 }

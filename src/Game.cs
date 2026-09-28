@@ -33,7 +33,11 @@ public sealed class WeaponDef
     public Sfx Sound;
     /// <summary>Its art in Art.Weapons (class * 3 + slot for the classes' own), and whether it's the rocket launcher.</summary>
     public int ArtIndex;
-    public bool Rocket, Rail, Grenade;
+    public bool Rocket, Rail, Grenade, Shotgun, Beam;
+    /// <summary>A Quake weapon's ammo (None for the classes' weapons, which use mana); Cost is then rounds a shot.</summary>
+    public AmmoKind Ammo;
+    /// <summary>The Quake weapons come up fast.</summary>
+    public bool Quick => Ammo != AmmoKind.None;
     /// <summary>Lets you look right down at the floor (the rocket and grenade launchers, for jumps).</summary>
     public bool LooksDown => Rocket || Grenade;
 }
@@ -98,6 +102,7 @@ public sealed class Player
         var p = (Player)MemberwiseClone();
         p.HasWeapon = (bool[])HasWeapon.Clone();
         p.Loadout = (WeaponDef[])Loadout?.Clone();
+        p.Ammo = (int[])Ammo.Clone();
         p.Mods = (WeaponMod[])Mods.Clone(); p.Mods2 = (WeaponMod[])Mods2.Clone();
         p.ModRanks = (int[])ModRanks.Clone(); p.ModRanks2 = (int[])ModRanks2.Clone();
         return p;
@@ -157,6 +162,8 @@ public sealed class Player
     public float ViewZ => EyeZ + Z - SlideLow * 0.25f + StepLag;
     /// <summary>The shooting range's loadout (every weapon in the game), in place of your class's three; null elsewhere.</summary>
     public WeaponDef[] Loadout;
+    /// <summary>The Quake weapons' ammo, by AmmoKind.</summary>
+    public int[] Ammo = new int[QuakeAmmo.Kinds];
     public WeaponDef[] Weapons => Loadout ?? Def.Weapons;
     public WeaponDef CurWeapon => Weapons[Weapon];
     /// <summary>A blast's push lifts the speed cap to this for a while (a rocket jump carries you faster than running).</summary>
@@ -853,6 +860,8 @@ public sealed partial class Game
         var names = Discovery.RelicNames.OrderBy(_ => _loot.Next()).ToList();
         int nameIndex = 0;
         string NextName() => names[nameIndex++ % names.Count];
+        // the Quake weapons, hidden through the hub (before the chests, so they always go in the same places)
+        if (!TestingMap && !Practicing && !ArenaMode && !StoryMode && !Relaxed) PlaceStashes();
         foreach (var lv in Hub)
         {
             if (!Practicing && !ArenaMode && !StoryMode) Chests.Scatter(lv, _loot, Vars.Chests * NgPlus.Chests(NgEligible ? NgTier : 0)); // practice courses, the arena and cases stay clear
@@ -1395,10 +1404,10 @@ public sealed partial class Game
             }
         if (p.PendingWeapon >= 0)
         {
-            p.Raise += dt * 5;
+            p.Raise += dt * (p.Weapons[p.PendingWeapon].Quick ? QuakeAmmo.SwitchSpeed : 5);
             if (p.Raise >= 1) { p.Weapon = p.PendingWeapon; p.PendingWeapon = -1; }
         }
-        else p.Raise = MathF.Max(0, p.Raise - dt * 5);
+        else p.Raise = MathF.Max(0, p.Raise - dt * (p.CurWeapon.Quick ? QuakeAmmo.SwitchSpeed : 5));
 
         p.Cooldown -= dt;
         p.FireAnim = MathF.Max(0, p.FireAnim - dt);
@@ -1418,7 +1427,8 @@ public sealed partial class Game
     }
 
     int ManaCost(WeaponDef w) => Vars.InfiniteMana ? 0 : (int)MathF.Ceiling(w.Cost * Vars.ManaCost * Profile.ManaMult);
-    bool HasMana(WeaponDef w) => w.Mana == 0 || (w.Mana == 1 ? P.BlueMana : P.GreenMana) >= ManaCost(w);
+    bool HasMana(WeaponDef w) => w.Ammo != AmmoKind.None ? Vars.InfiniteMana || P.Ammo[(int)w.Ammo] >= w.Cost
+        : w.Mana == 0 || (w.Mana == 1 ? P.BlueMana : P.GreenMana) >= ManaCost(w);
 
     /// <summary>Fires the weapon in hand; `power` multiplies its damage (a Charged mod's charged shot).</summary>
     void Fire(float power = 1)
@@ -1437,6 +1447,7 @@ public sealed partial class Game
             return;
         }
         if (Drilling) DrillShots++;
+        if (w.Ammo != AmmoKind.None && !Vars.InfiniteMana) p.Ammo[(int)w.Ammo] -= w.Cost;
         if (powered && w.Mana == 1) p.BlueMana -= ManaCost(w);
         if (powered && w.Mana == 2) p.GreenMana -= ManaCost(w);
         int tier = ArsenalTier;
@@ -1488,6 +1499,8 @@ public sealed partial class Game
         if (w.Rocket) { FireRocket(w, launchZ, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
         if (w.Rail) { FireRail(w, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
         if (w.Grenade) { FireGrenade(w, launchZ); return; }
+        if (w.Shotgun) { FireShotgun(w, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
+        if (w.Beam) { FireBeam(w, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
         float? vz = VerticalAim(launchZ, w.Speed);
         float mult = PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power;
         // upgrades add shots to the volley, fanned out either side of your aim
@@ -1962,7 +1975,7 @@ public sealed partial class Game
     {
         if (P.Loadout == null) return Profile.WeaponMult(P.Class, slot);
         var w = slot >= 0 && slot < P.Loadout.Length ? P.Loadout[slot] : null;
-        if (w == null || w.Rocket || w.Rail || w.Grenade || w.ArtIndex >= 9) return 1f;
+        if (w == null || w.Quick || w.ArtIndex >= 9) return 1f;
         return Profile.WeaponMult((PClass)(w.ArtIndex / 3), w.ArtIndex % 3);
     }
     /// <summary>Your arsenal upgrades, which only count in the arena they were won in.</summary>
@@ -2059,7 +2072,11 @@ public sealed partial class Game
                 Say(msg);
                 return;
             case PickupKind.Arms:
-                TakeFromRack(pk);
+                if (OnRange) TakeFromRack(pk); else TakeStash(pk);
+                return;
+            case PickupKind.Ammo:
+                if (!TakeAmmo(pk)) return;
+                pk.Removed = true;
                 return;
             case PickupKind.Mod:
                 if (!FitMod((WeaponMod)pk.Variant, out msg)) return;
@@ -2803,6 +2820,7 @@ public sealed partial class Game
             if (slot >= 0) KilledWith(m, slot);
             if (m.Def.MiniBoss != null) MiniBossDown(m);
             EliteDied(m);
+            QuakeDrop(m);
             int blood = PerkRank(Perk.Bloodthirst);
             if (blood > 0 && slot >= 0) P.Health = Math.Min(P.MaxHealth, P.Health + 4 * blood);
             if (slot >= 0) ChainLightning(m, dmg, slot);

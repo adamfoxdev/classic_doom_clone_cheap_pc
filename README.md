@@ -428,9 +428,10 @@ Race a friend's ghost without being online together: send them your run as a cod
 **Practice → Shooting Range** is a walled yard for trying out weapons. You start by the rack with your class's first
 weapon.
 
-- **The rack:** all twelve weapons, whatever your class: each class's three, then the rocket launcher, the railgun
-  and the grenade launcher. Walk over one to take it. Keys `1` to `9` pick them in rack order, class by class; `0`
-  picks the rocket launcher, `-` the railgun and `=` the grenade launcher. The rack never empties.
+- **The rack:** all fourteen weapons, whatever your class: each class's three, then the five Quake weapons. Walk
+  over one to take it. Keys `1` to `9` pick them in rack order, class by class. For the Quake weapons, `0` picks
+  the rocket launcher, `-` the railgun, `=` the grenade launcher, `[` the super shotgun and `]` the lightning gun.
+  The rack never empties.
 - **On the range:**
   - Mana never runs out.
   - Your health comes back, 60 a second, a second and a half after you're last hurt.
@@ -479,8 +480,8 @@ The rocket launcher follows Quake's rules:
     the ring sits on the bottom edge between two arrows.
   - Your weapon drops out of the way as you look down past the usual tilt.
   - Near level, it aims at a monster above or below you, like every other weapon.
-- **Elsewhere:** it's on the range and the rocket-jump course. In the campaign, `give rocketlauncher` in the console
-  adds it on the key after your class's three. It uses green mana, 2 a shot, and it isn't kept in a save.
+- **Elsewhere:** it's on the range and the rocket-jump course, and hidden in the campaign (see
+  [Quake weapons in the campaign](#quake-weapons-in-the-campaign)). It uses rockets, 1 a shot.
 
 ![Looking right down with the rocket launcher: the landing ring at your feet](docs/rocket_aim.png)
 
@@ -493,11 +494,73 @@ The railgun is Quake III's:
 - **Damage:** 100 to every monster in its line, however many, out to 40 cells or the first wall. A hit knocks each of
   them back a little.
 - **Its trail:** a white core with a blue spiral wound round it, fading over a second.
-- **Reload:** a second and a half between shots. It uses blue mana, 3 a shot.
-- **Where:** on the range's rack (key `-`). In the campaign, `give railgun` in the console adds it on the key after
-  what you carry. It isn't kept in a save.
+- **Reload:** a second and a half between shots. It uses slugs, 1 a shot.
+- **Where:** on the range's rack (key `-`), and hidden in the campaign.
 
 ![A railgun slug through the range](docs/railgun.png)
+
+#### The super shotgun and the lightning gun
+
+Both are Quake's:
+
+- **The super shotgun** fires 14 pellets of 4 at once, spread 0.14 across and 0.08 up and down, for 2 shells.
+  - Point blank all 14 land, for 56.
+  - Further off the spread lets pellets past.
+  - It fires every 0.7 seconds.
+  - Pellets that miss leave marks on the walls, the latest 160 of them.
+- **The lightning gun** is a beam 6.7 cells long (Quake's 600 units).
+  - Hold Fire and it does 30 ten times a second to the first thing it touches, for a cell a tick.
+  - It gives a small push, and crackles along its length.
+  - It's instant, so it's good for fast flyers.
+- **Where:** on the range's rack (keys `[` and `]`), and hidden in the campaign.
+
+![The lightning gun on the range](docs/lightning_gun.png)
+![The super shotgun](docs/super_shotgun.png)
+
+#### Quake ammo
+
+The Quake weapons use ammo of their own, not mana:
+
+| Ammo | Used by | Most you carry | A box | With the weapon |
+|---|---|---|---|---|
+| Shells | super shotgun, 2 a shot | 100 | 20 | 10 |
+| Rockets | rocket and grenade launchers, 1 a shot | 100 | 5 | 8 |
+| Cells | lightning gun, 1 a tick | 100 | 30 | 30 |
+| Slugs | railgun, 1 a shot | 50 | 10 | 10 |
+
+- **The HUD** shows the weapon in hand's ammo: S, R, C or U and a count, in its colour.
+- **Out of ammo,** the weapon won't fire, and you switch to the best weapon you have that will.
+- **Boxes** are scattered through the hub maps once the weapons that use them are on the way. After you carry a
+  Quake weapon, a fallen monster leaves a box for one of yours about one time in three.
+- **Switching:** the Quake weapons come up about twice as fast as the classes' own.
+- **On the range and the courses** ammo never runs out.
+
+#### Quake weapons in the campaign
+
+Each Quake weapon is hidden in the hub, one a map, up on a 2 by 2 plinth in the open. The ceiling above it opens into
+a shaft, and a box of the weapon's ammo sits beside it. Each plinth is higher than the last, so each one takes the
+weapon found before it:
+
+| Weapon | Plinth | How to get up |
+|---|---|---|
+| Grenade launcher | 1.5 cells | a jump onto the step beside it, then another onto it |
+| Super shotgun | 2.5 | a grenade jump |
+| Rocket launcher | 2.5 | a grenade jump |
+| Lightning gun | 3 | a rocket jump |
+| Railgun | 3.5 | a rocket jump |
+
+- **Where they go:** each is placed in the most open spot of a map, away from the start and from any mini-boss.
+  They go in hub order, skipping flight, dig and block-puzzle maps. On seed 1 that's:
+  - the grenade launcher in Winnowing Hall,
+  - the super shotgun in the Frozen Keep,
+  - the rocket launcher in the Windspire,
+  - the lightning gun on the Barren World,
+  - the railgun on the Verdant Moon.
+- **Finding one** puts it on the next key after what you carry (4, 5 and so on), loaded, and in hand.
+- **Saves** keep the ones you've found and your ammo.
+- **The console:** `give supershotgun`, `give lightninggun` or `give quake` (all five) work too.
+
+![A stash in Winnowing Hall](docs/quake_stash.png)
 
 #### The grenade launcher
 
@@ -514,9 +577,8 @@ The grenade launcher is Quake's:
   where it will first come down.
 - **Grenade jumping:** drop a grenade at your feet, stand just past it (on the side you want to go), and jump the
   moment it goes off.
-- **It fires** every 0.6 seconds and uses green mana, 2 a grenade.
-- **Where:** on the range's rack (key `=`) and the grenade course. In the campaign, `give grenadelauncher` in the
-  console adds it on the key after what you carry. It isn't kept in a save.
+- **It fires** every 0.6 seconds and uses rockets, 1 a grenade.
+- **Where:** on the range's rack (key `=`), the grenade course, and hidden in the campaign.
 
 #### The grenade course
 
@@ -1167,7 +1229,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `set <var> <value>` (or just `<var> <value>`) | change a setting, e.g. `speed 1.5`, `fov 90`, `gravity 6` |
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
-| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack\|rocketlauncher\|railgun\|grenadelauncher` | give yourself things (`rocketlauncher`, `railgun`, `grenadelauncher`: the Quake weapons, on the next key) |
+| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack\|rocketlauncher\|railgun\|grenadelauncher\|supershotgun\|lightninggun\|quake` | give yourself things (the Quake weapons go on the next key, full of ammo; `quake` gives all five) |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|wyrm\|dreadnought\|flask\|...>` | spawn something in front of you (warden to dreadnought are the mini-bosses) |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
@@ -1342,6 +1404,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Endless.cs` | The endless practice course: its seeded platforms, falling, and its board |
 | `src/Range.cs` | The shooting range: its map, the weapon rack, target dummies, the drill and its board |
 | `src/RocketCourse.cs` | The rocket-jump practice course: its platforms, hints and demo pilot |
+| `src/QuakeArms.cs` | The Quake ammo, the super shotgun and lightning gun, and the weapons hidden through the campaign |
 | `src/Grenades.cs` | The Quake grenade launcher (its arc, bounces and fuse), the grenade course and its demo pilot |
 | `src/Railgun.cs` | The Quake III railgun: its instant slug through everything in line, and its spiral trail |
 | `src/Rockets.cs` | The Quake rocket launcher: its blast, self-damage, knockback, rocket jumps and steep aim |

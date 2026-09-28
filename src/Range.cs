@@ -27,8 +27,8 @@ public static class ShootingRange
 
     public enum Kind { Still, Moving, High }
 
-    /// <summary>The key for a weapon on the rack: 1 to 9, then 0 (the rocket launcher), - (the railgun) and = (the grenade launcher).</summary>
-    public static string KeyFor(int slot) => slot < 9 ? (slot + 1).ToString() : slot == 9 ? "0" : slot == 10 ? "-" : "=";
+    /// <summary>The key for a weapon on the rack: 1 to 9, then 0, -, =, [ and ] for the Quake weapons.</summary>
+    public static string KeyFor(int slot) => slot < 9 ? (slot + 1).ToString() : slot switch { 9 => "0", 10 => "-", 11 => "=", 12 => "[", _ => "]" };
 
     public static int Points(Kind k) => k switch { Kind.Moving => 150, Kind.High => 200, _ => 100 };
 
@@ -178,6 +178,7 @@ public sealed partial class Game
             p.Health = Math.Min(p.MaxHealth, p.Health + heal);
         }
         p.BlueMana = p.GreenMana = 200;
+        for (int k = 1; k < QuakeAmmo.Kinds; k++) p.Ammo[k] = QuakeAmmo.Max((AmmoKind)k);
         if (!OnRange) return;
         foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target != null && !m.Alive).ToList())
             if ((m.Target.DownFor += dt) >= ShootingRange.RespawnTime) StandUp(m);

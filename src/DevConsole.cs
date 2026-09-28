@@ -205,7 +205,7 @@ public sealed class DevConsole
         Add("noclip", "", "toggle walking through walls", _ => Toggle("noclip"));
         Add("notarget", "", "toggle monsters ignoring you", _ => Toggle("notarget"));
         Add("freeze", "", "toggle frozen monsters", _ => Toggle("freeze"));
-        Add("give", "<all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun|grenadelauncher>", "give yourself things", a => Give(a.Length > 1 ? a[1] : "all"));
+        Add("give", "<all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun|grenadelauncher|supershotgun|lightninggun|quake>", "give yourself things", a => Give(a.Length > 1 ? a[1] : "all"));
         Add("kill", "", "kill every monster on this map", _ =>
         {
             if (!InGame()) return;
@@ -583,7 +583,10 @@ public sealed class DevConsole
         if (what == "rocketlauncher") { _g.GiveRocketLauncher(); any = true; }
         if (what == "railgun") { _g.GiveExtra(Railgun.Gun); any = true; }
         if (what == "grenadelauncher") { _g.GiveExtra(Grenades.Launcher); any = true; }
-        if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun|grenadelauncher>"); return; }
+        if (what == "supershotgun") { _g.GiveExtra(QuakeArms.SuperShotgun); any = true; }
+        if (what == "lightninggun") { _g.GiveExtra(QuakeArms.LightningGun); any = true; }
+        if (what == "quake") { foreach (var w in QuakeArms.All) _g.GiveExtra(w); any = true; }
+        if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun|grenadelauncher|supershotgun|lightninggun|quake>"); return; }
         Print($"given: {what}");
         _g.Say($"Cheater! ({what})");
         _g.PlaySound(Sfx.Item, 1);

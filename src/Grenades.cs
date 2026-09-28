@@ -21,7 +21,7 @@ public static class Grenades
 
     public static readonly WeaponDef Launcher = new()
     {
-        Name = "Grenade Launcher", Proj = ProjKind.Grenade, DmgMin = 100, DmgMax = 120, Cooldown = 0.6f, Mana = 2, Cost = 2,
+        Name = "Grenade Launcher", Proj = ProjKind.Grenade, DmgMin = 100, DmgMax = 120, Cooldown = 0.6f, Ammo = AmmoKind.Rockets, Cost = 1,
         Speed = Speed, Splash = Rockets.SplashRadius, Grenade = true, ArtIndex = Art.GrenadeLauncherArt, Sound = Sfx.Push,
     };
 
