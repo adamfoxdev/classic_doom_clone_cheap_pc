@@ -347,6 +347,7 @@ public static class Settings
         yield return "arcade " + (g.Vars.Arcade ? 1 : 0);
         yield return "music " + g.Vars.Music.ToString("0.##", inv);
         yield return "padlook " + g.Vars.PadLook.ToString("0.##", inv);
+        yield return "renderthreads " + Renderer.Threads;
         // a preset is saved; console tweaks to the damage settings last only the session
         if (Difficulties.Of(g.Vars) is var d && d != Difficulty.Custom) yield return "difficulty " + d.ToString().ToLowerInvariant();
         yield return "name " + g.RunnerName;

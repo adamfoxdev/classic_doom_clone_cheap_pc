@@ -66,6 +66,8 @@ public static partial class Headless
         AchievementChecks(Check);
         Console.WriteLine("Music:");
         MusicChecks(Check);
+        Console.WriteLine("Renderer:");
+        RenderChecks(Check);
         Console.WriteLine("Gamepad:");
         GamepadChecks(Check);
         Console.WriteLine("Difficulty:");

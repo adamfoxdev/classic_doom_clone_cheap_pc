@@ -281,6 +281,30 @@ public static partial class Headless
         g.Menu.Close();
     }
 
+    static void RenderChecks(Action<bool, string> check)
+    {
+        // the 3D view is drawn by several threads at once, a block of columns each: it has to be the same picture
+        var g = new Game { FixedSeed = 1, AchievementsOn = false };
+        g.NewGame(PClass.Fighter);
+        g.Vars.Freeze = true;
+        var r = new Renderer();
+        int cores = Renderer.Threads, same = 0;
+        foreach (var (name, map, x, y, floor, z, angle, pitch) in BenchViews)
+        {
+            g.Warp(Array.FindIndex(g.Hub, l => l.RawName == map));
+            if (x > 0) { g.P.X = x; g.P.Y = y; }
+            g.P.FloorZ = floor; g.P.Z = z; g.P.Flying = z > 0; g.P.Angle = angle; g.P.Pitch = pitch; g.P.TeleportFlash = 0;
+            Renderer.Threads = 1; r.Render(g); var one = (uint[])r.Fb.Clone();
+            Renderer.Threads = 8; r.Render(g);
+            if (one.AsSpan().SequenceEqual(r.Fb)) same++;
+        }
+        Renderer.Threads = cores;
+        check(same == BenchViews.Length, $"one thread or eight draw exactly the same picture ({same} of {BenchViews.Length} views)");
+        g.Con.Execute("renderthreads 2");
+        check(Renderer.Threads == 2 && Settings.Lines(g).Contains("renderthreads 2"), "'renderthreads' sets how many, and it's saved");
+        Renderer.Threads = cores;
+    }
+
     static void GamepadChecks(Action<bool, string> check)
     {
         check(Gamepad.Stick(0.15f) == 0 && Gamepad.Stick(1f) == 1 && MathF.Abs(Gamepad.Stick(-0.6f) + 0.5f) < 0.001f, "sticks have a dead zone, and still reach full tilt");

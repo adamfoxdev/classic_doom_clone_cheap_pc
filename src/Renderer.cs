@@ -511,7 +511,11 @@ public sealed class Renderer
         return lv.Theme.Walls.TryGetValue(c, out var t) ? t : Art.Stone;
     }
 
-    int Vis(Theme th, float d) => _fullBright ? 256 : (int)(256 * Math.Clamp(1f - d / _fogDist, 0f, 1f));
+    int Vis(Theme th, float d) => _fullBright ? 256 : (int)(256 * Math.Clamp(1f - d * _invFog, 0f, 1f));
+    float _invFog;
+    /// <summary>For each screen row, Proj / (row centre - horizon): a floor or ceiling's distance there is its height below or
+    /// above the eye times this, so the span loops multiply instead of dividing.</summary>
+    readonly float[] _rowK = new float[H];
     int Light(Theme th) => _fullBright ? 256 : th.Light;
 
     void DrawView(Game g)
@@ -525,10 +529,12 @@ public sealed class Renderer
         PlaneLen = MathF.Tan(g.Vars.Fov * MathF.PI / 360f);
         Proj = (W / 2f) / PlaneLen;
         _fogDist = th.FogDist * g.Vars.Fog;
+        _invFog = 1f / _fogDist;
         _fullBright = g.Vars.FullBright;
         _plX = -_dirY * PlaneLen; _plY = _dirX * PlaneLen;
         _eyeZ = MathF.Min(p.FloorZ + p.ViewZ + MathF.Sin(p.Bob) * 0.025f * p.BobAmount, lv.HeightAt(p.X, p.Y) - 0.05f);
         _horizon = ViewH / 2f + p.Pitch;
+        for (int y = 0; y < H; y++) _rowK[y] = Proj / (y + 0.5f - _horizon);
         uint fog = th.FogColor;
         int baseLight = Light(th);
         _hiCell = g.DigTarget is (var hx, var hy, _, _) ? hy * lv.W + hx : -1;
@@ -539,123 +545,141 @@ public sealed class Renderer
         _dig = lv.Dig;
         _viewFloor = p.FloorZ;
 
-        for (int x = 0; x < W; x++)
-        {
-            float camX = 2f * (x + 0.5f) / W - 1f;
-            float rdx = _dirX + _plX * camX, rdy = _dirY + _plY * camX;
-            int mapX = (int)MathF.Floor(_px), mapY = (int)MathF.Floor(_py);
-            float ddx = MathF.Abs(1f / (rdx == 0 ? 1e-6f : rdx)), ddy = MathF.Abs(1f / (rdy == 0 ? 1e-6f : rdy));
-            int stepX, stepY;
-            float sideX, sideY;
-            if (rdx < 0) { stepX = -1; sideX = (_px - mapX) * ddx; } else { stepX = 1; sideX = (mapX + 1f - _px) * ddx; }
-            if (rdy < 0) { stepY = -1; sideY = (_py - mapY) * ddy; } else { stepY = 1; sideY = (mapY + 1f - _py) * ddy; }
-            int side = 0;
-
-            _doors.Clear();
-            float rayAng = MathF.Atan2(rdy, rdx);
-            // walk the ray cell by cell, front to back. Each open cell draws its ceiling at its own height;
-            // where the next cell's ceiling is lower, the band of wall above the opening is drawn; the first
-            // solid wall reaches up to the ceiling in front of it. clipTop tracks how far down the column
-            // (from the top) has been drawn already, which is what hides farther, taller things.
-            // Front to back, clipTop / clipBot track how much of the column is already drawn from the top
-            // and from the bottom. Each open cell draws its ceiling and floor at its own heights; where the
-            // next cell's ceiling is lower a band of wall hangs down, where its floor is higher a step face
-            // (riser) rises; the first solid wall fills whatever is left between them.
-            float clipTop = 0f, clipBot = ViewH;
-            int curCell = lv.InBounds(mapX, mapY) ? mapY * lv.W + mapX : -1;
-            float curH = curCell >= 0 ? lv.Heights[curCell] : Level.MinHeight;
-            float curF = curCell >= 0 ? lv.Floors[curCell] : 0f;
-            if (curCell >= 0) lv.Seen[curCell] = true;
-            for (int guard = 0; guard < 128 && clipTop < clipBot - 0.5f; guard++)
+        // every column is its own ray, drawing only its own pixels, so the columns are shared out across the cores
+        // (each thread with its own list of doors); the picture comes out the same however many there are
+        int threads = Threads;
+        if (threads <= 1)
+            for (int x = 0; x < W; x++) RenderColumn(lv, th, x, fog, baseLight, _doors);
+        else
+            Parallel.For(0, W / ColumnBlock, new ParallelOptions { MaxDegreeOfParallelism = threads }, b =>
             {
-                if (sideX < sideY) { sideX += ddx; mapX += stepX; side = 0; }
-                else { sideY += ddy; mapY += stepY; side = 1; }
-                float d = MathF.Max(0.001f, side == 0 ? sideX - ddx : sideY - ddy);
-                CeilingSpan(lv, x, curCell, curH, ref clipTop, clipBot, RowOf(curH, d), rdx, rdy, rayAng, baseLight);
-                FloorSpan(lv, x, curCell, curF, clipTop, ref clipBot, RowOf(curF, d), rdx, rdy, baseLight);
-                float wx = side == 0 ? _py + d * rdy : _px + d * rdx;
-                wx -= MathF.Floor(wx);
-                if (!lv.InBounds(mapX, mapY))
-                {
-                    WallSpan(x, Art.Stone, d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight);
-                    break;
-                }
-                int ci = mapY * lv.W + mapX;
-                lv.Seen[ci] = true;
-                char c = lv.Cells[ci];
-                bool door = Level.IsDoor(c);
-                // a pushable block with room above it is a one-unit box: its face rises like a step, you see its top
-                // and over it (under open sky, or a tall ceiling, it would otherwise run all the way up)
-                bool box = c == 'X' && lv.Heights[ci] - lv.Floors[ci] > BlockHeight + 0.05f;
-                if (c != '\0' && !door && !box)
-                {
-                    WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null, Hi(ci, Level.Face.Wall));
-                    break;
-                }
-                float newH = lv.Heights[ci], newF = box ? lv.Floors[ci] + BlockHeight : lv.Floors[ci];
-                if (newH < curH)
-                {
-                    // the ceiling steps down: a band of wall hangs over the opening
-                    WallSpan(x, lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Ceiling)] : UpperTex(lv, ci), d, side, wx, curH, newH, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, Level.Face.Ceiling));
-                    clipTop = MathF.Max(clipTop, RowOf(newH, d));
-                }
-                if (newF > curF)
-                {
-                    // the floor steps up: the face of the step
-                    var riser = box ? Art.Block : lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Floor)] : Art.StepRiser;
-                    WallSpan(x, riser, d, side, wx, newF, box ? lv.Floors[ci] : curF, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, box ? Level.Face.Wall : Level.Face.Floor));
-                    if (box && lv.Floors[ci] > curF) WallSpan(x, Art.StepRiser, d, side, wx, lv.Floors[ci], curF, clipTop, clipBot, rdx, rdy, baseLight);
-                    clipBot = MathF.Min(clipBot, RowOf(newF, d));
-                }
-                if (door)
-                {
-                    float open = lv.DoorOpen[ci];
-                    if (open <= 0f && c != 'P')
-                    {
-                        WallSpan(x, WallTex(lv, c, ci), d, side, wx, newH, newF, clipTop, clipBot, rdx, rdy, baseLight);
-                        break;
-                    }
-                    if (open < 1f) _doors.Add((d, side, wx, ci));
-                }
-                curCell = ci;
-                curH = newH;
-                curF = newF;
-            }
-
-            // ---- doors and gates, far to near, depth tested
-            for (int k = _doors.Count - 1; k >= 0; k--)
-            {
-                var (d, dside, dwx, ci) = _doors[k];
-                char c = lv.Cells[ci];
-                var dt = WallTex(lv, c, ci);
-                float open = lv.DoorOpen[ci];
-                int dtx = (int)(dwx * dt.W);
-                if (dside == 0 && rdx < 0) dtx = dt.W - 1 - dtx;
-                if (dside == 1 && rdy > 0) dtx = dt.W - 1 - dtx;
-                dtx = Math.Clamp(dtx, 0, dt.W - 1);
-                float s = Proj / d, df = lv.Floors[ci], dh = lv.Heights[ci] - df;
-                float dTop = _horizon - (df + dh - _eyeZ) * s;
-                float dBot = _horizon - (df + open * dh - _eyeZ) * s;
-                int y0 = Math.Max(0, (int)MathF.Ceiling(dTop - 0.5f)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(dBot - 0.5f));
-                int dl = dside == 1 ? baseLight * 200 >> 8 : baseLight;
-                int dv = Vis(th, d);
-                for (int y = y0; y < y1; y++)
-                {
-                    int idx = y * W + x;
-                    if (d >= _depth[idx]) continue;
-                    float z = _eyeZ + (_horizon - (y + 0.5f)) / s;
-                    float zp = z - df - open * dh;
-                    float v = 1f - (zp - MathF.Floor(zp));
-                    int ty = Math.Clamp((int)(v * dt.H), 0, dt.H - 1);
-                    uint texel = dt.Px[ty * dt.W + dtx];
-                    if (Col.A(texel) == 0) continue;
-                    Fb[idx] = Col.Fog(texel, dl, dv, fog);
-                    _depth[idx] = d;
-                }
-            }
-        }
+                var doors = t_doors ??= new();
+                for (int x = b * ColumnBlock; x < (b + 1) * ColumnBlock; x++) RenderColumn(lv, th, x, fog, baseLight, doors);
+            });
 
         DrawSprites(g);
+    }
+
+    /// <summary>How many threads draw the 3D view: all the cores (up to 8) unless set, and 1 draws it on the calling thread.</summary>
+    public static int Threads = Math.Clamp(Environment.ProcessorCount, 1, 8);
+    const int ColumnBlock = 16; // columns handed to a thread at a time (320 / 16 = 20 blocks)
+    [ThreadStatic] static List<(float d, int side, float wallX, int cell)> t_doors;
+
+    /// <summary>One column of the 3D view: its ray, walked cell by cell, and the doors it passed, drawn far to near.</summary>
+    void RenderColumn(Level lv, Theme th, int x, uint fog, int baseLight, List<(float d, int side, float wallX, int cell)> doors)
+    {
+        float camX = 2f * (x + 0.5f) / W - 1f;
+        float rdx = _dirX + _plX * camX, rdy = _dirY + _plY * camX;
+        int mapX = (int)MathF.Floor(_px), mapY = (int)MathF.Floor(_py);
+        float ddx = MathF.Abs(1f / (rdx == 0 ? 1e-6f : rdx)), ddy = MathF.Abs(1f / (rdy == 0 ? 1e-6f : rdy));
+        int stepX, stepY;
+        float sideX, sideY;
+        if (rdx < 0) { stepX = -1; sideX = (_px - mapX) * ddx; } else { stepX = 1; sideX = (mapX + 1f - _px) * ddx; }
+        if (rdy < 0) { stepY = -1; sideY = (_py - mapY) * ddy; } else { stepY = 1; sideY = (mapY + 1f - _py) * ddy; }
+        int side = 0;
+
+        doors.Clear();
+        float rayAng = MathF.Atan2(rdy, rdx);
+        // walk the ray cell by cell, front to back. Each open cell draws its ceiling at its own height;
+        // where the next cell's ceiling is lower, the band of wall above the opening is drawn; the first
+        // solid wall reaches up to the ceiling in front of it. clipTop tracks how far down the column
+        // (from the top) has been drawn already, which is what hides farther, taller things.
+        // Front to back, clipTop / clipBot track how much of the column is already drawn from the top
+        // and from the bottom. Each open cell draws its ceiling and floor at its own heights; where the
+        // next cell's ceiling is lower a band of wall hangs down, where its floor is higher a step face
+        // (riser) rises; the first solid wall fills whatever is left between them.
+        float clipTop = 0f, clipBot = ViewH;
+        int curCell = lv.InBounds(mapX, mapY) ? mapY * lv.W + mapX : -1;
+        float curH = curCell >= 0 ? lv.Heights[curCell] : Level.MinHeight;
+        float curF = curCell >= 0 ? lv.Floors[curCell] : 0f;
+        if (curCell >= 0) lv.Seen[curCell] = true;
+        for (int guard = 0; guard < 128 && clipTop < clipBot - 0.5f; guard++)
+        {
+            if (sideX < sideY) { sideX += ddx; mapX += stepX; side = 0; }
+            else { sideY += ddy; mapY += stepY; side = 1; }
+            float d = MathF.Max(0.001f, side == 0 ? sideX - ddx : sideY - ddy);
+            CeilingSpan(lv, x, curCell, curH, ref clipTop, clipBot, RowOf(curH, d), rdx, rdy, rayAng, baseLight);
+            FloorSpan(lv, x, curCell, curF, clipTop, ref clipBot, RowOf(curF, d), rdx, rdy, baseLight);
+            float wx = side == 0 ? _py + d * rdy : _px + d * rdx;
+            wx -= MathF.Floor(wx);
+            if (!lv.InBounds(mapX, mapY))
+            {
+                WallSpan(x, Art.Stone, d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight);
+                break;
+            }
+            int ci = mapY * lv.W + mapX;
+            lv.Seen[ci] = true;
+            char c = lv.Cells[ci];
+            bool door = Level.IsDoor(c);
+            // a pushable block with room above it is a one-unit box: its face rises like a step, you see its top
+            // and over it (under open sky, or a tall ceiling, it would otherwise run all the way up)
+            bool box = c == 'X' && lv.Heights[ci] - lv.Floors[ci] > BlockHeight + 0.05f;
+            if (c != '\0' && !door && !box)
+            {
+                WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null, Hi(ci, Level.Face.Wall));
+                break;
+            }
+            float newH = lv.Heights[ci], newF = box ? lv.Floors[ci] + BlockHeight : lv.Floors[ci];
+            if (newH < curH)
+            {
+                // the ceiling steps down: a band of wall hangs over the opening
+                WallSpan(x, lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Ceiling)] : UpperTex(lv, ci), d, side, wx, curH, newH, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, Level.Face.Ceiling));
+                clipTop = MathF.Max(clipTop, RowOf(newH, d));
+            }
+            if (newF > curF)
+            {
+                // the floor steps up: the face of the step
+                var riser = box ? Art.Block : lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Floor)] : Art.StepRiser;
+                WallSpan(x, riser, d, side, wx, newF, box ? lv.Floors[ci] : curF, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, box ? Level.Face.Wall : Level.Face.Floor));
+                if (box && lv.Floors[ci] > curF) WallSpan(x, Art.StepRiser, d, side, wx, lv.Floors[ci], curF, clipTop, clipBot, rdx, rdy, baseLight);
+                clipBot = MathF.Min(clipBot, RowOf(newF, d));
+            }
+            if (door)
+            {
+                float open = lv.DoorOpen[ci];
+                if (open <= 0f && c != 'P')
+                {
+                    WallSpan(x, WallTex(lv, c, ci), d, side, wx, newH, newF, clipTop, clipBot, rdx, rdy, baseLight);
+                    break;
+                }
+                if (open < 1f) doors.Add((d, side, wx, ci));
+            }
+            curCell = ci;
+            curH = newH;
+            curF = newF;
+        }
+
+        // ---- doors and gates, far to near, depth tested
+        for (int k = doors.Count - 1; k >= 0; k--)
+        {
+            var (d, dside, dwx, ci) = doors[k];
+            char c = lv.Cells[ci];
+            var dt = WallTex(lv, c, ci);
+            float open = lv.DoorOpen[ci];
+            int dtx = (int)(dwx * dt.W);
+            if (dside == 0 && rdx < 0) dtx = dt.W - 1 - dtx;
+            if (dside == 1 && rdy > 0) dtx = dt.W - 1 - dtx;
+            dtx = Math.Clamp(dtx, 0, dt.W - 1);
+            float s = Proj / d, df = lv.Floors[ci], dh = lv.Heights[ci] - df;
+            float dTop = _horizon - (df + dh - _eyeZ) * s;
+            float dBot = _horizon - (df + open * dh - _eyeZ) * s;
+            int y0 = Math.Max(0, (int)MathF.Ceiling(dTop - 0.5f)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(dBot - 0.5f));
+            int dl = dside == 1 ? baseLight * 200 >> 8 : baseLight;
+            int dv = Vis(th, d);
+            for (int y = y0; y < y1; y++)
+            {
+                int idx = y * W + x;
+                if (d >= _depth[idx]) continue;
+                float z = _eyeZ + (_horizon - (y + 0.5f)) / s;
+                float zp = z - df - open * dh;
+                float v = 1f - (zp - MathF.Floor(zp));
+                int ty = Math.Clamp((int)(v * dt.H), 0, dt.H - 1);
+                uint texel = dt.Px[ty * dt.W + dtx];
+                if (Col.A(texel) == 0) continue;
+                Fb[idx] = Col.Fog(texel, dl, dv, fog);
+                _depth[idx] = d;
+            }
+        }
     }
 
     /// <summary>How tall a pushable block stands.</summary>
@@ -714,6 +738,11 @@ public sealed class Renderer
         tx = Math.Clamp(tx, 0, tex.W - 1);
         int light = side == 1 ? baseLight * 200 >> 8 : baseLight;
         int vis = Vis(_theme, d);
+        if (!_dig && !hi && above == null)
+        {
+            WallSpanFast(x, tex, d, tx, y0, y1, s, bottom, light, vis);
+            return;
+        }
         float hiTop = hi && _hiSlot ? MathF.Min(top, _hiLo + Level.MinHeight) : top, hiBot = hi && _hiSlot ? MathF.Max(bottom, _hiLo) : bottom;
         for (int y = y0; y < y1; y++)
         {
@@ -731,6 +760,53 @@ public sealed class Renderer
         }
     }
 
+    /// <summary>
+    /// The common wall span, one texture with no dig shading or highlight: the texture row steps down the span, and
+    /// light and fog are the same all the way, so they're worked out once.
+    /// </summary>
+    unsafe void WallSpanFast(int x, Tex tex, float d, int tx, int y0, int y1, float s, float bottom, int light, int vis)
+    {
+        float invS = 1f / s;
+        var (fr, fg, fb) = FogTerms(_theme.FogColor, vis);
+        int th = tex.H, tw = tex.W;
+        // the texture row, in 16.16 fixed point, steps down by the same amount each screen row: the height above the
+        // wall's base falls by 1/s a row, and the texture runs top (row 0) to bottom over each unit of height
+        float zr0 = _eyeZ + (_horizon - (y0 + 0.5f)) * invS - bottom;
+        long pos = (long)((1f - (zr0 - MathF.Floor(zr0))) * th * 65536f), step = (long)(invS * th * 65536f);
+        long wrap = (long)th << 16;
+        fixed (uint* fb0 = Fb, px = tex.Px)
+        fixed (float* dp = _depth)
+        {
+            uint* col = px + tx;
+            uint* o = fb0 + y0 * W + x;
+            float* od = dp + y0 * W + x;
+            for (int y = y0; y < y1; y++, o += W, od += W)
+            {
+                if (pos >= wrap) pos -= wrap * (pos / wrap);
+                *o = FogFast(col[(int)(pos >> 16) * tw], light, vis, fr, fg, fb);
+                *od = d;
+                pos += step;
+            }
+        }
+    }
+
+    /// <summary>The fog's share of a lit pixel at visibility `vis`, per channel (what <see cref="Col.Fog"/> blends toward).</summary>
+    static (int r, int g, int b) FogTerms(uint fog, int vis) =>
+        (Col.R(fog) * (256 - vis), Col.G(fog) * (256 - vis), Col.B(fog) * (256 - vis));
+
+    /// <summary>Exactly <see cref="Col.Fog"/>, with the fog's share worked out once for the span.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    static uint FogFast(uint c, int light, int vis, int fr, int fg, int fb)
+    {
+        int r = ((((int)(c & 0xFF) * light) >> 8) * vis + fr) >> 8;
+        int g = ((((int)((c >> 8) & 0xFF) * light) >> 8) * vis + fg) >> 8;
+        int b = ((((int)((c >> 16) & 0xFF) * light) >> 8) * vis + fb) >> 8;
+        if (r > 255) r = 255;
+        if (g > 255) g = 255;
+        if (b > 255) b = 255;
+        return 0xFF000000u | ((uint)b << 16) | ((uint)g << 8) | (uint)r;
+    }
+
     /// <summary>Ceiling (or sky, outdoors) of one cell, from clipTop down to row yEnd.</summary>
     void CeilingSpan(Level lv, int x, int cell, float h, ref float clipTop, float clipBot, float yEnd, float rdx, float rdy, float rayAng, int baseLight)
     {
@@ -745,7 +821,7 @@ public sealed class Renderer
             int idx = y * W + x;
             float dy = _horizon - (y + 0.5f);
             if (outdoor || dy <= 0.01f) { Fb[idx] = SkyPixel(_theme, rayAng, y); _depth[idx] = 999; continue; }
-            float rowDist = (h - _eyeZ) * Proj / dy;
+            float rowDist = (_eyeZ - h) * _rowK[y];
             float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
             int u = (int)((wx - MathF.Floor(wx)) * ct.W) & (ct.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ct.H) & (ct.H - 1);
             uint texel = ct.Px[vv * ct.W + u];
@@ -780,11 +856,17 @@ public sealed class Renderer
             else if (lv.Dig) ft = Art.RubbleCracked[lv.CrackStage(cell, Level.Face.Floor)];
         }
         bool hi = Hi(cell, Level.Face.Floor);
+        if (!hi && !(_dig && cell >= 0 && lv.Marks[cell] == '\0'))
+        {
+            FloorSpanFast(x, ft, f, y0, y1, rdx, rdy, fl, th);
+            clipBot = MathF.Min(clipBot, yStart);
+            return;
+        }
         for (int y = y0; y < y1; y++)
         {
             float dy = y + 0.5f - _horizon;
             if (dy <= 0.01f) continue;
-            float rowDist = (_eyeZ - f) * Proj / dy;
+            float rowDist = (_eyeZ - f) * _rowK[y];
             float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
             int u = (int)((wx - MathF.Floor(wx)) * ft.W) & (ft.W - 1), vv = (int)((wy - MathF.Floor(wy)) * ft.H) & (ft.H - 1);
             int idx = y * W + x;
@@ -795,6 +877,31 @@ public sealed class Renderer
             _depth[idx] = rowDist;
         }
         clipBot = MathF.Min(clipBot, yStart);
+    }
+
+    /// <summary>The common floor span: one texture, no dig shading or highlight.</summary>
+    unsafe void FloorSpanFast(int x, Tex ft, float f, int y0, int y1, float rdx, float rdy, int light, Theme th)
+    {
+        int tw = ft.W, tmask = tw - 1, hmask = ft.H - 1;
+        float below = _eyeZ - f;
+        uint fog = th.FogColor;
+        int fogR = Col.R(fog), fogG = Col.G(fog), fogB = Col.B(fog);
+        fixed (uint* fb0 = Fb, px = ft.Px)
+        fixed (float* dp = _depth, rk = _rowK)
+        {
+            for (int y = y0; y < y1; y++)
+            {
+                if (y + 0.5f - _horizon <= 0.01f) continue;
+                float rowDist = below * rk[y];
+                float wx = _px + rdx * rowDist, wy = _py + rdy * rowDist;
+                // floors are only ever seen inside the map, where x and y are positive: the cast floors them
+                int u = (int)(wx * tw) & tmask, vv = (int)(wy * ft.H) & hmask;
+                int vis = Vis(th, rowDist);
+                int idx = y * W + x;
+                fb0[idx] = FogFast(px[vv * tw + u], light, vis, fogR * (256 - vis), fogG * (256 - vis), fogB * (256 - vis));
+                dp[idx] = rowDist;
+            }
+        }
     }
 
     uint SkyPixel(Theme th, float rayAng, int y)
