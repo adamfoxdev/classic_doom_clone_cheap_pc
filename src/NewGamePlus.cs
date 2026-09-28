@@ -97,6 +97,7 @@ public sealed partial class Game
         foreach (var lv in Hub)
         {
             NgPlus.Toughen(lv, NgTier);
+            RollElites(lv);
             NgPlus.Remix(lv, _loot, NgTier);
         }
     }

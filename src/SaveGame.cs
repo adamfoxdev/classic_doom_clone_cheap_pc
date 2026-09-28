@@ -82,7 +82,7 @@ public sealed class PlayerSave
     public int[] Ore;
     public bool[] HasWeapon;
     public bool SteelKey, FireKey, HasJetpack;
-    public int[] Mods;
+    public int[] Mods, Mods2, ModRanks, ModRanks2;
 }
 
 public sealed class CheckpointSave
@@ -112,7 +112,9 @@ public sealed class ThingSave
     // monsters
     public string Def, State;
     public int Health, MaxHealth, NextBlinkHp, Summoner = -1;
-    public bool Burrowed;
+    public bool Burrowed, Split;
+    public string Affix;
+    public int Shield;
     public float DamageMult = 1, SpeedMult = 1;
     // pickups and decorations
     public string Kind, Name;
@@ -154,7 +156,8 @@ public static class Saves
                 Health = p.Health, Armor = p.Armor, BlueMana = p.BlueMana, GreenMana = p.GreenMana, Flasks = p.Flasks, Urns = p.Urns,
                 Kills = p.Kills, ChestsOpened = p.ChestsOpened, Relics = p.Relics, LoreRead = p.LoreRead, Secrets = p.Secrets,
                 Blocks = p.Blocks, Weapon = p.PendingWeapon >= 0 ? p.PendingWeapon : p.Weapon, Ore = (int[])p.Ore.Clone(),
-                HasWeapon = (bool[])p.HasWeapon.Clone(), Mods = p.Mods.Select(m => (int)m).ToArray(), SteelKey = p.SteelKey, FireKey = p.FireKey, HasJetpack = p.HasJetpack,
+                HasWeapon = (bool[])p.HasWeapon.Clone(), Mods = p.Mods.Select(m => (int)m).ToArray(), Mods2 = p.Mods2.Select(m => (int)m).ToArray(),
+                ModRanks = (int[])p.ModRanks.Clone(), ModRanks2 = (int[])p.ModRanks2.Clone(), SteelKey = p.SteelKey, FireKey = p.FireKey, HasJetpack = p.HasJetpack,
             },
         };
         if (g.Checkpoint is { } c)
@@ -180,7 +183,7 @@ public static class Saves
             switch (t)
             {
                 case Monster m:
-                    ts.Def = DefNames[m.Def]; ts.Health = m.Health; ts.MaxHealth = m.MaxHealth; ts.NextBlinkHp = m.NextBlinkHp; ts.Burrowed = m.Burrowed;
+                    ts.Def = DefNames[m.Def]; ts.Health = m.Health; ts.MaxHealth = m.MaxHealth; ts.Affix = m.Affix == HexenSharp.Affix.None ? null : m.Affix.ToString(); ts.Shield = m.Shield; ts.Split = m.Split; ts.NextBlinkHp = m.NextBlinkHp; ts.Burrowed = m.Burrowed;
                     ts.DamageMult = m.DamageMult; ts.SpeedMult = m.SpeedMult;
                     // the dying finish dying; the rest wake up where they were (asleep if they hadn't seen you)
                     ts.State = !m.Alive ? "Dead" : m.State == AiState.Idle ? "Idle" : "Chase";
@@ -219,7 +222,8 @@ public static class Saves
         {
             Thing t = ts.Type switch
             {
-                nameof(Monster) => new Monster(Defs[ts.Def]) { Health = ts.Health, MaxHealth = ts.MaxHealth > 0 ? ts.MaxHealth : Defs[ts.Def].Health, NextBlinkHp = ts.NextBlinkHp, DamageMult = ts.DamageMult, SpeedMult = ts.SpeedMult, Burrowed = ts.Burrowed, Solid = !ts.Burrowed },
+                nameof(Monster) => new Monster(Defs[ts.Def]) { Health = ts.Health, MaxHealth = ts.MaxHealth > 0 ? ts.MaxHealth : Defs[ts.Def].Health, NextBlinkHp = ts.NextBlinkHp, DamageMult = ts.DamageMult, SpeedMult = ts.SpeedMult, Burrowed = ts.Burrowed, Solid = !ts.Burrowed, Shield = ts.Shield,
+                    Affix = Enum.TryParse<Affix>(ts.Affix, out var af) ? af : Affix.None, Split = ts.Split },
                 nameof(Pickup) => new Pickup(Enum.Parse<PickupKind>(ts.Kind), ts.W, ts.Variant) { Name = ts.Name },
                 nameof(Chest) => new Chest { Opened = ts.Opened },
                 nameof(LoreStone) => new LoreStone { Map = ts.Map, Index = ts.Index, Read = ts.Read },
@@ -231,6 +235,7 @@ public static class Saves
             made.Add(t);
             if (t == null) continue;
             t.X = ts.X; t.Y = ts.Y; t.Z = ts.Z; t.Level = lv;
+            if (t is Monster { Split: true } sm) Game.MakeSplit(sm);
             if (t is Monster m && ts.State == "Dead") { m.State = AiState.Dead; m.Solid = false; m.Health = Math.Min(m.Health, 0); }
             else if (t is Monster mc && ts.State == "Chase") { mc.State = AiState.Chase; mc.Introduced = true; } // met before the save
             if (t is Ship sh) { ts.Delivered?.CopyTo(sh.Delivered, 0); lv.Ship = sh; }

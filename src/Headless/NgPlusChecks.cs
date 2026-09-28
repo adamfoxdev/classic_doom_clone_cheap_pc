@@ -30,7 +30,7 @@ public static partial class Headless
               "Enter starts New Game+ as the same class, keeping your level");
 
         // tougher monsters
-        var ms = g.Hub.SelectMany(l => l.Things.OfType<Monster>()).ToList();
+        var ms = g.Hub.SelectMany(l => l.Things.OfType<Monster>()).Where(m => m.Affix == Affix.None).ToList(); // elites are tougher still
         check(ms.Count > 0 && ms.All(m => m.Health == (int)(m.Def.Health * 1.5f) && m.MaxHealth == m.Health && Math.Abs(m.DamageMult - 1.25f) < 0.01f && m.SpeedMult > 1.05f),
               "every monster has 50% more health, hits 25% harder and moves faster");
         var keeper = ms.First(m => m.Def == MiniBosses.Keeper);
@@ -64,7 +64,7 @@ public static partial class Headless
         Directory.CreateDirectory(dir);
         string path = Path.Combine(dir, "save.json");
         g.SavePath = path;
-        var hurt = g.Hub[0].Things.OfType<Monster>().First(m => m.Alive);
+        var hurt = g.Hub[0].Things.OfType<Monster>().First(m => m.Alive && m.Affix == Affix.None);
         hurt.Health = 20;
         check(g.SaveNow(), "(saved)");
         var back = new Game { FixedSeed = 2, SavePath = path, Profile = g.Profile, AchievementsOn = false };
@@ -89,7 +89,7 @@ public static partial class Headless
         t.Menu.Update(new Input { Confirm = true }, 1f / 35f);
         check(t.Mode == GameMode.ClassSelect && t.NgTier == 2, "the title's New Game+ goes to the class choice at the highest tier");
         t.Update(new Input { Slot = 2 }, 1f / 35f);
-        check(t.Mode == GameMode.Playing && t.NgTier == 2 && t.P.Class == PClass.Cleric && t.Hub[0].Things.OfType<Monster>().All(m => m.Health == m.Def.Health * 2),
+        check(t.Mode == GameMode.Playing && t.NgTier == 2 && t.P.Class == PClass.Cleric && t.Hub[0].Things.OfType<Monster>().Where(m => m.Affix == Affix.None).All(m => m.Health == m.Def.Health * 2),
               "and starts it: monsters with double health at tier 2");
         t.GoToTitle();
         t.Menu.Show(MenuPage.Main);

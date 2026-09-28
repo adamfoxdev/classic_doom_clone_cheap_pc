@@ -706,6 +706,23 @@ public static partial class Headless
                 Console.WriteLine("wrote " + Path.Combine(dir, "126_ngplus_flood.png"));
             }
 
+            // New Game+ elites: one of each gift across the hall, outlined in its colour
+            g.Warp(0);
+            g.Level.Things.RemoveAll(t => t is Monster or Pickup);
+            PlaceCam(10.5f, 5.5f, g.Level.FloorAt(10.5f, 5.5f), 0, 0, 0);
+            g.Vars.Freeze = true;
+            foreach (var (a, k) in Elites.All.Select((a, k) => (a, k)))
+            {
+                var em = new Monster(k % 2 == 0 ? Monster.Centaur : Monster.Ettin) { X = 14.2f + (k % 2) * 0.6f, Y = 3.9f + k * 1.1f, Level = g.Level, State = AiState.Chase };
+                g.Level.Things.Add(em);
+                g.MakeElite(em, a);
+            }
+            Tick(default, 2);
+            g.Messages.Clear();
+            Shot("127_elites");
+            g.Level.Things.RemoveAll(t => t is Monster);
+            g.Vars.Freeze = false;
+
             // Options > Effects
             g.Paused = true;
             g.Menu.Show(MenuPage.Options);

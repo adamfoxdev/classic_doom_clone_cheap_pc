@@ -86,7 +86,8 @@ public sealed class Player
     {
         var p = (Player)MemberwiseClone();
         p.HasWeapon = (bool[])HasWeapon.Clone();
-        p.Mods = (WeaponMod[])Mods.Clone();
+        p.Mods = (WeaponMod[])Mods.Clone(); p.Mods2 = (WeaponMod[])Mods2.Clone();
+        p.ModRanks = (int[])ModRanks.Clone(); p.ModRanks2 = (int[])ModRanks2.Clone();
         return p;
     }
 
@@ -106,7 +107,9 @@ public sealed class Player
     public int ArenaTier;
     public bool[] HasWeapon = { true, false, false };
     /// <summary>Each weapon's mod (see WeaponMods), and a Charged mod's charge building while Fire is held.</summary>
-    public WeaponMod[] Mods = new WeaponMod[3];
+    public WeaponMod[] Mods = new WeaponMod[3], Mods2 = new WeaponMod[3];
+    /// <summary>Each mod's rank, I to III (0 reads as I).</summary>
+    public int[] ModRanks = new int[3], ModRanks2 = new int[3];
     public float Charge;
     public bool Charging;
     public int Weapon, PendingWeapon = -1;
@@ -802,6 +805,8 @@ public sealed partial class Game
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
         _modRng = new Random((FixedSeed ?? Environment.TickCount) + 17);
+        _eliteRng = new Random((FixedSeed ?? Environment.TickCount) + 41);
+        _elitesMet.Clear();
         if (ArenaMode && DailyMode) cls = Daily.For(DailyDate).cls; // the day's class, every attempt
         else if (ArenaMode && (ArenaMods & ArenaMod.RandomClass) != 0) cls = (PClass)_loot.Next(3); // a fresh roll every run
         ChestsTotal = 0;
@@ -971,6 +976,7 @@ public sealed partial class Game
         DirectorTick(step);
         UpdateWorld(step);
         RematchTick(step);
+        EliteTick(step);
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
@@ -1351,7 +1357,8 @@ public sealed partial class Game
     {
         var p = P;
         var w = p.CurWeapon;
-        var mod = ModOf(p.Weapon);
+        int pierce = ModRank(p.Weapon, WeaponMod.Piercing);
+        bool lance = ComboOn(p.Weapon) == WeaponMods.Combo.Lance && power >= WeaponMods.ChargedHit;
         bool powered = HasMana(w);
         if (!powered && !w.ManaOptional)
         {
@@ -1385,7 +1392,7 @@ public sealed partial class Game
             }
             if (hits.Count > 0)
             {
-                foreach (var (best, _) in hits.OrderBy(h => h.d).Take(Arsenal.Cleave(tier) + (mod == WeaponMod.Piercing ? 1 : 0)))
+                foreach (var (best, _) in hits.OrderBy(h => h.d).Take(Arsenal.Cleave(tier) + (pierce > 0 ? WeaponMods.CleaveExtra(pierce) : 0) + (lance ? 3 : 0)))
                 {
                     int dmg = (int)MathF.Round(Rand(w.DmgMin, w.DmgMax) * PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power);
                     if (!powered) dmg /= 2;
@@ -1393,7 +1400,9 @@ public sealed partial class Game
                     if (tier > 0) SpawnPuff(Art.Lightning[1], best.X, best.Y, bz, 0.35f + 0.08f * tier);
                     else if (powered && w.Mana > 0) SpawnPuff(Art.Bolt[1], best.X, best.Y, bz, 0.4f);
                     else SpawnPuff(Art.Fireball[1], best.X, best.Y, bz, 0.25f);
+                    _hitPower = power;
                     DamageMonster(best, dmg, p.Weapon);
+                    _hitPower = 1;
                 }
                 PlaySound(Sfx.Hit, 1);
             }
@@ -1425,7 +1434,9 @@ public sealed partial class Game
             };
             if (w.Proj == ProjKind.Hammer || w.Proj == ProjKind.Flame) { pr.SpriteW = pr.SpriteH = 0.4f; }
             if (power > 1.2f) { pr.SpriteW *= 1 + (power - 1) * 0.4f; pr.SpriteH = pr.SpriteW; } // a charged shot is bigger
-            if (mod == WeaponMod.Piercing) pr.Pierce = WeaponMods.Pierce;
+            if (pierce > 0) pr.Pierce = WeaponMods.PierceCount(pierce);
+            if (lance) pr.Pierce = 1000; // a Lance goes through everything
+            pr.Power = power;
             Level.Things.Add(pr);
         }
     }
@@ -1899,7 +1910,7 @@ public sealed partial class Game
     void KilledWith(Monster m, int slot)
     {
         if (NoXp) return;
-        int xp = (int)(Xp.Kill(m.Def) * NgPlus.Xp(NgTier));
+        int xp = (int)(Xp.Kill(m.Def) * NgPlus.Xp(NgTier) * (m.Affix != Affix.None ? Elites.XpMult : 1));
         Profile.TotalKills++;
         GainXp(xp);
         if (Profile.AddWeaponXp(P.Class, slot, xp))
@@ -2238,6 +2249,7 @@ public sealed partial class Game
     {
         m.StateTime += dt;
         m.SlowTime = MathF.Max(0, m.SlowTime - dt);
+        if (m.FrozenTime > 0 && m.Alive) { m.FrozenTime -= dt; return; } // frozen solid (Deep Freeze): not a twitch
         float dist = Dist(m.X, m.Y, P.X, P.Y);
         bool playerAlive = Mode != GameMode.Dead;
 
@@ -2287,7 +2299,7 @@ public sealed partial class Game
                         if (m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius + 0.25f)
                         {
                             Sound(Sfx.Swing, m.X, m.Y);
-                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f) DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult));
+                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f) EliteHit(m, DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult)));
                         }
                         else if (m.Def.Missile != null) FireMissile(m);
                     }
@@ -2311,7 +2323,7 @@ public sealed partial class Game
 
     void ChaseMove(Monster m, float dt, bool wander)
     {
-        float step = m.Def.Speed * m.SpeedMult * Vars.MonsterSpeed * dt * (m.SlowTime > 0 ? WeaponMods.FrostSlow : 1);
+        float step = m.Def.Speed * m.SpeedMult * Vars.MonsterSpeed * dt * (m.SlowTime > 0 ? m.SlowFactor : 1);
         float dx, dy;
         if (m.StuckTime > 0)
         {
@@ -2468,7 +2480,9 @@ public sealed partial class Game
                 foreach (var t in Level.Things.ToList())
                     if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius && !(pr.Pierced?.Contains(m) ?? false))
                     {
+                        _hitPower = pr.Power;
                         DamageMonster(m, Rand(pr.DmgMin, pr.DmgMax), pr.Slot);
+                        _hitPower = 1;
                         if (pr.Pierce > 0)
                         {
                             // a piercing shot goes on through, into the next
@@ -2484,7 +2498,7 @@ public sealed partial class Game
             }
             else if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z))
             {
-                DamagePlayer(Rand(pr.DmgMin, pr.DmgMax));
+                EliteHit(pr.Owner as Monster, DamagePlayer(Rand(pr.DmgMin, pr.DmgMax)));
                 Explode(pr, null);
                 return;
             }
@@ -2665,6 +2679,12 @@ public sealed partial class Game
     internal void DamageMonster(Monster m, int dmg, int slot = -1)
     {
         if (!m.Alive || dmg <= 0 || m.Blurring) return;
+        if (slot >= 0) dmg = ModDamage(m, dmg, slot);
+        if (m.Shield > 0)
+        {
+            dmg = EliteShield(m, dmg); // a shielded elite's shield soaks it up first
+            if (dmg <= 0) { if (m.State == AiState.Idle) Wake(m); Sound(Sfx.Hit, m.X, m.Y); return; }
+        }
         if (m.Def.Special == Special.Charger && m.SpecialPhase == 3) dmg *= 2; // a stunned Stalker is wide open
         int dealt = Math.Min(Math.Max(1, (int)MathF.Round(dmg * Vars.Damage)), Math.Max(1, m.Health));
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
@@ -2676,11 +2696,13 @@ public sealed partial class Game
         if (m.Health <= 0)
         {
             SetState(m, AiState.Dying);
+            m.FrozenTime = 0;
             Sound(Sfx.Death, m.X, m.Y);
             P.Kills++;
             if (slot >= 0) CodexKill(m);
             if (slot >= 0) KilledWith(m, slot);
             if (m.Def.MiniBoss != null) MiniBossDown(m);
+            EliteDied(m);
             int blood = PerkRank(Perk.Bloodthirst);
             if (blood > 0 && slot >= 0) P.Health = Math.Min(P.MaxHealth, P.Health + 4 * blood);
             if (slot >= 0) ChainLightning(m, dmg, slot);
@@ -2693,6 +2715,7 @@ public sealed partial class Game
             return;
         }
         if (slot >= 0) ChainLightning(m, dmg, slot);
+        EliteHurt(m);
         if (m.Def.Blurs && m.State != AiState.Attack && RandF() < 0.4f) { StartBlur(m); return; }
         if (RandF() < m.Def.PainChance && m.State != AiState.Attack)
         {
@@ -2720,12 +2743,13 @@ public sealed partial class Game
         _chaining = false;
     }
 
-    internal void DamagePlayer(int dmg)
+    /// <summary>Hurts you; returns how much health it took.</summary>
+    internal int DamagePlayer(int dmg)
     {
         var p = P;
-        if (Mode != GameMode.Playing || Vars.God || Relaxed) return;
+        if (Mode != GameMode.Playing || Vars.God || Relaxed) return 0;
         dmg = Math.Max(0, (int)MathF.Round(dmg * Vars.MonsterDamage));
-        if (dmg == 0) return;
+        if (dmg == 0) return 0;
         int saved = Math.Min(p.Armor, (int)(dmg * p.Def.ArmorSave));
         p.Armor -= saved;
         p.Health -= dmg - saved;
@@ -2741,10 +2765,11 @@ public sealed partial class Game
             Mode = GameMode.Dead;
             SaveProfile();
             PlaySound(Sfx.PlayerDeath, 1);
-            if (ArenaMode) { EndArenaRun(); Say("Press Enter to try again."); return; }
+            if (ArenaMode) { EndArenaRun(); Say("Press Enter to try again."); return dmg - saved; }
             Say(CanRespawn ? "You have died. Press Enter to return to the checkpoint." : "You have died. Press Enter to try again.");
         }
         else PlaySound(Sfx.PlayerPain, 1);
+        return dmg - saved;
     }
 
     // ================================================================ console / cheat helpers
