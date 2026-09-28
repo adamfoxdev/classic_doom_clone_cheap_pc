@@ -451,6 +451,15 @@ public static partial class Headless
                 g.P.X = Soccer.LineE - 11; g.P.Y = Soccer.SpotY + 1.5f; g.P.Angle = MathF.Atan2(ball.Y - g.P.Y, ball.X - g.P.X) + 0.05f; g.P.Pitch = -6;
                 Tick(default, 2);
                 Shot("154_map_colours");
+                // the pitch as the Tron grid, then in the Matrix's code rain
+                g.Con.Execute("roomlook tron", quiet: true);
+                g.P.Pitch = 10;
+                Tick(default, 2);
+                Shot("155_roomlook_tron");
+                g.Con.Execute("roomlook matrix", quiet: true);
+                Tick(default, 20);
+                Shot("156_roomlook_matrix");
+                g.Con.Execute("roomlook off", quiet: true);
             }
             foreach (var (n, goals, shots) in new[] { (g.RunnerName, 9, 41), ("ACE-1", 7, 30), (g.RunnerName, 7, 52), ("NOVA", 4, 38) })
                 g.Profile.AddSoccerRun(new SoccerRun { Name = n, Class = "Fighter", Goals = goals, Shots = shots, When = new DateTime(2026, 9, 20 + shots % 7) });

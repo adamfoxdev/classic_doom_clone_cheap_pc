@@ -1048,6 +1048,7 @@ public sealed partial class Game
         TrickTick(dt);
         TowerTick(step);
         SoccerTick(step);
+        RoomLookTick(dt);
         QuakeArenaTick();
         TargetsTick(step);
         CheckBossIntros();
