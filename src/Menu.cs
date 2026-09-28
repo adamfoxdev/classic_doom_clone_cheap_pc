@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -71,6 +71,7 @@ public sealed class MenuSystem
             : new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Courses => Courses.All.Select(c => c.Name).Append("Back").ToArray(),
+        MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Back").ToArray(),
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Back" },
@@ -227,6 +228,30 @@ public sealed class MenuSystem
             return;
         }
 
+        if (Page == MenuPage.ArenaSetup)
+        {
+            // the modifiers toggle with Left/Right or Enter; Start goes on to the class (or straight in, for a random one)
+            int n = ArenaModInfo.All.Length;
+            if (Cursor < n && (inp.Left || inp.Right || inp.Confirm))
+            {
+                _g.ArenaMods ^= ArenaModInfo.All[Cursor];
+                _g.SaveSettings();
+                _g.PlaySound(Sfx.Pickup, 0.6f);
+                return;
+            }
+            if (!inp.Confirm) return;
+            _g.PlaySound(Sfx.Item, 0.8f);
+            if (Cursor == n)
+            {
+                _g.Style = GameStyle.Classic; _g.PendingPractice = false;
+                Close();
+                if ((_g.ArenaMods & ArenaMod.RandomClass) != 0) { _g.PendingArena = false; _g.StartArena(PClass.Fighter); _g.PlaySound(Sfx.Teleport, 1); }
+                else { _g.PendingArena = true; _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; }
+            }
+            else Back();
+            return;
+        }
+
         if (!inp.Confirm) return;
         _g.PlaySound(Sfx.Item, 0.8f);
         if (Page == MenuPage.Main)
@@ -236,10 +261,7 @@ public sealed class MenuSystem
                 case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
                 case "Story": Close(); _g.StartStory(0); break;
                 case "Practice": Show(MenuPage.Courses); break;
-                case "Arena":
-                    _g.Style = GameStyle.Classic; _g.PendingArena = true; _g.PendingPractice = false;
-                    Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
-                    break;
+                case "Arena": Show(MenuPage.ArenaSetup); Cursor = ArenaModInfo.All.Length; break;
                 case "Leaderboard": Show(MenuPage.Leaderboard); break;
                 case "Character": Show(MenuPage.Character); break;
                 case "Options": Show(MenuPage.Options); break;
@@ -295,6 +317,7 @@ public static class Settings
         yield return "strafehelp " + g.Vars.StrafeHelp;
         yield return "arcade " + (g.Vars.Arcade ? 1 : 0);
         yield return "name " + g.RunnerName;
+        yield return "arenamods " + ArenaModInfo.Letters(g.ArenaMods);
     }
 
     public static void Save(Game g, string path)

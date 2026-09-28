@@ -142,6 +142,10 @@ public sealed class Renderer
                 DrawLeaderboard(g);
                 break;
 
+            case MenuPage.ArenaSetup:
+                DrawArenaSetup(g);
+                break;
+
             case MenuPage.Courses:
                 CenterText("PRACTICE", 14, Col.Rgb(230, 190, 80), 2);
                 for (int i = 0; i < items.Length; i++) MenuItem(items[i], 44 + i * 14, i == m.Cursor);
@@ -155,7 +159,7 @@ public sealed class Renderer
                 break;
         }
 
-        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options))
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.ArenaSetup))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
     }
 
@@ -217,8 +221,8 @@ public sealed class Renderer
         else
         {
             var latest = runs.MaxBy(r => r.When);
-            Text(18, 48, "#", MenuDim); Text(46, 48, "WAVES", MenuDim); Text(82, 48, "TIME", MenuDim); Text(124, 48, "KILLS", MenuDim);
-            Text(160, 48, "NAME", MenuDim); Text(250, 48, "DATE", MenuDim);
+            Text(18, 48, "#", MenuDim); Text(46, 48, "SCORE", MenuDim); Text(84, 48, "WV", MenuDim); Text(104, 48, "TIME", MenuDim);
+            Text(142, 48, "MODS", MenuDim); Text(172, 48, "NAME", MenuDim); Text(250, 48, "DATE", MenuDim);
             for (int i = 0; i < runs.Count; i++)
             {
                 var r = runs[i];
@@ -226,15 +230,64 @@ public sealed class Renderer
                 MedalDot(36, y + 1, ArenaMedals.For(r.Waves));
                 uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
                 Text(18, y, $"{i + 1,2}", c);
-                Text(52, y, $"{r.Waves,2}", c);
-                Text(82, y, $"{r.Time:0.0}", c);
-                Text(130, y, $"{r.Kills}", c);
-                Text(160, y, r.Name, c);
+                Text(46, y, $"{r.Score,5}", c);
+                Text(84, y, $"{r.Waves,2}", c);
+                Text(104, y, $"{r.Time:0.0}", c);
+                Text(142, y, ArenaModInfo.Letters((ArenaMod)r.Mods), c);
+                Text(172, y, r.Name, c);
                 Text(250, y, r.When == default ? "-" : r.When.ToString("yyyy-MM-dd"), c);
             }
         }
-        CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
+        CenterText("MODS: S FAST FOES  N NO SUPPLIES  M MELEE  R RANDOM", 172, MenuDim);
         CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>The arena's setup page: the modifiers to switch on, what each does, and the score multiplier they make.</summary>
+    void DrawArenaSetup(Game g)
+    {
+        var m = g.Menu;
+        var items = m.Items(MenuPage.ArenaSetup);
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), on = Col.Rgb(120, 255, 140);
+        CenterText(Words.T("CHAOS ARENA"), 10, gold, 2);
+        CenterText("MODIFIERS MAKE A RUN HARDER AND RAISE ITS SCORE", 30, MenuDim);
+        int n = ArenaModInfo.All.Length;
+        for (int i = 0; i < items.Length; i++)
+        {
+            int y = 46 + i * 13 + (i >= n ? 6 : 0);
+            bool sel = i == m.Cursor;
+            if (i >= n) { MenuItem(items[i], y, sel); continue; }
+            var mod = ArenaModInfo.All[i];
+            bool set = (g.ArenaMods & mod) != 0;
+            if (sel) Rect(40, y - 2, 240, 11, Col.Rgb(70, 40, 20));
+            Text(48, y, items[i].ToUpperInvariant(), sel ? MenuSel : MenuText);
+            string val = set ? $"ON  +{ArenaModInfo.Bonus(mod) * 100:0}%" : "OFF";
+            Text(272 - Font.Width(val), y, val, set ? on : sel ? MenuSel : MenuDim);
+        }
+        if (m.Cursor < n)
+            foreach (var (line, k) in Wrap(ArenaModInfo.About(ArenaModInfo.All[m.Cursor]), 50).Select((l, k) => (l, k)))
+                CenterText(line, 132 + k * 10, blue);
+        CenterText($"SCORE: 100 A WAVE  X{ArenaModInfo.Multiplier(g.ArenaMods):0.00}", 156, gold);
+        DrawArenaTargets(168);
+        CenterText("ENTER/LEFT/RIGHT: SWITCH   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>After a boss wave: the three perks to choose from, with what each does.</summary>
+    void DrawPerkOffer(Game g, ArenaState a)
+    {
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255);
+        // left of the perk list in the top-right corner, which stays in view
+        const int left = 4, width = 270;
+        int top = 36, h = 20 + a.Offer.Length * 24;
+        void Line(string t, int y, uint c) => Text(left + (width - Font.Width(t)) / 2, y, t, c);
+        Darken(left, top, width, h, 200);
+        Line("CHOOSE A PERK: PRESS 1, 2 OR 3", top + 5, gold);
+        for (int i = 0; i < a.Offer.Length; i++)
+        {
+            var perk = a.Offer[i];
+            int y = top + 20 + i * 24, rank = a.Rank(perk) + 1;
+            Line($"{i + 1}  {PerkInfo.Name(perk).ToUpperInvariant()} {PerkInfo.Roman(rank)}", y, Col.Rgb(255, 230, 120));
+            Line(PerkInfo.About(perk).ToUpperInvariant(), y + 10, blue);
+        }
     }
 
     /// <summary>The arena's medal targets on one line, each in its medal's colour.</summary>
@@ -1053,6 +1106,18 @@ public sealed class Renderer
                 MedalDot(W - 9, top + 21, Medal.Gold);
             }
         }
+        if (g.ArenaMode && g.Vars.Hud != HudStyle.Off)
+        {
+            // the perks you've picked, one a line under the medal
+            int py = top + 32;
+            foreach (var (perk, rank) in a.Perks.OrderBy(kv => kv.Key))
+            {
+                string line = $"{PerkInfo.Short(perk)} {PerkInfo.Roman(rank)}";
+                Text(W - 4 - Font.Width(line), py, line, Col.Rgb(170, 200, 255));
+                py += 9;
+            }
+        }
+        if (g.ArenaMode && a.Offer != null) DrawPerkOffer(g, a);
         if (!a.Started) return;
         if (g.ArsenalTier > 0 && g.Vars.Hud != HudStyle.Off)
         {
@@ -1067,7 +1132,7 @@ public sealed class Renderer
             CenterText(big, 40, a.InIntermission ? Col.Rgb(120, 255, 140) : Col.Rgb(255, 90, 60), 3);
             if (!a.InIntermission && a.Wave % 5 == 0) CenterText(Words.T("A HERESIARCH APPROACHES"), 68, Col.Rgb(230, 120, 255));
         }
-        if (a.InIntermission) CenterText($"NEXT WAVE IN {MathF.Ceiling(a.Timer):0}", 80, Col.Rgb(240, 225, 170));
+        if (a.InIntermission && a.Offer == null) CenterText($"NEXT WAVE IN {MathF.Ceiling(a.Timer):0}", 80, Col.Rgb(240, 225, 170));
     }
 
     // ================================================================ automap

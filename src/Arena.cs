@@ -14,6 +14,37 @@ public sealed class ArenaState
     public float RunTime, ClearedAt;
     /// <summary>This run has gone on the arena leaderboard (it ends once: death, restart or leaving).</summary>
     public bool Recorded;
+    /// <summary>The run's modifiers (picked before it starts), and the perks it has earned, with their ranks.</summary>
+    public ArenaMod Mods;
+    public readonly Dictionary<Perk, int> Perks = new();
+    /// <summary>The three perks on offer after a boss wave, until you pick one (the next wave waits); else null.</summary>
+    public Perk[] Offer;
+    float _regen, _mana;
+
+    public int Rank(Perk p) => Perks.TryGetValue(p, out int r) ? r : 0;
+    public bool Has(ArenaMod m) => (Mods & m) != 0;
+
+    /// <summary>Takes one of the perks on offer (0-2) and lets the next wave come.</summary>
+    public Perk Choose(Game g, int index)
+    {
+        var perk = Offer[index];
+        Perks[perk] = Rank(perk) + 1;
+        Offer = null;
+        Timer = Intermission;
+        if (perk == Perk.Vitality) { g.ApplyProfile(); g.P.Health = g.P.MaxHealth; }
+        g.Say($"{PerkInfo.Name(perk)} {PerkInfo.Roman(Rank(perk))}: {PerkInfo.About(perk).ToLowerInvariant()}.");
+        g.PlaySound(Sfx.Secret, 1);
+        return perk;
+    }
+
+    /// <summary>Three different perks to choose from: any that isn't maxed (and no mana perk when you're melee only).</summary>
+    public Perk[] RollOffer()
+    {
+        var pool = Enum.GetValues<Perk>().Where(p => Rank(p) < PerkInfo.MaxRank && !(p == Perk.ManaFont && Has(ArenaMod.MeleeOnly))).ToList();
+        var pick = new List<Perk>();
+        while (pick.Count < 3 && pool.Count > 0) { int i = _rng.Next(pool.Count); pick.Add(pool[i]); pool.RemoveAt(i); }
+        return pick.ToArray();
+    }
     public const float Intermission = 6f;
     public const int MaxAlive = 14;
 
@@ -92,6 +123,8 @@ public sealed class ArenaState
             return;
         }
 
+        if (g.Mode == GameMode.Playing) PerkTick(g, dt);
+        if (Offer != null) return; // choosing a perk: the clock and the next wave wait
         if (g.Mode == GameMode.Playing) RunTime += dt;
         if (InIntermission)
         {
@@ -119,7 +152,32 @@ public sealed class ArenaState
             g.Say($"Wave {Wave} cleared! Supplies have appeared at the altar.");
             g.GainXp(Game.Xp.PerWave * Wave);
             if (g.ArenaMode) g.ArenaWaveCleared(Wave);
-            Reward(g);
+            if (!Has(ArenaMod.NoSupplies)) Reward(g);
+            // after a boss wave, a perk to pick
+            if (g.ArenaMode && Wave % 5 == 0)
+            {
+                Offer = RollOffer();
+                if (Offer.Length == 0) Offer = null;
+                else { g.Say("Choose a perk: press 1, 2 or 3."); g.PlaySound(Sfx.Lore, 1); }
+            }
+        }
+    }
+
+    /// <summary>The perks that work over time: regeneration and the mana font.</summary>
+    void PerkTick(Game g, float dt)
+    {
+        var p = g.P;
+        int regen = Rank(Perk.Regeneration), font = Rank(Perk.ManaFont);
+        if (regen > 0 && p.Health < p.MaxHealth)
+        {
+            _regen += dt * 0.5f * regen;
+            while (_regen >= 1 && p.Health < p.MaxHealth) { p.Health++; _regen -= 1; }
+        }
+        else _regen = 0;
+        if (font > 0)
+        {
+            _mana += dt * font;
+            while (_mana >= 1) { p.BlueMana = Math.Min(200, p.BlueMana + 1); p.GreenMana = Math.Min(200, p.GreenMana + 1); _mana -= 1; }
         }
     }
 
@@ -147,6 +205,7 @@ public sealed class ArenaState
 
             var (hp, dmg, spd) = Scale(Wave);
             if (def.Boss) hp *= 0.5f; // arena Heresiarchs are a bit lighter than the real one
+            if (Has(ArenaMod.DoubleSpeed)) spd *= 2;
             var m = g.SpawnMonster(def, x, y, hp, dmg, spd);
             _live.Add(m);
             return true;
@@ -157,7 +216,7 @@ public sealed class ArenaState
     void Reward(Game g)
     {
         var drops = new List<char> { 'h', 'b', 'g' };
-        if (Wave == 1) { drops.Add('w'); drops.Add('x'); }
+        if (Wave == 1 && !Has(ArenaMod.MeleeOnly)) { drops.Add('w'); drops.Add('x'); }
         if (Wave % 2 == 0) drops.Add('q');
         if (Wave % 3 == 0) drops.Add('r');
         if (Wave % 5 == 0) drops.Add('u');
@@ -223,4 +282,89 @@ public static class ArenaMedals
     /// <summary>The next medal after `waves` cleared, and the wave it takes (None, 0 once you have gold).</summary>
     public static (Medal medal, int wave) Next(int waves) =>
         waves < Bronze ? (Medal.Bronze, Bronze) : waves < Silver ? (Medal.Silver, Silver) : waves < Gold ? (Medal.Gold, Gold) : (Medal.None, 0);
+}
+
+/// <summary>Perks you pick in the arena after each boss wave (every fifth); each can be taken up to three times.</summary>
+public enum Perk { RapidFire, Regeneration, ChainLightning, Might, Swiftness, Vitality, Bloodthirst, ManaFont }
+
+public static class PerkInfo
+{
+    public const int MaxRank = 3;
+
+    public static string Name(Perk p) => p switch
+    {
+        Perk.RapidFire => "Rapid Fire",
+        Perk.ChainLightning => "Chain Lightning",
+        Perk.ManaFont => "Mana Font",
+        _ => p.ToString(),
+    };
+
+    /// <summary>What one rank does.</summary>
+    public static string About(Perk p) => p switch
+    {
+        Perk.RapidFire => "+20% fire rate",
+        Perk.Regeneration => "Heal 1 health every 2 seconds",
+        Perk.ChainLightning => "Your hits arc to a nearby foe for 40% damage",
+        Perk.Might => "+20% damage",
+        Perk.Swiftness => "+10% speed",
+        Perk.Vitality => "+25 max health, and a full heal",
+        Perk.Bloodthirst => "Heal 4 health for every kill",
+        _ => "Refill 1 blue and green mana a second",
+    };
+
+    /// <summary>A short name for the HUD's perk list.</summary>
+    public static string Short(Perk p) => p switch
+    {
+        Perk.RapidFire => "RAPID",
+        Perk.Regeneration => "REGEN",
+        Perk.ChainLightning => "CHAIN",
+        Perk.Might => "MIGHT",
+        Perk.Swiftness => "SWIFT",
+        Perk.Vitality => "VITAL",
+        Perk.Bloodthirst => "BLOOD",
+        _ => "MANA",
+    };
+
+    public static string Roman(int rank) => rank switch { 1 => "I", 2 => "II", 3 => "III", _ => rank.ToString() };
+}
+
+/// <summary>
+/// Arena modifiers, picked before a run: each makes it harder (or less predictable) and raises its score. The medals
+/// still go by the waves cleared.
+/// </summary>
+[Flags]
+public enum ArenaMod { None = 0, DoubleSpeed = 1, NoSupplies = 2, MeleeOnly = 4, RandomClass = 8 }
+
+public static class ArenaModInfo
+{
+    public static readonly ArenaMod[] All = { ArenaMod.DoubleSpeed, ArenaMod.NoSupplies, ArenaMod.MeleeOnly, ArenaMod.RandomClass };
+
+    public static string Name(ArenaMod m) => m switch
+    {
+        ArenaMod.DoubleSpeed => "Double-speed monsters",
+        ArenaMod.NoSupplies => "No supplies",
+        ArenaMod.MeleeOnly => "Melee only",
+        _ => "Random class",
+    };
+
+    /// <summary>The letter each modifier shows as on the leaderboard.</summary>
+    public static char Letter(ArenaMod m) => m switch { ArenaMod.DoubleSpeed => 'S', ArenaMod.NoSupplies => 'N', ArenaMod.MeleeOnly => 'M', _ => 'R' };
+
+    /// <summary>What each modifier adds to the score multiplier.</summary>
+    public static float Bonus(ArenaMod m) => m switch { ArenaMod.DoubleSpeed => 0.6f, ArenaMod.NoSupplies => 0.4f, ArenaMod.MeleeOnly => 0.5f, _ => 0.15f };
+
+    public static string About(ArenaMod m) => m switch
+    {
+        ArenaMod.DoubleSpeed => "MONSTERS MOVE TWICE AS FAST.",
+        ArenaMod.NoSupplies => "NOTHING APPEARS AT THE ALTAR BETWEEN WAVES, AND THE ARMOURY IS BARE.",
+        ArenaMod.MeleeOnly => "ONLY YOUR FIRST WEAPON: NO STAFFS, AXES OR SPELLS.",
+        _ => "A RANDOM CLASS EACH RUN, INSTEAD OF PICKING ONE.",
+    };
+
+    public static float Multiplier(ArenaMod mods) => 1 + All.Where(m => (mods & m) != 0).Sum(Bonus);
+
+    /// <summary>A run's score: 100 a wave, times the modifiers' multiplier.</summary>
+    public static int Score(int waves, ArenaMod mods) => (int)MathF.Round(waves * 100 * Multiplier(mods));
+
+    public static string Letters(ArenaMod mods) => mods == ArenaMod.None ? "-" : new string(All.Where(m => (mods & m) != 0).Select(Letter).ToArray());
 }
