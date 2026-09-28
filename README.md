@@ -65,7 +65,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt*, the *Windspire* and
-  the optional *Deepdelve Quarry*, *Bedrock Depths*, *Barren World*, *Void Crossing* and *Verdant Moon*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
+  the optional *Hanging Cisterns*, *Deepdelve Quarry*, *Bedrock Depths*, *Barren World*, *Void Crossing* and *Verdant Moon*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
@@ -76,7 +76,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed scale up every wave, and every fifth
   wave adds Heresiarchs. Supplies appear at the altar after each wave. See [Chaos Arena](#chaos-arena).
 - **Secrets and lore (both styles):** each map hides a secret passage behind a wall that looks like any
-  other; press `E` on it to slide it open. 21 lore stones tell the story of the hub; press `E` to read one.
+  other; press `E` on it to slide it open. 25 lore stones tell the story of the hub; press `E` to read one.
 - **Treasure chests** are scattered randomly through every map each new game. Open one with `E`: it spills
   1–3 random items (health, mana, armor, flasks, rarely an urn or a weapon piece you're missing). Watch out,
   roughly one in eight is a trap and a monster bursts out. Seen chests show on the automap, and the victory
@@ -455,13 +455,32 @@ Portal **7**, in the courtyard between its two northern trees, strands you on th
 enough ore to repair your ship. Then fly it through the Void Crossing to the Verdant Moon, whose portal 9 brings you
 back to the courtyard.
 
-**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 23 relics, which
-are spread over all nine maps (including the Windspire, where some sit on high ledges, and the
+Optional: portal **3**, towards the courtyard's east wall, leads to the **Hanging Cisterns**, a block-puzzle map
+you'll need the jetpack for (a spare waits by the portal).
+- **The ledges:** three hang high above the drained cistern's floor, stepping up 1.5 at a time so one tank of
+  fuel reaches the next. Each has a checkpoint pad, and a lift pad on the floor takes you back up.
+- **The puzzles:** each ledge is a stone-block puzzle. Push blocks with `E` and pull them with `Shift+E` onto
+  its pressure plates, and remember blocks only slide on level stone.
+  - **Low ledge:** two blocks, pillars in the way.
+  - **Middle ledge:** two blocks. One has to be pulled, as a lore stone in the antechamber hints.
+  - **High ledge:** three blocks, a fourteen-move puzzle.
+- **The vault:** with every plate weighed down, pull the lever on the high ledge's east wall. The portcullis to
+  the vault in the north-west lifts, with a Mystic Urn, armor, a flask and mana inside.
+- **The secret:** a secret wall in the antechamber's south-west corner hides a nook.
+
+The ledge puzzles were designed with `tools/puzzles/solve_blocks.py`, a small solver that searches every push and
+pull. Run it to check a redesign still works; it prints the moves the self-test plays through.
+
+![The Hanging Cisterns: the ledges from the cistern floor](docs/cisterns_floor.png)
+![The middle ledge's blocks and pillars](docs/cisterns_ledge.png)
+
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 26 relics, which
+are spread over all ten maps (including the Windspire and the Hanging Cisterns, where some sit on high ledges, and the
 Bedrock Depths, where they're buried in the rock) before the
 exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
 under the crypt's south-west room, at the east end of the Windspire's
-north-east ledge, and at the east end of the quarry's strongroom.
+north-east ledge, at the east end of the quarry's strongroom, and in the Hanging Cisterns' antechamber.
 
 ## Story mode
 
@@ -699,7 +718,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
-| `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon) |
+| `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
 | `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `-` none |

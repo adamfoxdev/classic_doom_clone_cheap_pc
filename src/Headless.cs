@@ -23,7 +23,7 @@ public static class Headless
             var reach = lv.Reachable(start.Item1, start.Item2);
             var flyTo = lv.Reachable(start.Item1, start.Item2, move: Level.Move.Fly);
             for (int i = 0; i < lv.Marks.Length; i++)
-                if (lv.Marks[i] != '\0') Check(lv.Marks[i] == '+' ? flyTo[i] : reach[i], $"mark '{lv.Marks[i]}' at {i % lv.W},{i / lv.W} reachable");
+                if (lv.Marks[i] != '\0') Check(lv.Marks[i] is '+' or '^' ? flyTo[i] : reach[i], $"mark '{lv.Marks[i]}' at {i % lv.W},{i / lv.W} reachable"); // pads and plates may be up a jetpack flight
             foreach (var t in lv.Things)
             {
                 if (t is Pickup pk && pk.Kind is PickupKind.SteelKey or PickupKind.FireKey or PickupKind.Weapon2 or PickupKind.Weapon3)
@@ -100,6 +100,8 @@ public static class Headless
         JetpackChecks(Check);
         Console.WriteLine("Windspire:");
         SpireChecks(Check);
+        Console.WriteLine("Hanging Cisterns:");
+        CisternChecks(Check);
         Console.WriteLine("Deepdelve Quarry and rubble:");
         QuarryChecks(Check);
         VerticalAimChecks(Check);
@@ -684,6 +686,96 @@ public static class Headless
         }
         var wav = Sounds.Wav(new short[] { 1, -1 });
         check(wav.Length == 48 && wav[0] == 'R' && wav[8] == 'W' && BitConverter.ToInt32(wav, 24) == Sounds.Rate, "WAV export writes a valid header");
+    }
+
+    /// <summary>
+    /// The Hanging Cisterns' three ledge puzzles, solved by a search over pushes and pulls (tools/puzzles/solve_blocks.py,
+    /// which prints these): where to stand, which way the block goes, and whether it's a pull.
+    /// </summary>
+    static readonly (string ledge, float floor, (bool pull, int x, int y, char dir)[] moves)[] CisternSolutions =
+    {
+        ("low ledge", 1.5f, new[] { (false, 12, 17, 'E'), (false, 12, 14, 'S'), (false, 12, 15, 'S'), (false, 12, 16, 'S'), (false, 11, 18, 'E'), (false, 13, 17, 'E'), (false, 15, 18, 'N') }),
+        ("middle ledge", 3f, new[] { (false, 22, 16, 'W'), (false, 20, 15, 'S'), (false, 22, 14, 'E'), (false, 23, 14, 'E'), (false, 25, 13, 'S'), (false, 24, 15, 'E'), (true, 26, 16, 'S'), (false, 20, 16, 'S') }),
+        ("high ledge", 4.5f, new[] { (false, 25, 5, 'S'), (false, 24, 6, 'W'), (false, 23, 6, 'W'), (false, 21, 5, 'S'), (false, 21, 6, 'S'), (false, 21, 7, 'S'), (false, 24, 8, 'E'),
+            (false, 25, 8, 'E'), (false, 26, 8, 'E'), (false, 25, 6, 'S'), (false, 24, 8, 'E'), (false, 25, 8, 'E'), (false, 27, 7, 'S'), (false, 26, 9, 'E') }),
+    };
+
+    static void CisternChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 2 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Cleric);
+        int ci = Array.FindIndex(g.Hub, l => l.RawName == "Hanging Cisterns");
+        check(ci == g.Hub.Length - 1, "the Hanging Cisterns join the end of the hub, so no other map moves");
+        g.Warp(ci);
+        var lv = g.Level;
+        var p = g.P;
+        lv.Things.RemoveAll(t => t is Monster or Chest);
+        var arrive = lv.FindMark('3').Value;
+        check(MathF.Abs(p.X - arrive.x) < 0.01f && lv.PlateCount == 7 && lv.LeverCount == 1 && lv.Checkpoints.Count == 3,
+              "you arrive by portal 3; seven plates, one lever, a checkpoint on each of three ledges");
+        float Dist(float tx, float ty) => MathF.Sqrt((tx - p.X) * (tx - p.X) + (ty - p.Y) * (ty - p.Y));
+        void Face(float tx, float ty) => p.Angle = MathF.Atan2(ty - p.Y, tx - p.X);
+        void WalkTo(float tx, float ty) { for (int k = 0; k < 35 * 8 && Dist(tx, ty) > 0.15f; k++) { Face(tx, ty); Tick(new Input { Move = MathF.Min(1, Dist(tx, ty) * 2) }); } }
+        bool FlyTo(float tx, float ty, float floor)
+        {
+            Tick(default, 70); // let the tank recharge
+            Tick(new Input { JetHeld = true });
+            for (int k = 0; k < 35 * 4 && p.FloorZ + p.Z < floor + 0.5f; k++) Tick(new Input { JetHeld = true });
+            for (int k = 0; k < 35 * 8 && Dist(tx, ty) > 0.15f; k++) { Face(tx, ty); Tick(new Input { Move = MathF.Min(1, Dist(tx, ty) * 2), JetHeld = p.FloorZ + p.Z < floor + 0.4f }); }
+            for (int k = 0; k < 35 * 5 && p.Flying; k++) Tick(new Input { SlideHeld = true });
+            return p.OnGround && MathF.Abs(p.FloorZ - floor) < 0.01f;
+        }
+
+        // the spare jetpack by the portal, then out through the door into the cistern
+        WalkTo(4.5f, 18.5f);
+        check(p.HasJetpack, "a spare jetpack waits by the portal");
+        WalkTo(6.5f, 16.5f); p.Angle = 0;
+        Tick(new Input { Use = true }); Tick(default, 35);
+        WalkTo(8.6f, 16.5f);
+        check(p.FloorZ == 0 && lv.FloorAt(12.5f, 16.5f) == 1.5f && !lv.PuzzleSolved, "the cistern floor, with the ledges far above it");
+        int gate = Array.IndexOf(lv.Cells, 'P');
+        check(lv.DoorOpen[gate] <= 0, "the vault's portcullis is shut");
+
+        // fly up to each ledge in turn, and solve it
+        var landings = new[] { (10.5f, 14.5f), (19.5f, 13.5f), (21.5f, 5.5f) };
+        int movesOk = 0, movesAll = 0;
+        for (int li = 0; li < CisternSolutions.Length; li++)
+        {
+            var (name, floor, moves) = CisternSolutions[li];
+            bool landed = FlyTo(landings[li].Item1, landings[li].Item2, floor);
+            check(landed, $"fly up to the {name} ({floor} up)");
+            if (!landed) return;
+            int plates0 = lv.PlatesCovered;
+            foreach (var (pull, x, y, dir) in moves)
+            {
+                movesAll++;
+                var (dx, dy) = dir switch { 'E' => (1, 0), 'W' => (-1, 0), 'S' => (0, 1), _ => (0, -1) };
+                // the block sits beside you: ahead for a push, and for a pull it's on the far side, coming toward you
+                int bx = pull ? x - dx : x + dx, by = pull ? y - dy : y + dy;
+                p.X = x + 0.5f; p.Y = y + 0.5f; p.FloorZ = floor; p.Z = 0; p.VX = p.VY = 0;
+                Face(bx + 0.5f, by + 0.5f);
+                Tick(new Input { Use = true, Walk = pull }); Tick(default);
+                if (lv.Cell(bx + dx, by + dy) == 'X' && lv.Cell(bx, by) != 'X') movesOk++;
+            }
+            check(lv.PlatesCovered - plates0 == new[] { 2, 2, 3 }[li], $"the {name}'s blocks all sit on its plates ({lv.PlatesCovered - plates0} more covered)");
+        }
+        check(movesOk == movesAll && lv.PlatesCovered == lv.PlateCount && !lv.PuzzleSolved, $"every push and pull works ({movesOk}/{movesAll}); the lever's still to pull");
+
+        // the high lever, and the vault opens
+        p.X = 28.5f; p.Y = 7.5f; p.FloorZ = 4.5f; p.Angle = 0;
+        Tick(new Input { Use = true }); Tick(default, 35 * 2);
+        check(lv.PuzzleSolved && lv.DoorOpen[gate] >= 1f, "the lever up on the high ledge, with every plate weighed down, raises the vault's portcullis");
+        var reach = lv.Reachable((int)arrive.x, (int)arrive.y);
+        check(lv.Things.OfType<Pickup>().Where(t => t.X < 7 && t.Y < 6).All(t => reach[(int)t.Y * lv.W + (int)t.X]), "the vault's treasure can be walked to");
+
+        // lore, and the secret nook in the antechamber
+        check(Enumerable.Range(0, lv.Things.OfType<LoreStone>().Count()).All(i => !Discovery.LoreText("Hanging Cisterns", i).Contains("worn away")), "every lore stone has its text");
+        int z = Array.IndexOf(lv.Cells, 'Z');
+        p.X = z % lv.W + 1.5f; p.Y = z / lv.W + 0.5f; p.FloorZ = 0; p.Angle = MathF.PI;
+        int secrets = p.Secrets;
+        Tick(new Input { Use = true }); Tick(default, 35);
+        check(p.Secrets == secrets + 1, "a secret wall in the antechamber's corner");
     }
 
     static void SpireChecks(Action<bool, string> check)
@@ -2058,7 +2150,7 @@ public static class Headless
             }
         check(covered == shaftLedgeCells, $"landing anywhere on a ledge counts for its checkpoint ({covered}/{shaftLedgeCells} cells)");
         check(lv.Marks.Count(m => m == '=') == 1 && lv.Floors[Array.IndexOf(lv.Marks, '=')] == 0, "one lift pad on the ground floor");
-        check(hub.Where(l => l != lv).All(l => l.Checkpoints.Count == 0), "only the Windspire has checkpoints");
+        check(hub.Where(l => l != lv && l.RawName != "Hanging Cisterns").All(l => l.Checkpoints.Count == 0), "only the Windspire and the Hanging Cisterns have checkpoints");
 
         var g = new Game { FixedSeed = 5 };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
@@ -2406,9 +2498,13 @@ public static class Headless
         g.P.X -= 1.2f; Tick(default);
         check(g.Level == keepLv, "and brings you back to the vault");
 
-        // the Chaos Arena has moved to its own title menu item: no portal 3, and no arena, in the hub
-        check(g.Hub.All(l => l.FindMark('3') == null) && g.Hub.All(l => l.Arena == null && l.RawName != "Chaos Arena"),
-              "the Chaos Arena isn't in the hub any more (it's Arena on the title menu)");
+        // the Chaos Arena has its own title menu item; portal 3 in the courtyard leads to the Hanging Cisterns now
+        check(g.Hub.All(l => l.Arena == null && l.RawName != "Chaos Arena"), "the Chaos Arena isn't in the hub any more (it's Arena on the title menu)");
+        g.Warp(0);
+        Tick(default);
+        var p3 = g.Level.FindMark('3').Value;
+        g.P.X = p3.x; g.P.Y = p3.y; g.P.PortalLock = false; Tick(default);
+        check(g.Level.RawName == "Hanging Cisterns", "portal 3 in the courtyard leads to the Hanging Cisterns");
     }
 
     static void MovementChecks(Action<bool, string> check)
@@ -3386,7 +3482,7 @@ public static class Headless
         // secrets and lore exist in both modes
         var classic = new Game { FixedSeed = 4 };
         classic.NewGame(PClass.Fighter);
-        check(classic.SecretsTotal == 5 && classic.LoreTotal == 21, $"5 secrets and 21 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.SecretsTotal == 6 && classic.LoreTotal == 25, $"6 secrets and 25 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
         check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
@@ -4022,7 +4118,7 @@ public static class Headless
     public static int Screenshots(string dir)
     {
         Directory.CreateDirectory(dir);
-        var g = new Game { FixedSeed = 1 };
+        var g = new Game { FixedSeed = 1, AchievementsOn = false };
         var r = new Renderer();
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         void Shot(string name)
@@ -4391,6 +4487,23 @@ public static class Headless
         g.Messages.RemoveAll(m => !m.text.StartsWith("Checkpoint"));
         Shot("51_spire_checkpoint");
         g.Messages.Clear();
+
+        // the Hanging Cisterns: the ledges from the cistern floor, then the middle ledge's blocks and plates from above
+        {
+            int ci = Array.FindIndex(g.Hub, l => l.RawName == "Hanging Cisterns");
+            g.Warp(ci);
+            g.Level.Things.RemoveAll(t => t is Monster);
+            g.Messages.Clear();
+            PlaceCam(9.5f, 10.5f, 0, 0, 0.55f, 18);
+            Tick(default, 3); PlaceCam(9.5f, 10.5f, 0, 0, 0.55f, 18);
+            g.Messages.Clear();
+            Shot("102_cisterns_floor");
+            PlaceCam(18.6f, 12.4f, 0, 3.9f, 0.62f, -30);
+            Tick(default, 1); PlaceCam(18.6f, 12.4f, 0, 3.9f, 0.62f, -30);
+            g.Messages.Clear();
+            Shot("103_cisterns_ledge");
+            g.P.Flying = false;
+        }
 
         // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on
         RenderedArtSheet(Path.Combine(dir, "52_rendered_sheet.png"), SheetItems, 8);

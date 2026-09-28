@@ -71,6 +71,13 @@ public static class Discovery
             "Step on the central pad to restart the simulation. Management accepts no responsibility.",
             "Behind the scoreboard: a quiet room where the champions rested between rounds.",
         },
+        ["Hanging Cisterns"] = new[]
+        {
+            "Reserve locker. The crew kept their best kit behind the tank field; the pads and the gantry switch release it.",
+            "Maintenance note: 'Crates only slide on flat deck. Stuck one against a rail? Hold Walk and pull it back.'",
+            "Unlogged storage space. Somebody built a false panel here to hide their stash from the quartermaster.",
+            "Coolant Tanks. Three gantries hang above the drained tanks, each with its crates and pads. Grab the spare jetpack and fly up.",
+        },
         ["Deepdelve Quarry"] = new[]
         {
             "Asteroid Mine, shaft 2. The crew collapsed every tunnel to slow the Overmind's drones. Loose rock breaks if you hit it hard enough.",
@@ -130,6 +137,13 @@ public static class Discovery
             "The Chaos Arena was built for sport. The crowds are long gone, but the spawning runes still remember.",
             "In gentler days the altar only rang a bell. Step on it, if you dare to wake the old games.",
             "Behind the champions' wall lies a quiet room where victors rested and the defeated were mourned.",
+        },
+        ["Hanging Cisterns"] = new[]
+        {
+            "The cistern-keepers' vault. They weighed every plate and pulled the high lever before the gate would lift for them.",
+            "Carved by an apprentice: 'The weights slide only on level stone. Stuck one against a wall? Grip it and pull it back (Shift and E).'",
+            "A hollow behind the stones. Some keeper hid their savings where the others never thought to knock.",
+            "The Hanging Cisterns. The water is long gone; three ledges hang high above its bed, each with its weights and plates. Wings will carry you up.",
         },
         ["Deepdelve Quarry"] = new[]
         {

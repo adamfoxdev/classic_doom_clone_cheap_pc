@@ -572,12 +572,15 @@ public sealed class Renderer
                 lv.Seen[ci] = true;
                 char c = lv.Cells[ci];
                 bool door = Level.IsDoor(c);
-                if (c != '\0' && !door)
+                // a pushable block with room above it is a one-unit box: its face rises like a step, you see its top
+                // and over it (under open sky, or a tall ceiling, it would otherwise run all the way up)
+                bool box = c == 'X' && lv.Heights[ci] - lv.Floors[ci] > BlockHeight + 0.05f;
+                if (c != '\0' && !door && !box)
                 {
                     WallSpan(x, WallTex(lv, c, ci), d, side, wx, curH, curF, clipTop, clipBot, rdx, rdy, baseLight, c is 'L' or 'X' ? UpperTex(lv, ci) : null, Hi(ci, Level.Face.Wall));
                     break;
                 }
-                float newH = lv.Heights[ci], newF = lv.Floors[ci];
+                float newH = lv.Heights[ci], newF = box ? lv.Floors[ci] + BlockHeight : lv.Floors[ci];
                 if (newH < curH)
                 {
                     // the ceiling steps down: a band of wall hangs over the opening
@@ -587,7 +590,9 @@ public sealed class Renderer
                 if (newF > curF)
                 {
                     // the floor steps up: the face of the step
-                    WallSpan(x, lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Floor)] : Art.StepRiser, d, side, wx, newF, curF, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, Level.Face.Floor));
+                    var riser = box ? Art.Block : lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Floor)] : Art.StepRiser;
+                    WallSpan(x, riser, d, side, wx, newF, box ? lv.Floors[ci] : curF, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, box ? Level.Face.Wall : Level.Face.Floor));
+                    if (box && lv.Floors[ci] > curF) WallSpan(x, Art.StepRiser, d, side, wx, lv.Floors[ci], curF, clipTop, clipBot, rdx, rdy, baseLight);
                     clipBot = MathF.Min(clipBot, RowOf(newF, d));
                 }
                 if (door)
@@ -640,6 +645,9 @@ public sealed class Renderer
 
         DrawSprites(g);
     }
+
+    /// <summary>How tall a pushable block stands.</summary>
+    public const float BlockHeight = 1f;
 
     /// <summary>Screen row where height z appears at distance d.</summary>
     float RowOf(float z, float d) => _horizon - (z - _eyeZ) * Proj / d;

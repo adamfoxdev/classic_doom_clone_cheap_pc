@@ -857,7 +857,7 @@ public sealed class Game
         Time += dt;
         AchievementTime -= dt;
         if (Difficulties.Of(Vars) != Difficulty.Nightmare) _nightmareThroughout = false;
-        if ((_achieveCheck -= dt) <= 0) { _achieveCheck = 0.25f; Achievements.Check(this); }
+        if (AchievementsOn && (_achieveCheck -= dt) <= 0) { _achieveCheck = 0.25f; Achievements.Check(this); }
 
         // the developer console (~) pauses the game while it is open
         if (inp.ConsoleToggle) Con.Open = !Con.Open;
@@ -1783,6 +1783,8 @@ public sealed class Game
 
     /// <summary>A cheat's been used this game (console give, kill, god mode...): no achievements until a new one.</summary>
     public bool Cheated;
+    /// <summary>Check for achievements as you play (the screenshot tool turns it off, so no banner photobombs a shot).</summary>
+    public bool AchievementsOn = true;
     /// <summary>Deaths this game, and whether it's been on Nightmare all along, for the achievements.</summary>
     public int RunDeaths;
     bool _nightmareThroughout;
