@@ -19,6 +19,8 @@ public sealed class ArenaState
     public readonly Dictionary<Perk, int> Perks = new();
     /// <summary>The three perks on offer after a boss wave, until you pick one (the next wave waits); else null.</summary>
     public Perk[] Offer;
+    /// <summary>The highlighted perk on offer (Left/Right to move, Enter to take it), for pads and arrow keys.</summary>
+    public int OfferCursor;
     float _regen, _mana;
 
     public int Rank(Perk p) => Perks.TryGetValue(p, out int r) ? r : 0;
@@ -153,10 +155,12 @@ public sealed class ArenaState
             g.GainXp(Game.Xp.PerWave * Wave);
             if (g.ArenaMode) g.ArenaWaveCleared(Wave);
             if (!Has(ArenaMod.NoSupplies)) Reward(g);
+            ArsenalDrop(g); // not a supply: it comes even with No supplies
             // after a boss wave, a perk to pick
             if (g.ArenaMode && Wave % 5 == 0)
             {
                 Offer = RollOffer();
+                OfferCursor = 0;
                 if (Offer.Length == 0) Offer = null;
                 else { g.Say("Choose a perk: press 1, 2 or 3."); g.PlaySound(Sfx.Lore, 1); }
             }
@@ -229,7 +233,11 @@ public sealed class ArenaState
             t.Level = _lv;
             _lv.Things.Add(t);
         }
-        // every third wave, an arsenal upgrade on the altar itself: your weapons keep up with the waves
+    }
+
+    /// <summary>Every third wave, an arsenal upgrade on the altar itself: your weapons keep up with the waves.</summary>
+    void ArsenalDrop(Game g)
+    {
         if (Wave % Arsenal.Every == 0 && Wave / Arsenal.Every <= Arsenal.MaxTier)
         {
             _lv.Things.Add(new Pickup(PickupKind.Upgrade, 0.5f) { X = _altar.x, Y = _altar.y, Level = _lv });
@@ -356,15 +364,20 @@ public static class ArenaModInfo
     public static string About(ArenaMod m) => m switch
     {
         ArenaMod.DoubleSpeed => "MONSTERS MOVE TWICE AS FAST.",
-        ArenaMod.NoSupplies => "NOTHING APPEARS AT THE ALTAR BETWEEN WAVES, AND THE ARMOURY IS BARE.",
+        ArenaMod.NoSupplies => "NO HEALTH, MANA OR ITEMS BETWEEN WAVES AND A BARE ARMOURY (ARSENAL UPGRADES STILL COME).",
         ArenaMod.MeleeOnly => "ONLY YOUR FIRST WEAPON: NO STAFFS, AXES OR SPELLS.",
         _ => "A RANDOM CLASS EACH RUN, INSTEAD OF PICKING ONE.",
     };
 
     public static float Multiplier(ArenaMod mods) => 1 + All.Where(m => (mods & m) != 0).Sum(Bonus);
 
-    /// <summary>A run's score: 100 a wave, times the modifiers' multiplier.</summary>
-    public static int Score(int waves, ArenaMod mods) => (int)MathF.Round(waves * 100 * Multiplier(mods));
+    /// <summary>A run's score: 100 a wave, times the modifiers' multiplier and the difficulty's (half on Easy, 1.5 on Nightmare).</summary>
+    public static int Score(int waves, ArenaMod mods, Difficulty difficulty = Difficulty.Normal) =>
+        (int)MathF.Round(waves * 100 * Multiplier(mods) * Difficulties.ScoreFactor(difficulty));
 
     public static string Letters(ArenaMod mods) => mods == ArenaMod.None ? "-" : new string(All.Where(m => (mods & m) != 0).Select(Letter).ToArray());
+
+    /// <summary>A leaderboard run's letters: its modifiers, then E (Easy) or X (Nightmare).</summary>
+    public static string Letters(ArenaMod mods, Difficulty d) =>
+        Difficulties.Letter(d) is { Length: > 0 } dl ? (mods == ArenaMod.None ? dl : Letters(mods) + dl) : Letters(mods);
 }

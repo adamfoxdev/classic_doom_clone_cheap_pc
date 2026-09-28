@@ -224,6 +224,22 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `F12` | Save a screenshot |
 | `~` | Developer console |
 
+**Gamepad:** plug in a controller (Xbox-style layout shown) and it works alongside the keyboard and mouse; the game
+says when one connects. The layout is fixed:
+
+| Pad | Action |
+|---|---|
+| Left stick | Move and strafe |
+| Right stick | Look (`padlook` in the console sets how fast; **Invert mouse** flips it too) |
+| RT / LT | Attack / jetpack |
+| A | Jump; confirm in menus |
+| B | Slide; back out of menus |
+| X / Y | Use / use a healing item |
+| LB / RB | Previous / next weapon |
+| D-pad | Menus, and picking an arena perk (with A) |
+| Start / Back | Pause menu / automap |
+| L3 / R3 | Character screen / place a block |
+
 ### Quake movement
 
 Movement has momentum, like Quake. On the ground you speed up to your run speed and slide briefly to a stop when you
@@ -350,7 +366,7 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
   | Modifier | What it does | Score |
   |---|---|---|
   | Double-speed monsters (S) | monsters move twice as fast | +60% |
-  | No supplies (N) | nothing appears at the altar between waves, and the armoury is bare | +40% |
+  | No supplies (N) | no health, mana or items at the altar between waves, and the armoury is bare (arsenal upgrades still come) | +40% |
   | Melee only (M) | only your first weapon; the others won't come out | +50% |
   | Random class (R) | skips the class screen and rolls a class for every run | +15% |
 
@@ -600,6 +616,23 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
     drops a whole grade and your combo breaks.
 
   ![Arcade mode in the Chaos Arena](docs/arcade_mode.png)
+- **Difficulty** (or `difficulty easy|normal|nightmare` in the console): presets for three existing settings.
+
+  | Difficulty | Your damage | Monster damage | Monster speed |
+  |---|---|---|---|
+  | Easy | 125% | 50% | 85% |
+  | Normal (the default) | 100% | 100% | 100% |
+  | Nightmare | 100% | 175% | 135% |
+
+  The class screen shows the one you're on. Changing `damage`, `monsterdamage` or `monsterspeed` in the console
+  makes it **Custom**. Custom lasts only the session, and arena runs on it aren't recorded. In the arena, Easy
+  halves a run's score and Nightmare multiplies it by 1.5; the leaderboard marks those runs `E` and `X`. Relaxed
+  mode has no fighting, so difficulty doesn't matter there.
+- **Music volume** (or `music 0-1` in the console): 60% by default, down to off. Every map theme has its own
+  procedural loop, and so do the title and the practice courses. Each is composed in code from its tempo, key,
+  mode, chords and drums, with a seeded melody. The same tunes play on organ, strings and flute in the fantasy
+  style, and on saw pads, square arpeggios and drum machines in sci-fi. Moving between maps crossfades from one to
+  the next. `--sounds dir` exports the loops as WAV files along with the sound effects.
 - **Crosshair** (or `crosshair 0-3` in the console): off (the default), a dot, a cross or a circle, drawn light with
   a dark outline at the centre of the view, where your shots go. It follows the horizon when you look up or down,
   works with any HUD style, and hides on the automap and in the cockpit (which has its own gunsight).
@@ -628,6 +661,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
+| `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
 | `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `-` none |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
@@ -643,7 +677,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
 `gravity`, `jump`, `slidespeed`, `chests` (per 200 floor cells, next game), `god`, `noclip`, `notarget`, `freeze`, `infinitemana`, `infinitefuel`, `fullbright`, `showfps`, `hud` (0 full, 1 compact, 2 minimal, 3 off), `crosshair` (0 off, 1 dot, 2 cross, 3 circle),
-`quakemove` (1 Quake movement, 0 classic) and its tuning: `accel`, `airaccel`, `friction`, `maxhop` (top speed as a multiple of your run speed), `ghost` (race your best practice run), `strafehelp` (0 off, 1 practice course, 2 everywhere).
+`quakemove` (1 Quake movement, 0 classic) and its tuning: `accel`, `airaccel`, `friction`, `maxhop` (top speed as a multiple of your run speed), `ghost` (race your best practice run), `strafehelp` (0 off, 1 practice course, 2 everywhere), `music` (volume, 0-1), `padlook` (gamepad look speed).
 
 Hexen's cheat codes work when typed during play (or in the console):
 `satan` (god), `casper` (noclip), `nra` (all weapons & mana), `indiana` (items), `locksmith` (keys), `icarus` (jetpack),
@@ -738,6 +772,8 @@ in both looks (`76_…`, `77_…`).
 | `src/Words.cs` | Names and messages in the current style (e.g. Heresiarch → Overmind) |
 | `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
+| `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
+| `src/Gamepad.cs` | Gamepad layout: sticks, triggers and buttons turned into game input |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |
 | `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |

@@ -70,7 +70,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int TitleTop = 118, TitleRow = 9, TitleFooter = 192, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 28, OptionsRow = 11, OptionsFooter = 188;
+    public const int TitleTop = 118, TitleRow = 9, TitleFooter = 192, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 26, OptionsRow = 10, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected)
     {
@@ -107,7 +107,7 @@ public sealed class Renderer
                     bool sel = i == m.Cursor;
                     string label = items[i].ToUpperInvariant(), val = m.Value(i);
                     if (val == "") { MenuItem(label, y, sel); continue; }
-                    if (sel) Rect(40, y - 2, 240, 11, Col.Rgb(70, 40, 20));
+                    if (sel) Rect(40, y - 1, 240, 10, Col.Rgb(70, 40, 20)); // rows are 10 apart
                     Text(48, y, label, sel ? MenuSel : MenuText);
                     string shown = sel ? $"< {val} >" : val;
                     Text(272 - Font.Width(shown), y, shown, sel ? MenuSel : Col.Rgb(170, 200, 255));
@@ -233,12 +233,13 @@ public sealed class Renderer
                 Text(46, y, $"{r.Score,5}", c);
                 Text(84, y, $"{r.Waves,2}", c);
                 Text(104, y, $"{r.Time:0.0}", c);
-                Text(142, y, ArenaModInfo.Letters((ArenaMod)r.Mods), c);
+                Text(142, y, ArenaModInfo.Letters((ArenaMod)r.Mods, (Difficulty)r.Difficulty), c);
                 Text(172, y, r.Name, c);
                 Text(250, y, r.When == default ? "-" : r.When.ToString("yyyy-MM-dd"), c);
             }
         }
-        CenterText("MODS: S FAST FOES  N NO SUPPLIES  M MELEE  R RANDOM", 172, MenuDim);
+        CenterText("S FAST FOES  N NO SUPPLIES  M MELEE  R RANDOM", 166, MenuDim);
+        CenterText("E EASY (SCORE X0.5)   X NIGHTMARE (SCORE X1.5)", 175, MenuDim);
         CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
     }
 
@@ -266,7 +267,9 @@ public sealed class Renderer
         if (m.Cursor < n)
             foreach (var (line, k) in Wrap(ArenaModInfo.About(ArenaModInfo.All[m.Cursor]), 50).Select((l, k) => (l, k)))
                 CenterText(line, 132 + k * 10, blue);
-        CenterText($"SCORE: 100 A WAVE  X{ArenaModInfo.Multiplier(g.ArenaMods):0.00}", 156, gold);
+        var diff = Difficulties.Of(g.Vars);
+        CenterText(diff == Difficulty.Custom ? "CUSTOM DIFFICULTY: RUNS AREN'T RECORDED"
+            : $"SCORE: 100 A WAVE  X{ArenaModInfo.Multiplier(g.ArenaMods) * Difficulties.ScoreFactor(diff):0.00}" + (diff == Difficulty.Normal ? "" : $"  ({Difficulties.Name(diff)})"), 156, gold);
         DrawArenaTargets(168);
         CenterText("ENTER/LEFT/RIGHT: SWITCH   ESC: BACK", 186, MenuDim);
     }
@@ -280,11 +283,12 @@ public sealed class Renderer
         int top = 36, h = 20 + a.Offer.Length * 24;
         void Line(string t, int y, uint c) => Text(left + (width - Font.Width(t)) / 2, y, t, c);
         Darken(left, top, width, h, 200);
-        Line("CHOOSE A PERK: PRESS 1, 2 OR 3", top + 5, gold);
+        Line("CHOOSE A PERK: 1, 2, 3 OR ARROWS + ENTER", top + 5, gold);
         for (int i = 0; i < a.Offer.Length; i++)
         {
             var perk = a.Offer[i];
             int y = top + 20 + i * 24, rank = a.Rank(perk) + 1;
+            if (i == a.OfferCursor) Rect(left + 6, y - 3, width - 12, 22, Col.Rgb(70, 40, 20));
             Line($"{i + 1}  {PerkInfo.Name(perk).ToUpperInvariant()} {PerkInfo.Roman(rank)}", y, Col.Rgb(255, 230, 120));
             Line(PerkInfo.About(perk).ToUpperInvariant(), y + 10, blue);
         }
@@ -1627,6 +1631,9 @@ public sealed class Renderer
         if (g.PendingArena) CenterText(Words.T("THE CHAOS ARENA: SURVIVE THE WAVES"), 28, Col.Rgb(230, 120, 255));
         else if (g.PendingPractice) CenterText($"PRACTICE: {g.PendingCourse.Name.ToUpperInvariant()}", 28, Col.Rgb(170, 200, 255));
         else CenterText(g.Relaxed ? "RELAXED MODE" : "CLASSIC MODE", 28, g.Relaxed ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 150, 120));
+        // the difficulty, under the classes (relaxed mode has no fighting, so none to show)
+        if (!g.Relaxed && !g.PendingPractice)
+            Text(18, 110, $"DIFFICULTY: {Difficulties.Name(Difficulties.Of(g.Vars))}", Col.Rgb(170, 160, 140));
         for (int i = 0; i < 3; i++)
         {
             var cd = ClassDef.All[i];
@@ -1644,7 +1651,7 @@ public sealed class Renderer
             Text(18, 142 + i * 10, $"{i + 1}. {w.Name}{mana}", Col.Rgb(200, 190, 170));
         }
         var wt = Art.Weapons[g.MenuIndex * 3 + ((int)(g.Time) % 3)][((int)(g.Time * 3) % 3 == 0) ? 1 : 0];
-        Rect(170, 34, 140, 86, Col.Rgb(20, 16, 14));
+        Rect(170, 37, 140, 83, Col.Rgb(20, 16, 14)); // clear of the mode line above
         Icon2(wt, 176, 38);
         CenterText("UP/DOWN + ENTER, OR PRESS 1-3", 188, Col.Rgb(170, 160, 140));
     }
