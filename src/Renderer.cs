@@ -78,10 +78,10 @@ public sealed class Renderer
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
     public const int TitleTop = 108, TitleRow = 9, TitleFooter = 190, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 26, OptionsRow = 9, OptionsFooter = 188;
 
-    void MenuItem(string text, int y, bool selected)
+    void MenuItem(string text, int y, bool selected, int cx = W / 2)
     {
         text = text.ToUpperInvariant();
-        int x = (W - Font.Width(text)) / 2;
+        int x = cx - Font.Width(text) / 2;
         if (selected)
         {
             Rect(x - 12, y - 2, Font.Width(text) + 22, 11, Col.Rgb(70, 40, 20));
@@ -168,34 +168,40 @@ public sealed class Renderer
 
             case MenuPage.Courses:
                 CenterText("PRACTICE", 14, Col.Rgb(230, 190, 80), 2);
-                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 30 + i * 9, i == m.Cursor);
+                int half = MenuSystem.CourseColumn(items.Length);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 36 + i % half * 11, i == m.Cursor, i < half ? W / 4 + 8 : W * 3 / 4 - 8);
                 if (m.Cursor < Courses.All.Length)
                 {
                     var course = Courses.All[m.Cursor];
-                    foreach (var (line, k) in Wrap(course.About, 50).Select((l, k) => (l, k))) CenterText(line, 130 + k * 9, Col.Rgb(170, 200, 255));
-                    if (course.Timed) DrawMedalTable(g, course, 150);
+                    foreach (var (line, k) in Wrap(course.About, 50).Select((l, k) => (l, k))) CenterText(line, 118 + k * 10, Col.Rgb(170, 200, 255));
+                    if (course.Timed) DrawMedalTable(g, course, 142);
                     if (course.Endless)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.EndlessBest(c)}");
-                        CenterText("BEST: " + string.Join("   ", bests), 152, Col.Rgb(230, 190, 80));
+                        CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
                     }
                     if (course.Tower)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.TowerBest(c):0.0}");
-                        CenterText("BEST: " + string.Join("   ", bests), 152, Col.Rgb(230, 190, 80));
+                        CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
                     }
                     if (course.Soccer)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.SoccerBest(c)}");
-                        CenterText("MOST GOALS: " + string.Join("   ", bests), 152, Col.Rgb(230, 190, 80));
+                        CenterText("MOST GOALS: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                    }
+                    if (course.Pool)
+                    {
+                        var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {(g.Profile.PoolBest(c) is > 0 and var b ? $"{b:0.0}S" : "-")}");
+                        CenterText("QUICKEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
                     }
                     if (course.Range)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.RangeBest(c)}");
-                        CenterText("BEST DRILL: " + string.Join("   ", bests), 152, Col.Rgb(230, 190, 80));
+                        CenterText("BEST DRILL: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
                     }
                 }
-                CenterText("ARROWS + ENTER    ESC: BACK", 191, MenuDim);
+                CenterText("ARROWS + ENTER    ESC: BACK", 186, MenuDim);
                 break;
         }
 
@@ -216,6 +222,7 @@ public sealed class Renderer
         if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
         if (m.BoardTower) { DrawTowerBoard(g, def); return; }
         if (m.BoardSoccer) { DrawSoccerBoard(g, def); return; }
+        if (m.BoardPool) { DrawPoolBoard(g, def); return; }
         if (m.BoardRail) { DrawRailBoard(g, def); return; }
         if (m.BoardInstagib) { DrawInstagibBoard(g, def); return; }
         if (m.BoardRange) { DrawRangeBoard(g, def); return; }
@@ -1789,6 +1796,7 @@ public sealed class Renderer
         if (g.OnRange && style != HudStyle.Off) DrawRangeHud(g);
         if (g.OnTower && style != HudStyle.Off) DrawTowerHud(g);
         if (g.OnSoccer && style != HudStyle.Off) DrawSoccerHud(g);
+        if (g.OnPool && style != HudStyle.Off) DrawPoolHud(g);
         if (g.LastTrick != Trick.None && g.TrickAge < Tricks.CalloutTime && style != HudStyle.Off)
         {
             // a trick's name across the view, fading as it goes
@@ -2005,6 +2013,37 @@ public sealed class Renderer
         string mark = ahead ? "v" : rel > 0 ? ">" : "<";
         Text(ax - Font.Width(label) / 2, 36, label, lit);
         Text(ax - Font.Width(mark) / 2, 44, mark, lit);
+    }
+
+    void DrawPoolBoard(Game g, ClassDef def) =>
+        DrawRunBoard(g, $"ROCKET POOL   < {def.Name.ToUpperInvariant()} >", "TIME TO CLEAR THE TABLE, THEN FEWEST SHOTS", "NO TABLES CLEARED YET. PICK PRACTICE > ROCKET POOL.",
+            new[] { ("TIME", 40), ("SHOTS", 92), ("FOULS", 140), ("NAME", 192), ("DATE", 258) }, g.Profile.PoolBoard(g.Menu.BoardClass), r => r.When,
+            r => new[] { $"{r.Time:0.0}", $"{r.Shots}", $"{r.Fouls}", r.Name, r.When == default ? "-" : r.When.ToString("MM-dd") });
+
+    /// <summary>At the table: the clock (penalties in), balls left, fouls, your best, and the balls still to pot, as coloured chips under them.</summary>
+    void DrawPoolHud(Game g)
+    {
+        int y = g.Vars.ShowFps ? 12 : 3;
+        float best = g.Profile.PoolBest(g.P.Class);
+        void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
+        Right($"{g.PoolTime:0.0}S", 0, g.RunStarted ? Col.Rgb(240, 236, 220) : Col.Rgb(150, 150, 160));
+        int left = g.PoolBalls.Count(b => !b.Removed);
+        Right($"BALLS {left}", 10, Col.Rgb(120, 255, 140));
+        int dy = 20;
+        if (g.PoolFouls > 0) { Right($"FOULS {g.PoolFouls}", dy, Col.Rgb(255, 110, 90)); dy += 10; }
+        if (best > 0) { Right($"BEST {best:0.0}S", dy, Col.Rgb(255, 220, 90)); dy += 10; }
+        // the balls still on the table, as chips of their colours, right-aligned under the numbers
+        var still = g.PoolBalls.Where(b => !b.Removed).OrderBy(b => b.Number).ToList();
+        int x = W - 4 - still.Count * 9 + 1, cy = y + dy + 1;
+        foreach (var b in still)
+        {
+            var c = Pool.Colours[b.Number];
+            uint col = Col.Rgb(c.r, c.g, c.b);
+            Rect(x, cy, 8, 8, Col.Rgb(10, 10, 12));
+            Rect(x + 1, cy + 1, 6, 6, Pool.Striped(b.Number) ? Col.Rgb(240, 238, 230) : col);
+            if (Pool.Striped(b.Number)) Rect(x + 1, cy + 3, 6, 2, col);
+            x += 9;
+        }
     }
 
     void DrawRailBoard(Game g, ClassDef def) =>

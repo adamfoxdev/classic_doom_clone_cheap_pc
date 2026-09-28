@@ -26,7 +26,7 @@ public sealed class MenuSystem
     /// come after the timed courses in the order of OtherBoards.
     /// </summary>
     public string BoardPage = "hangar";
-    public static readonly string[] OtherBoards = { "endless", "tower", "soccer", "range", "rail", "rematch", "arena", "instagib", "daily" };
+    public static readonly string[] OtherBoards = { "endless", "tower", "soccer", "pool", "range", "rail", "rematch", "arena", "instagib", "daily" };
     bool Is(string page) => BoardPage == page;
     void Set(string page, bool on) { if (on) BoardPage = page; else if (BoardPage == page) BoardPage = BoardCourse.Id; }
     /// <summary>The arena's board (waves) rather than a course's (times).</summary>
@@ -38,6 +38,8 @@ public sealed class MenuSystem
     public bool BoardTower { get => Is("tower"); set => Set("tower", value); }
     /// <summary>Rocket Soccer's board.</summary>
     public bool BoardSoccer { get => Is("soccer"); set => Set("soccer", value); }
+    /// <summary>Rocket Pool's board.</summary>
+    public bool BoardPool { get => Is("pool"); set => Set("pool", value); }
     /// <summary>The shooting range's drill board, and its rail trials'.</summary>
     public bool BoardRange { get => Is("range"); set => Set("range", value); }
     public bool BoardRail { get => Is("rail"); set => Set("rail", value); }
@@ -50,6 +52,9 @@ public sealed class MenuSystem
 
     public MenuSystem(Game g) { _g = g; }
 
+    /// <summary>How many of the course list's items go in its left column (the rest, and Back, in the right).</summary>
+    public static int CourseColumn(int items) => (items + 1) / 2;
+
     public bool Open => Page != null;
 
     public void Show(MenuPage p)
@@ -61,7 +66,7 @@ public sealed class MenuSystem
             BoardClass = _g.P?.Class ?? PClass.Fighter;
             BoardCourse = _g.Practicing && _g.Course.Timed ? _g.Course : Courses.Hangar;
             BoardPage = _g.ArenaMode && _g.DailyMode ? "daily" : _g.ArenaMode && _g.InstagibOn ? "instagib" : _g.ArenaMode ? "arena"
-                : _g.OnEndless ? "endless" : _g.OnTower ? "tower" : _g.OnSoccer ? "soccer" : _g.OnRange ? (_g.RailTrial ? "rail" : "range") : _g.Rematch != null ? "rematch" : BoardCourse.Id;
+                : _g.OnEndless ? "endless" : _g.OnTower ? "tower" : _g.OnSoccer ? "soccer" : _g.OnPool ? "pool" : _g.OnRange ? (_g.RailTrial ? "rail" : "range") : _g.Rematch != null ? "rematch" : BoardCourse.Id;
             BoardBoss = _g.Rematch != null ? Array.IndexOf(MiniBosses.All, _g.Rematch) : 0;
             BoardDay = 0;
         }
@@ -207,6 +212,15 @@ public sealed class MenuSystem
                 else if (Cursor == Bindings.Count) { _g.Binds.Reset(); Say("Key bindings reset to defaults."); _g.PlaySound(Sfx.Item, 1); }
                 else Back();
             }
+            return;
+        }
+
+        // the course list is two columns: Left and Right cross between them
+        if (Page == MenuPage.Courses && (inp.Left || inp.Right))
+        {
+            int half = CourseColumn(items.Length);
+            Cursor = Cursor < half ? Math.Min(items.Length - 1, Cursor + half) : Cursor - half;
+            _g.PlaySound(Sfx.Swing, 0.3f);
             return;
         }
 
