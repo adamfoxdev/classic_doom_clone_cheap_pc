@@ -925,6 +925,12 @@ public static partial class Headless
         // victory screen
         g.Mode = GameMode.Victory;
         Shot("12_victory");
+
+        // New Game+: the victory screen offering the next tier, and the class choice for it
+        g.Profile.NgUnlocked = 2; g.NgTier = 1;
+        Shot("113_ng_plus_victory");
+        g.Mode = GameMode.ClassSelect; g.NgTier = 2; g.MenuIndex = 0;
+        Shot("114_ng_plus_class");
         return 0;
     }
 }

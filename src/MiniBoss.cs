@@ -262,7 +262,7 @@ public sealed partial class Game
             case Special.Blinker:
                 if (m.State is AiState.Chase or AiState.Pain && m.Health <= m.NextBlinkHp && m.Health > 0)
                 {
-                    m.NextBlinkHp -= def.Health / 5;
+                    m.NextBlinkHp -= m.MaxHealth / 5;
                     Blink(m);
                     return true;
                 }

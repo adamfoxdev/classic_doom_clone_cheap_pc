@@ -802,7 +802,7 @@ public sealed partial class Game
         string NextName() => names[nameIndex++ % names.Count];
         foreach (var lv in Hub)
         {
-            if (!Practicing && !ArenaMode && !StoryMode) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses, the arena and cases stay clear
+            if (!Practicing && !ArenaMode && !StoryMode) Chests.Scatter(lv, _loot, Vars.Chests * NgPlus.Chests(NgEligible ? NgTier : 0)); // practice courses, the arena and cases stay clear
             ChestsTotal += lv.Things.Count(t => t is Chest);
 
             // treasure in secret nooks: a relic when relaxed, a Mystic Urn in classic
@@ -817,6 +817,7 @@ public sealed partial class Game
                 foreach (var m in lv.Things.OfType<Monster>()) { m.State = AiState.Idle; m.StrafeTime = RandF() * 3; }
             }
         }
+        ApplyNgPlus();
         RelicsTotal = Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Relic }));
         LoreTotal = Hub.Sum(l => l.Things.Count(t => t is LoreStone));
         SecretsTotal = Hub.Sum(l => l.SecretCount);
@@ -916,7 +917,9 @@ public sealed partial class Game
                 return;
             case GameMode.Victory:
                 // a play-tested map starts over, so you can keep iterating; the hub goes back to the title
-                if (inp.Confirm) { if (StoryMode) GoToTitle(); else if (TestingMap) NewGame(P.Class); else GoToTitle(); }
+                // a classic campaign win offers the next New Game+ tier on Enter; Esc goes back to the title
+                if (inp.Confirm && OffersNgPlus) { StartNewGamePlus(P.Class, NgTier + 1); PlaySound(Sfx.Teleport, 1); }
+                else if (inp.Confirm || (inp.Pause && OffersNgPlus)) { if (StoryMode) GoToTitle(); else if (TestingMap) NewGame(P.Class); else GoToTitle(); }
                 return;
         }
 
@@ -1260,6 +1263,7 @@ public sealed partial class Game
                         if (RunDeaths == 0) Profile.FlawlessWins++;
                         if (_nightmareThroughout && Difficulties.Of(Vars) == Difficulty.Nightmare) Profile.NightmareWins++;
                         if (!Profile.ClassWins.Contains(P.Class.ToString())) Profile.ClassWins.Add(P.Class.ToString());
+                        NgPlusWon();
                     }
                     GainXp(Xp.Victory);
                     Achievements.Check(this);
@@ -1867,7 +1871,7 @@ public sealed partial class Game
     void KilledWith(Monster m, int slot)
     {
         if (NoXp) return;
-        int xp = Xp.Kill(m.Def);
+        int xp = (int)(Xp.Kill(m.Def) * NgPlus.Xp(NgTier));
         Profile.TotalKills++;
         GainXp(xp);
         if (Profile.AddWeaponXp(P.Class, slot, xp))
@@ -2738,7 +2742,7 @@ public sealed partial class Game
     public Monster SpawnMonster(MonsterDef def, float x, float y, float healthMult, float damageMult, float speedMult)
     {
         var m = new Monster(def) { X = x, Y = y, Level = Level, DamageMult = damageMult, SpeedMult = speedMult };
-        m.Health = (int)(def.Health * healthMult);
+        m.Health = m.MaxHealth = (int)(def.Health * healthMult);
         Level.Things.Add(m);
         SpawnPuff(Art.BossBall[1], x, y, Level.FloorAt(x, y) + 0.5f, 0.8f);
         Sound(Sfx.Teleport, x, y);

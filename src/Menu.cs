@@ -70,7 +70,8 @@ public sealed class MenuSystem
     {
         // Continue heads the list when there's a saved campaign to pick up
         MenuPage.Main => (_g.CheckSave() != null ? new[] { "Continue" } : Array.Empty<string>())
-            .Concat(new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
+            .Concat(new[] { "New game" }).Concat(_g.Profile.NgUnlocked > 0 ? new[] { "New Game+" } : Array.Empty<string>())
+            .Concat(new[] { "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
         MenuPage.Pause => _g.Practicing
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : _g.ArenaMode
@@ -312,6 +313,11 @@ public sealed class MenuSystem
                     if (_g.Continue()) _g.PlaySound(Sfx.Teleport, 1);
                     break;
                 case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
+                case "New Game+":
+                    // the highest tier you've opened, in classic style; pick a class and go
+                    _g.Style = GameStyle.Classic; _g.NgTier = _g.Profile.NgUnlocked; _g.PendingPractice = _g.PendingArena = false;
+                    Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
+                    break;
                 case "Story": Close(); _g.StartStory(0); break;
                 case "Practice": Show(MenuPage.Courses); break;
                 case "Arena": Show(MenuPage.ArenaSetup); Cursor = ArenaModInfo.All.Length; break;
@@ -324,7 +330,7 @@ public sealed class MenuSystem
         }
         switch (Page, Cursor)
         {
-            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.PendingPractice = _g.PendingArena = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.NgTier = 0; _g.PendingPractice = _g.PendingArena = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
             case (MenuPage.Courses, var c) when c < Courses.All.Length:
                 _g.Style = GameStyle.Classic; _g.PendingPractice = true; _g.PendingArena = false; _g.PendingCourse = Courses.All[c];
                 Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;

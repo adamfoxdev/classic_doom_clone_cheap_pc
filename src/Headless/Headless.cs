@@ -65,6 +65,8 @@ public static partial class Headless
         ArenaModeChecks(Check);
         Console.WriteLine("Save and continue:");
         SaveChecks(Check);
+        Console.WriteLine("New Game+:");
+        NgPlusChecks(Check);
         Console.WriteLine("Achievements:");
         AchievementChecks(Check);
         Console.WriteLine("Music:");

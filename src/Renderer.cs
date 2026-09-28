@@ -469,7 +469,7 @@ public sealed class Renderer
         int w = 144, x = (W - w) / 2, y = ViewH - 22; // clear of the level bar in the corner
         Darken(x - 4, y - 3, w + 8, 20, 170);
         CenterText(name, y, Col.Rgb(255, 210, 120));
-        Bar(x, y + 11, w, 4, b.Health / (float)b.Def.Health, Col.Rgb(220, 50, 40));
+        Bar(x, y + 11, w, 4, b.Health / (float)b.MaxHealth, Col.Rgb(220, 50, 40));
     }
 
     /// <summary>A freshly unlocked achievement, for a few seconds under the top of the view.</summary>
@@ -1867,6 +1867,7 @@ public sealed class Renderer
         CenterText("CHOOSE YOUR CLASS", 10, Col.Rgb(230, 170, 50), 2);
         if (g.PendingArena) CenterText(Words.T("THE CHAOS ARENA: SURVIVE THE WAVES"), 28, Col.Rgb(230, 120, 255));
         else if (g.PendingPractice) CenterText($"PRACTICE: {g.PendingCourse.Name.ToUpperInvariant()}", 28, Col.Rgb(170, 200, 255));
+        else if (g.NgTier > 0) CenterText($"{NgPlus.Name(g.NgTier)}: {NgPlus.Short(g.NgTier)}", 28, Col.Rgb(255, 120, 90));
         else CenterText(g.Relaxed ? "RELAXED MODE" : "CLASSIC MODE", 28, g.Relaxed ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 150, 120));
         // the difficulty, under the classes (relaxed mode has no fighting, so none to show)
         if (!g.Relaxed && !g.PendingPractice)
@@ -1926,13 +1927,18 @@ public sealed class Renderer
         }
         else
         {
-            CenterText(Words.T("THE HERESIARCH HAS FALLEN."), 80, Col.Rgb(230, 220, 200));
+            CenterText(Words.T("THE HERESIARCH HAS FALLEN.") + (g.NgTier > 0 ? $" ({NgPlus.Name(g.NgTier)})" : ""), 80, Col.Rgb(230, 220, 200));
             CenterText($"THE {p.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL...", 94, Col.Rgb(230, 220, 200));
             CenterText($"KILLS: {p.Kills}    CHESTS: {p.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 116, stat);
             CenterText($"SECRETS: {p.Secrets}/{g.SecretsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}", 128, stat);
         }
         if (!g.TestingMap)
             CenterText($"LEVEL {g.Profile.Level}    +{g.RunXp} XP THIS RUN", 144, g.Profile.Points > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
-        CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
+        if (g.OffersNgPlus)
+        {
+            CenterText($"ENTER: {NgPlus.Name(g.NgTier + 1)}", 158, Col.Rgb(255, 230, 120), 2);
+            CenterText("TOUGHER FOES, REMIXED LOOT.  ESC: TITLE", 178, Col.Rgb(200, 190, 170));
+        }
+        else CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
     }
 }

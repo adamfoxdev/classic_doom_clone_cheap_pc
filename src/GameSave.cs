@@ -65,6 +65,7 @@ public sealed partial class Game
         HubSource = Maps.BuildHub;
         TestingMap = false; Practicing = false; ArenaMode = false; StoryMode = false; Story = null; Demo = false;
         Style = style;
+        NgTier = s.NgTier;
         NewGame(cls);
         if (s.Levels.Count != Hub.Length || s.Levels.Where((l, i) => l.Name != Hub[i].RawName).Any()) return FailContinue();
         try { for (int i = 0; i < Hub.Length; i++) Saves.RestoreLevel(Hub[i], s.Levels[i]); }

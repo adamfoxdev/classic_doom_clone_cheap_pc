@@ -105,7 +105,7 @@ public sealed class MonsterDef
 public sealed class Monster : Thing
 {
     public readonly MonsterDef Def;
-    public int Health;
+    public int Health, MaxHealth;                   // MaxHealth: raised by New Game+, for the health bar
     public AiState State = AiState.Idle;
     public float StateTime, AttackCd, Anim, StuckTime, StrafeTime;
     public float StuckDX, StuckDY, StrafeSign = 1;
@@ -124,7 +124,7 @@ public sealed class Monster : Thing
 
     public Monster(MonsterDef def)
     {
-        Def = def; Health = def.Health; Radius = def.Radius; SpriteW = def.Width; SpriteH = def.Height; Z = def.FlyZ;
+        Def = def; Health = MaxHealth = def.Health; Radius = def.Radius; SpriteW = def.Width; SpriteH = def.Height; Z = def.FlyZ;
         Solid = true;
     }
 

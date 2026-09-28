@@ -26,6 +26,7 @@ public sealed class SaveGame
     public int LoreTotal { get; set; }
     public int SecretsTotal { get; set; }
     public int LevelIndex { get; set; }
+    public int NgTier { get; set; }
     public PlayerSave Player { get; set; }
     public CheckpointSave Checkpoint { get; set; }
     public List<LevelSave> Levels { get; set; } = new();
@@ -36,7 +37,7 @@ public sealed class SaveGame
         int t = (int)PlayTime;
         string map = hub != null && LevelIndex < hub.Length ? hub[LevelIndex].Name : Levels.Count > LevelIndex ? Words.T(Levels[LevelIndex].Name) : "?";
         var cls = Enum.TryParse<PClass>(Player?.Class, out var c) ? ClassDef.All[(int)c].Name : "?";
-        return $"{cls.ToUpperInvariant()} IN {map.ToUpperInvariant()}  {t / 3600}:{t / 60 % 60:00}:{t % 60:00}";
+        return $"{(NgTier > 0 ? NgPlus.Name(NgTier) + " " : "")}{cls.ToUpperInvariant()} IN {map.ToUpperInvariant()}  {t / 3600}:{t / 60 % 60:00}:{t % 60:00}";
     }
 
     // ------------------------------------------------------------ files
@@ -109,7 +110,7 @@ public sealed class ThingSave
     public float X, Y, Z;
     // monsters
     public string Def, State;
-    public int Health, NextBlinkHp, Summoner = -1;
+    public int Health, MaxHealth, NextBlinkHp, Summoner = -1;
     public bool Burrowed;
     public float DamageMult = 1, SpeedMult = 1;
     // pickups and decorations
@@ -145,7 +146,7 @@ public static class Saves
         {
             When = DateTime.Now, Style = g.Style.ToString(), PlayTime = g.PlayTime, RunXp = g.RunXp, RunDeaths = g.RunDeaths,
             Cheated = g.Cheated, NightmareThroughout = g.NightmareThroughout, ChestsTotal = g.ChestsTotal, RelicsTotal = g.RelicsTotal,
-            LoreTotal = g.LoreTotal, SecretsTotal = g.SecretsTotal, LevelIndex = Array.IndexOf(g.Hub, g.Level),
+            LoreTotal = g.LoreTotal, SecretsTotal = g.SecretsTotal, LevelIndex = Array.IndexOf(g.Hub, g.Level), NgTier = g.NgTier,
             Player = new PlayerSave
             {
                 Class = p.Class.ToString(), X = p.X, Y = p.Y, Angle = p.Angle, Pitch = p.Pitch, FloorZ = p.FloorZ, Fuel = p.Fuel,
@@ -178,7 +179,7 @@ public static class Saves
             switch (t)
             {
                 case Monster m:
-                    ts.Def = DefNames[m.Def]; ts.Health = m.Health; ts.NextBlinkHp = m.NextBlinkHp; ts.Burrowed = m.Burrowed;
+                    ts.Def = DefNames[m.Def]; ts.Health = m.Health; ts.MaxHealth = m.MaxHealth; ts.NextBlinkHp = m.NextBlinkHp; ts.Burrowed = m.Burrowed;
                     ts.DamageMult = m.DamageMult; ts.SpeedMult = m.SpeedMult;
                     // the dying finish dying; the rest wake up where they were (asleep if they hadn't seen you)
                     ts.State = !m.Alive ? "Dead" : m.State == AiState.Idle ? "Idle" : "Chase";
@@ -217,7 +218,7 @@ public static class Saves
         {
             Thing t = ts.Type switch
             {
-                nameof(Monster) => new Monster(Defs[ts.Def]) { Health = ts.Health, NextBlinkHp = ts.NextBlinkHp, DamageMult = ts.DamageMult, SpeedMult = ts.SpeedMult, Burrowed = ts.Burrowed, Solid = !ts.Burrowed },
+                nameof(Monster) => new Monster(Defs[ts.Def]) { Health = ts.Health, MaxHealth = ts.MaxHealth > 0 ? ts.MaxHealth : Defs[ts.Def].Health, NextBlinkHp = ts.NextBlinkHp, DamageMult = ts.DamageMult, SpeedMult = ts.SpeedMult, Burrowed = ts.Burrowed, Solid = !ts.Burrowed },
                 nameof(Pickup) => new Pickup(Enum.Parse<PickupKind>(ts.Kind), ts.W, ts.Variant) { Name = ts.Name },
                 nameof(Chest) => new Chest { Opened = ts.Opened },
                 nameof(LoreStone) => new LoreStone { Map = ts.Map, Index = ts.Index, Read = ts.Read },

@@ -38,6 +38,9 @@ public sealed class Profile
     public int FlawlessWins { get; set; }
     public int NightmareWins { get; set; }
     public int StoryWins { get; set; }
+    /// <summary>The highest New Game+ tier opened (0 until the campaign's been won), and the highest one won.</summary>
+    public int NgUnlocked { get; set; }
+    public int NgBest { get; set; }
     public List<string> ClassWins { get; set; } = new();
     public int ChestsOpened { get; set; }
     /// <summary>The mini-bosses you've beaten (their ids), for the achievement.</summary>

@@ -33,6 +33,7 @@ public static class Achievements
         new("heresiarch", "Heresiarch Slain", "Win the game in the classic style", 300, g => Pr(g).ClassicWins >= 1),
         new("flawless", "Untouchable", "Win in the classic style without dying once", 500, g => Pr(g).FlawlessWins >= 1),
         new("nightmare", "Nightmare Walker", "Win on Nightmare, start to finish", 750, g => Pr(g).NightmareWins >= 1),
+        new("ng_plus", "Once More, With Feeling", "Win a New Game+ campaign", 400, g => Pr(g).NgBest >= 1),
         new("pilgrim", "Pilgrim", "Win in the relaxed style: find every relic", 300, g => Pr(g).RelaxedWins >= 1),
         new("all_classes", "Jack of All Trades", "Win as all three classes", 500,
             g => Pr(g).ClassWins.Distinct().Count() >= 3, g => (Pr(g).ClassWins.Distinct().Count(), 3)),

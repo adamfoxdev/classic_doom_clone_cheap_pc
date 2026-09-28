@@ -169,6 +169,8 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
 - **Save and continue:** the campaign saves itself, and **Continue** on the title menu picks it up where you left
   off. See [Saving](#saving).
+- **New Game+:** beat the campaign in the classic style and go round again with tougher monsters and remixed loot,
+  keeping your level. See [New Game+](#new-game).
 - **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
 - **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
   invert mouse, field of view and FPS display. Settings are saved between sessions.
@@ -460,6 +462,35 @@ saved game, with your class, map and play time under it.
 - **Damaged saves:** a damaged save is ignored. So is one made before the maps changed shape, and it isn't
   overwritten either.
 
+## New Game+
+
+Beat the campaign in the classic style and the victory screen offers **New Game+**: press `Enter` to go round again
+as the same class, or `Esc` for the title. From then on **New Game+** is on the title menu too, and starts the
+highest tier you've opened.
+
+![The victory screen offering the next tier](docs/ng_plus_victory.png)
+![Choosing a class for New Game+ 2](docs/ng_plus_class.png)
+
+- **What you keep:** your level, skill points, skills and weapon levels, as always, since they live in your profile.
+- **What changes at each tier:**
+
+  | | Per tier | Tier 1 | Tier 2 | Tier 3 |
+  |---|---|---|---|---|
+  | Monster health | +50% | x1.5 | x2 | x2.5 |
+  | Monster damage | +25% | x1.25 | x1.5 | x1.75 |
+  | Monster speed | +8%, at most +40% | x1.08 | x1.16 | x1.24 |
+  | Chests | +25% | x1.25 | x1.5 | x1.75 |
+  | XP a kill | +25% | x1.25 | x1.5 | x1.75 |
+
+- **Remixed loot:** the vials, flasks, urns, mana and armor on each map swap places, so a remembered route finds
+  different things, and some vials have grown into flasks (15% a tier, at most half). Keys, weapons, relics and the
+  jetpack stay where they are. Chests roll their loot fresh, as they always do.
+- **Mini-bosses and the Heresiarch** are toughened like everything else; their health bars show the bigger health.
+- **Tiers:** winning a tier opens the next, up to New Game+9. Your first New Game+ win earns **Once More, With
+  Feeling**.
+- **Only the campaign:** the relaxed style, practice, the arena and Story mode don't have tiers.
+- **Saving:** a New Game+ campaign saves and continues like any other; the title's Continue line names the tier.
+
 ## Walkthrough (spoilers)
 
 Names here are the fantasy ones. In the sci-fi style: Winnowing Hall = Hab Ring, Frozen Keep = Cryo Labs,
@@ -674,7 +705,7 @@ points with `Enter`. Every skill has 10 ranks:
 harder per level. The game announces each level-up, and the character screen shows every weapon's level and
 progress.
 
-**Achievements:** there are 22, listed under **Character → Achievements**. Each pays experience once, when it
+**Achievements:** there are 23, listed under **Character → Achievements**. Each pays experience once, when it
 unlocks, with a banner and a message; this works anywhere, practice and the arena included. The list shows which
 you've got and when, and how far along you are with the ones that build up.
 
@@ -688,6 +719,7 @@ you've got and when, and how far along you are with the ones that build up.
 | Heresiarch Slain | Win the game in the classic style | 300 |
 | Untouchable | Win in the classic style without dying once | 500 |
 | Nightmare Walker | Win on Nightmare, start to finish | 750 |
+| Once More, With Feeling | Win a New Game+ campaign | 400 |
 | Pilgrim | Win in the relaxed style: find every relic | 300 |
 | Jack of All Trades | Win as all three classes | 500 |
 | On the Podium | Earn a medal on a practice course | 50 |
@@ -926,6 +958,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
+| `src/NewGamePlus.cs` | New Game+: what each tier does to the hub, and going round again |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
 | `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |
 | `src/Achievements.cs` | The achievements: what each takes, its experience, and the checks that unlock them |
@@ -935,7 +968,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+ |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |
