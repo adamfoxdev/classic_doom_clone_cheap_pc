@@ -65,10 +65,12 @@ public sealed partial class Game
             if (pts <= 0 || !Level.Sight(pr.X, pr.Y, m.X, m.Y)) continue;
             Push(m, dx, dy, d, pts);
             DamageMonster(m, (int)pts, slot);
+            if (!pr.FromPlayer) Provoke(m, pr.Owner as Monster);
         }
         if (direct != null && direct.Alive) Push(direct, direct.X - pr.X, direct.Y - pr.Y, Dist(direct.X, direct.Y, pr.X, pr.Y), Rockets.SplashMax);
         // you: the push in full, the damage halved (and only your own rockets reach you like this; a monster's hits you as a projectile)
-        if (!pr.FromPlayer || Mode != GameMode.Playing) return;
+        if (!pr.FromPlayer) { MonsterBlastHitsPlayer(pr); return; } // a Grenadier's
+        if (Mode != GameMode.Playing) return;
         var p = P;
         float pz = p.FloorZ + p.Z + Player.Height * 0.5f;
         float ex = p.X - pr.X, ey = p.Y - pr.Y, ez = pz - pr.Z, dist = MathF.Sqrt(ex * ex + ey * ey + ez * ez);

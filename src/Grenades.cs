@@ -96,9 +96,10 @@ public sealed partial class Game
             }
             float ceiling = Level.HeightAt(pr.X, pr.Y) - 0.1f;
             if (pr.Z > ceiling) { pr.Z = ceiling; if (pr.VZ > 0) pr.VZ = -pr.VZ * Grenades.Bounce; }
-            // a monster it touches sets it off
+            // a monster it touches sets it off (not the one that threw it), and a monster's sets off on you
+            if (!pr.FromPlayer && Mode == GameMode.Playing && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z)) { Explode(pr, null); return; }
             foreach (var t in Level.Things)
-                if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
+                if (t is Monster m && m != pr.Owner && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
                 {
                     float foot = Level.FloorAt(m.X, m.Y) + m.Z;
                     if (pr.Z >= foot - 0.05f && pr.Z <= foot + m.SpriteH) { Explode(pr, null); return; }

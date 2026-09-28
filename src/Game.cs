@@ -2398,16 +2398,19 @@ public sealed partial class Game
                 {
                     m.Anim += dt;
                     m.AttackCd -= dt;
-                    if (!playerAlive || Vars.NoTarget) { ChaseMove(m, dt, wander: true); break; }
-                    if (m.Def.Blurs && m.AttackCd > 0.3f && dist < 12f && RandF() < dt * 0.35f) { StartBlur(m); break; }
-                    bool canMelee = m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius;
+                    // after you, or after another monster that hit it
+                    var tg = TargetOf(m);
+                    float tdist = Dist(m.X, m.Y, tg.x, tg.y);
+                    if (tg.foe == null && (!playerAlive || Vars.NoTarget)) { ChaseMove(m, dt, wander: true); break; }
+                    if (m.Def.Blurs && m.AttackCd > 0.3f && tdist < 12f && RandF() < dt * 0.35f) { StartBlur(m); break; }
+                    bool canMelee = m.Def.MeleeRange > 0 && tdist <= m.Def.MeleeRange + tg.radius;
                     if (canMelee && m.AttackCd <= 0) { SetState(m, AiState.Attack); break; }
-                    if (m.Def.Missile != null && m.AttackCd <= 0 && dist < 18f && RandF() < dt * 2.5f && Level.Sight(m.X, m.Y, P.X, P.Y))
+                    if (m.Def.Missile != null && m.AttackCd <= 0 && tdist < 18f && RandF() < dt * 2.5f && Level.Sight(m.X, m.Y, tg.x, tg.y))
                     {
                         SetState(m, AiState.Attack);
                         break;
                     }
-                    if (!canMelee) ChaseMove(m, dt, wander: false);
+                    if (!canMelee) ChaseMove(m, dt, wander: false, tg.x, tg.y);
                     break;
                 }
 
@@ -2416,10 +2419,17 @@ public sealed partial class Game
                     if (!m.AttackFired && m.StateTime >= m.Def.AttackTime * 0.5f)
                     {
                         m.AttackFired = true;
-                        if (m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius + 0.25f)
+                        var tg = TargetOf(m);
+                        float tdist = Dist(m.X, m.Y, tg.x, tg.y);
+                        if (tg.foe != null && m.Def.MeleeRange > 0 && tdist <= m.Def.MeleeRange + tg.radius + 0.25f) MonsterMelee(m, tg.foe);
+                        else if (tg.foe == null && m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius + 0.25f)
                         {
                             Sound(Sfx.Swing, m.X, m.Y);
-                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f) EliteHit(m, DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult)));
+                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f)
+                            {
+                                EliteHit(m, DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult)));
+                                if (m.Def.Shove > 0) ShovePlayer(m);
+                            }
                         }
                         else if (m.Def.Missile != null) FireMissile(m);
                     }
@@ -2441,7 +2451,9 @@ public sealed partial class Game
         }
     }
 
-    void ChaseMove(Monster m, float dt, bool wander)
+    void ChaseMove(Monster m, float dt, bool wander) => ChaseMove(m, dt, wander, P.X, P.Y);
+
+    void ChaseMove(Monster m, float dt, bool wander, float goalX, float goalY)
     {
         float step = m.Def.Speed * m.SpeedMult * Vars.MonsterSpeed * dt * (m.SlowTime > 0 ? m.SlowFactor : 1);
         float dx, dy;
@@ -2452,7 +2464,7 @@ public sealed partial class Game
         }
         else
         {
-            float tx = P.X - m.X, ty = P.Y - m.Y;
+            float tx = goalX - m.X, ty = goalY - m.Y;
             if (wander) { tx = MathF.Cos(m.Anim); ty = MathF.Sin(m.Anim * 0.7f); }
             float l = MathF.Sqrt(tx * tx + ty * ty) + 1e-4f;
             dx = tx / l; dy = ty / l;
@@ -2521,7 +2533,9 @@ public sealed partial class Game
     void FireMissile(Monster m)
     {
         var kind = m.Def.Missile.Value;
-        float baseA = MathF.Atan2(P.Y - m.Y, P.X - m.X);
+        var tg = TargetOf(m);
+        if (kind == ProjKind.Grenade) { FireGrenadeAt(m, tg.x, tg.y, tg.z); return; }
+        float baseA = MathF.Atan2(tg.y - m.Y, tg.x - m.X);
         (int lo, int hi, float speed) = kind switch
         {
             ProjKind.Fireball => (6, 12, 6.5f),
@@ -2531,7 +2545,7 @@ public sealed partial class Game
         };
         // aim up or down at you when you're well above or below (on a ledge, or flying)
         float launchZ = Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH * 0.45f;
-        float chest = P.FloorZ + P.Z + Player.Height * 0.55f, dist = MathF.Max(0.5f, Dist(m.X, m.Y, P.X, P.Y));
+        float chest = tg.z + (tg.foe?.SpriteH ?? Player.Height) * 0.55f, dist = MathF.Max(0.5f, Dist(m.X, m.Y, tg.x, tg.y));
         bool aimed = kind != ProjKind.Seeker && MathF.Abs(chest - launchZ) > 0.6f;
         float vz = aimed ? (chest - launchZ) * speed / dist : 0f;
         for (int i = 0; i < m.Def.MissileCount; i++)
@@ -2619,11 +2633,26 @@ public sealed partial class Game
                         return;
                     }
             }
-            else if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z))
+            else
             {
-                EliteHit(pr.Owner as Monster, DamagePlayer(Rand(pr.DmgMin, pr.DmgMax)));
-                Explode(pr, null);
-                return;
+                // a monster's missile: another kind of monster in the way takes it, and turns on the one that threw it
+                foreach (var t in Level.Things)
+                    if (t is Monster other && other != pr.Owner && other.Alive && !other.Blurring && other.Target == null
+                        && (pr.Owner as Monster)?.Def != other.Def && Dist(other.X, other.Y, pr.X, pr.Y) < other.Radius + pr.Radius)
+                    {
+                        float foot = Level.FloorAt(other.X, other.Y) + other.Z;
+                        if (pr.Z < foot - 0.05f || pr.Z > foot + other.SpriteH) continue;
+                        DamageMonster(other, Rand(pr.DmgMin, pr.DmgMax));
+                        Provoke(other, pr.Owner as Monster);
+                        Explode(pr, other);
+                        return;
+                    }
+                if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z))
+                {
+                    EliteHit(pr.Owner as Monster, DamagePlayer(Rand(pr.DmgMin, pr.DmgMax)));
+                    Explode(pr, null);
+                    return;
+                }
             }
         }
     }

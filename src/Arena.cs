@@ -85,6 +85,8 @@ public sealed class ArenaState
         if (wave >= 3) pool.Add((Monster.Centaur, 2 + wave / 3));
         if (wave >= 4) pool.Add((Monster.Bishop, 2 + wave / 5));
         if (wave >= 5) pool.Add((Monster.Slaughtaur, 1 + wave / 4));
+        if (wave >= 6) pool.Add((Brutes.Grenadier, 1 + wave / 6));
+        if (wave >= 8) pool.Add((Brutes.Juggernaut, 1 + wave / 8));
         int total = pool.Sum(p => p.weight);
 
         int count = Math.Min(30, 3 + wave * 2);

@@ -93,6 +93,8 @@ public static partial class Headless
         TrickChecks(Check);
         Console.WriteLine("Quake modes:");
         QuakeModeChecks(Check);
+        Console.WriteLine("Brutes and infighting:");
+        BruteChecks(Check);
         Console.WriteLine("Game feel:");
         FeelChecks(Check);
         Console.WriteLine("Endless course:");
