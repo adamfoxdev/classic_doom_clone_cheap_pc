@@ -1,0 +1,55 @@
+# Runs the game's self-test, the map editor's browser test and the screenshot tour on every pull request and every
+# push to main. Everything is headless: the self-test and screenshots never open a window or an audio device, and the
+# editor test drives tools/editor/index.html in headless Chromium through Playwright.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build -c Release
+
+      - name: Self-test
+        run: dotnet run -c Release --no-build -- --selftest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" playwright@1.56.1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Map editor test
+        run: NODE_PATH="$RUNNER_TEMP/pw/node_modules" node tools/editor/test_editor.cjs
+
+      - name: Screenshot tour
+        run: dotnet run -c Release --no-build -- --shots shots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots/
+          if-no-files-found: ignore
+          retention-days: 14

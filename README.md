@@ -1,5 +1,7 @@
 # Hexen Sharp
 
+[![Tests](https://github.com/adamfoxdev/classic_doom_clone_cheap_pc/actions/workflows/tests.yml/badge.svg)](https://github.com/adamfoxdev/classic_doom_clone_cheap_pc/actions/workflows/tests.yml)
+
 A small Hexen-style first-person shooter written in C#, set on a derelict space station. The original
 dark-fantasy look is kept as an option (**Options → Visual style**). It's built to run on cheap PCs: everything is
 software-rendered into a 320×200 framebuffer, and all textures, sprites and sounds are generated in code.
@@ -783,6 +785,10 @@ The self-test fails if `tools/editor/builtin-maps.js` is out of date with the ma
 needs Playwright and a `dotnet build -c Release`. It checks that every built-in map loads and saves back
 byte-for-byte, that the web editor's checks match `--check-map`, and that painting, stairs, fill, undo and resizing
 work.
+
+**CI:** `.github/workflows/tests.yml` runs on every pull request and every push to `main`. It builds, runs the
+self-test and the editor test (installing Playwright and Chromium), then renders the screenshot tour and uploads it as
+a `screenshots` artifact, so each PR's screenshots can be looked through. Any failed check fails the run.
 
 ## Rendered art pack (Blender)
 
