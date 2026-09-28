@@ -350,7 +350,7 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
   | Modifier | What it does | Score |
   |---|---|---|
   | Double-speed monsters (S) | monsters move twice as fast | +60% |
-  | No supplies (N) | nothing appears at the altar between waves, and the armoury is bare | +40% |
+  | No supplies (N) | no health, mana or items at the altar between waves, and the armoury is bare (arsenal upgrades still come) | +40% |
   | Melee only (M) | only your first weapon; the others won't come out | +50% |
   | Random class (R) | skips the class screen and rolls a class for every run | +15% |
 

@@ -2591,6 +2591,8 @@ public static class Headless
         check(!g.Level.Things.Any(t => t is Pickup), "No supplies: the armoury is bare");
         ClearTo(1);
         check(g.Level.Arena.Has(ArenaMod.NoSupplies) && !g.Level.Things.Any(t => t is Pickup), "and nothing appears at the altar");
+        ClearTo(3);
+        check(g.Level.Things.OfType<Pickup>().Select(pk => pk.Kind).SequenceEqual(new[] { PickupKind.Upgrade }), "except the arsenal upgrade after wave 3");
 
         // melee only: your other weapons won't come out
         g.ArenaMods = ArenaMod.MeleeOnly;
@@ -3842,7 +3844,7 @@ public static class Headless
 
             // the arena's setup page, with two modifiers on
             g.ArenaMods = ArenaMod.DoubleSpeed | ArenaMod.MeleeOnly;
-            g.Menu.Show(MenuPage.ArenaSetup); g.Menu.Cursor = 2;
+            g.Menu.Show(MenuPage.ArenaSetup); g.Menu.Cursor = 1;
             Shot("99_arena_setup");
             g.ArenaMods = ArenaMod.None;
             g.GoToTitle();

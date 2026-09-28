@@ -153,6 +153,7 @@ public sealed class ArenaState
             g.GainXp(Game.Xp.PerWave * Wave);
             if (g.ArenaMode) g.ArenaWaveCleared(Wave);
             if (!Has(ArenaMod.NoSupplies)) Reward(g);
+            ArsenalDrop(g); // not a supply: it comes even with No supplies
             // after a boss wave, a perk to pick
             if (g.ArenaMode && Wave % 5 == 0)
             {
@@ -229,7 +230,11 @@ public sealed class ArenaState
             t.Level = _lv;
             _lv.Things.Add(t);
         }
-        // every third wave, an arsenal upgrade on the altar itself: your weapons keep up with the waves
+    }
+
+    /// <summary>Every third wave, an arsenal upgrade on the altar itself: your weapons keep up with the waves.</summary>
+    void ArsenalDrop(Game g)
+    {
         if (Wave % Arsenal.Every == 0 && Wave / Arsenal.Every <= Arsenal.MaxTier)
         {
             _lv.Things.Add(new Pickup(PickupKind.Upgrade, 0.5f) { X = _altar.x, Y = _altar.y, Level = _lv });
@@ -356,7 +361,7 @@ public static class ArenaModInfo
     public static string About(ArenaMod m) => m switch
     {
         ArenaMod.DoubleSpeed => "MONSTERS MOVE TWICE AS FAST.",
-        ArenaMod.NoSupplies => "NOTHING APPEARS AT THE ALTAR BETWEEN WAVES, AND THE ARMOURY IS BARE.",
+        ArenaMod.NoSupplies => "NO HEALTH, MANA OR ITEMS BETWEEN WAVES AND A BARE ARMOURY (ARSENAL UPGRADES STILL COME).",
         ArenaMod.MeleeOnly => "ONLY YOUR FIRST WEAPON: NO STAFFS, AXES OR SPELLS.",
         _ => "A RANDOM CLASS EACH RUN, INSTEAD OF PICKING ONE.",
     };
