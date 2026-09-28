@@ -424,6 +424,34 @@ public static partial class Headless
             Shot("145_rocket_tower");
             g.EndDemo();
 
+            // Rocket Soccer: lined up on the ball in front of the lit goal, then the ball flying off a kicker ramp
+            g.StartPractice(PClass.Fighter, Soccer.Course);
+            Tick(default, 40);
+            {
+                var ball = g.Ball;
+                ball.X = Soccer.LineE - 6; ball.Y = Soccer.SpotY - 1; ball.Z = 0; ball.Grounded = true;
+                g.P.X = Soccer.LineE - 11; g.P.Y = Soccer.SpotY + 1.5f; g.P.Angle = MathF.Atan2(ball.Y - g.P.Y, ball.X - g.P.X) + 0.05f; g.P.Pitch = -6;
+                g.Messages.Clear(); g.Say("GOAL! 3. Now the east goal.");
+                Tick(default, 6);
+                Shot("150_rocket_soccer");
+                var ramp = Soccer.Ramps[0];
+                ball.X = ramp.X0 - 1; ball.Y = ramp.Y0 + 2; ball.Z = 0; ball.Grounded = true; ball.VX = 11; ball.VY = 0; ball.VZ = 0;
+                g.P.X = ramp.X1 + 4; g.P.Y = ramp.Y1 + 7; g.P.FloorZ = 0; g.P.Z = 0; g.P.Angle = -2f; g.P.Pitch = 34;
+                g.Messages.Clear();
+                for (int k = 0; k < 60 && ball.X < ramp.X1 + 2.5f; k++) Tick(default);
+                g.P.Angle = MathF.Atan2(ball.Y - g.P.Y, ball.X - g.P.X);
+                Tick(default);
+                Shot("151_soccer_ramp");
+            }
+            foreach (var (n, goals, shots) in new[] { (g.RunnerName, 9, 41), ("ACE-1", 7, 30), (g.RunnerName, 7, 52), ("NOVA", 4, 38) })
+                g.Profile.AddSoccerRun(new SoccerRun { Name = n, Class = "Fighter", Goals = goals, Shots = shots, When = new DateTime(2026, 9, 20 + shots % 7) });
+            g.Menu.Show(MenuPage.Leaderboard);
+            g.Menu.BoardSoccer = true; g.Menu.BoardClass = PClass.Fighter;
+            Shot("153_soccer_board");
+            g.Menu.Close();
+            g.Profile.SoccerRuns.Clear();
+            g.GoToTitle();
+
             // a rail trial on the range, a target popping up far off
             g.StartPractice(PClass.Mage, ShootingRange.Course);
             g.GiveExtra(Railgun.Gun);
@@ -1017,6 +1045,8 @@ public static partial class Headless
         Shot("137_practice_rocketjump");
         g.Menu.Cursor = Array.IndexOf(Courses.All, GrenadeCourse.Course);
         Shot("141_practice_grenades");
+        g.Menu.Cursor = Array.IndexOf(Courses.All, Soccer.Course);
+        Shot("152_practice_soccer");
         g.Menu.Close();
         foreach (var (course, name, cam) in new[]
         {
