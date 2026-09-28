@@ -5,7 +5,7 @@ Stone-block puzzle solver, used to design the Hanging Cisterns' three ledges (sr
 A breadth-first search over pushes and pulls, as the game plays them: E pushes a block one cell away from you,
 Shift+E pulls it one cell toward you as you step back, and you can walk anywhere on the ledge that isn't a pillar or
 a block. It prints the shortest solution for each ledge (in moves) with and without pulls, and the moves in the form
-Headless.CisternSolutions uses, in map coordinates: (pull, x, y, dir) = stand at (x, y); the block moves `dir`.
+Headless.CisternSolutions (src/Headless/OptionalMapChecks.cs) uses, in map coordinates: (pull, x, y, dir) = stand at (x, y); the block moves `dir`.
 
 Grids: '.' floor, '#' pillar, 'X' block, '^' plate, '*' block on a plate, '@' the checkpoint pad where you land
 (blocks can't cross a pad, and the solver checks none needs to).

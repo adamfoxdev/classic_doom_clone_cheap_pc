@@ -869,7 +869,9 @@ in both looks (`76_…`, `77_…`).
 | `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
-| `src/Headless.cs` | `--selftest`, `--shots` and `--sounds` |
+| `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation |
+| `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |
 
