@@ -252,6 +252,14 @@ public sealed class Game
     public bool ArenaMode;
     /// <summary>Picking a class from the class screen starts the arena rather than a new game.</summary>
     public bool PendingArena;
+    /// <summary>
+    /// The music that fits what's on screen: the title's on the menus, the practice track on a course, else the map's
+    /// theme (custom maps included).
+    /// </summary>
+    public string MusicTrack =>
+        Mode is GameMode.Title or GameMode.ClassSelect or GameMode.Victory || Level == null ? "title"
+        : Practicing ? "practice" : Level.ThemeId;
+
     /// <summary>The modifiers for arena runs (picked on the arena's setup page; kept for Restart and between runs).</summary>
     public ArenaMod ArenaMods;
 
@@ -296,10 +304,17 @@ public sealed class Game
         if (!ArenaMode || Level?.Arena is not { Started: true, Recorded: false } a || P == null) return;
         a.Recorded = true;
         if (a.BestWave == 0) { LastArena = null; LastArenaPlace = 0; return; }
+        var difficulty = Difficulties.Of(Vars);
+        if (difficulty == Difficulty.Custom)
+        {
+            LastArena = null; LastArenaPlace = 0;
+            Say($"Run over: {a.BestWave} waves. Not recorded: the damage settings were changed in the console (set a difficulty in Options).");
+            return;
+        }
         LastArena = new ArenaRun
         {
             Waves = a.BestWave, Time = a.ClearedAt, Kills = P.Kills, Name = RunnerName, When = DateTime.Now,
-            Mods = (int)a.Mods, Score = ArenaModInfo.Score(a.BestWave, a.Mods),
+            Mods = (int)a.Mods, Difficulty = (int)difficulty, Score = ArenaModInfo.Score(a.BestWave, a.Mods, difficulty),
         };
         LastArenaPlace = Profile.AddArenaRun(P.Class, LastArena);
         SaveProfile();
@@ -897,9 +912,13 @@ public sealed class Game
             foreach (char c in inp.Typed) Con.FeedCheat(c);
 
         if (Practicing && Mode == GameMode.Playing && !PracticeControls(ref inp, ref dt)) return;
-        if (ArenaMode && Mode == GameMode.Playing && Level.Arena?.Offer is { } offer && inp.Slot >= 1 && inp.Slot <= offer.Length)
+        if (ArenaMode && Mode == GameMode.Playing && Level.Arena?.Offer is { } offer)
         {
-            Level.Arena.Choose(this, inp.Slot - 1);
+            // 1/2/3 take a perk straight away; Left/Right and Enter (or a pad's d-pad and A) pick one too
+            var ar = Level.Arena;
+            if (inp.Left || inp.Right) { ar.OfferCursor = (ar.OfferCursor + (inp.Left ? offer.Length - 1 : 1)) % offer.Length; PlaySound(Sfx.Swing, 0.5f); }
+            if (inp.Slot >= 1 && inp.Slot <= offer.Length) ar.Choose(this, inp.Slot - 1);
+            else if (inp.Confirm) ar.Choose(this, ar.OfferCursor);
             inp.Slot = 0;
         }
 

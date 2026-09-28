@@ -13,6 +13,12 @@ public sealed unsafe class Audio : IDisposable
     readonly Sound[][][] _banks = new Sound[Styles.Length][][];
     readonly int[] _next = new int[(int)Sfx.Count];
     readonly Random _rng = new(7);
+    // the music: one stream, fed from the mixer a block at a time
+    const int MusicBlock = 4096;
+    readonly MusicMixer _mixer = new();
+    readonly short[] _musicBuf = new short[MusicBlock];
+    AudioStream _music;
+    bool _musicOn;
 
     public Audio()
     {
@@ -35,6 +41,26 @@ public sealed unsafe class Audio : IDisposable
         }
     }
 
+    /// <summary>Keeps the music going: call once a frame with the track to play (null for none) and its volume (0-1).</summary>
+    public void UpdateMusic(string track, float volume)
+    {
+        if (!_musicOn)
+        {
+            Raylib.SetAudioStreamBufferSizeDefault(MusicBlock);
+            _music = Raylib.LoadAudioStream(MusicGen.Rate, 16, 1);
+            Raylib.PlayAudioStream(_music);
+            _musicOn = true;
+            _mixer.Warm(Art.Style);
+            _mixer.Warm(Art.Style == ArtStyle.SciFi ? ArtStyle.Fantasy : ArtStyle.SciFi);
+        }
+        _mixer.Play(volume > 0 ? track : null, Art.Style);
+        while (Raylib.IsAudioStreamProcessed(_music))
+        {
+            _mixer.Fill(_musicBuf, Math.Clamp(volume, 0f, 1f) * 0.6f);
+            fixed (short* p = _musicBuf) Raylib.UpdateAudioStream(_music, p, MusicBlock);
+        }
+    }
+
     public void Play(Sfx s, float volume)
     {
         int i = (int)s;
@@ -47,6 +73,7 @@ public sealed unsafe class Audio : IDisposable
 
     public void Dispose()
     {
+        if (_musicOn) Raylib.UnloadAudioStream(_music);
         foreach (var bank in _banks)
             foreach (var set in bank)
             {

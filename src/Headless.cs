@@ -62,6 +62,12 @@ public static class Headless
         StoryChecks(Check);
         Console.WriteLine("Arena mode:");
         ArenaModeChecks(Check);
+        Console.WriteLine("Music:");
+        MusicChecks(Check);
+        Console.WriteLine("Gamepad:");
+        GamepadChecks(Check);
+        Console.WriteLine("Difficulty:");
+        DifficultyChecks(Check);
         Console.WriteLine("Arena perks and modifiers:");
         ArenaPerkChecks(Check);
 
@@ -2494,6 +2500,200 @@ public static class Headless
         check(g.Level.Seen.All(s => s), "typing 'mapsco' reveals the map");
     }
 
+    static void MusicChecks(Action<bool, string> check)
+    {
+        // a loop for every theme, the title and the practice courses, in both styles
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var tracks = MusicGen.Tracks.ToArray();
+        var made = new Dictionary<(string, ArtStyle), short[]>();
+        foreach (var t in tracks)
+            foreach (var st in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+                made[(t, st)] = MusicGen.Make(t, st);
+        sw.Stop();
+        check(Maps.ThemeIds.All(id => tracks.Contains(id)) && tracks.Contains("title") && tracks.Contains("practice"),
+              $"a track for every map theme, the title and practice ({tracks.Length})");
+        bool lengths = true, loud = true, headroom = true, seams = true;
+        foreach (var ((t, st), s) in made)
+        {
+            float secs = s.Length / (float)MusicGen.Rate;
+            lengths &= s.Length == MusicGen.Length(t) && secs > 12 && secs < 40;
+            double rms = Math.Sqrt(s.Average(x => (double)x * x)) / 32767;
+            loud &= rms > 0.05;
+            int peak = s.Max(x => Math.Abs((int)x));
+            headroom &= peak > 20000 && peak < 24000;
+            // the loop joins up: the jump from the last sample back to the first is no bigger than the track's own jumps
+            int maxStep = 0;
+            for (int i = 1; i < s.Length; i++) maxStep = Math.Max(maxStep, Math.Abs(s[i] - s[i - 1]));
+            seams &= Math.Abs(s[0] - s[^1]) <= maxStep;
+        }
+        check(lengths, "each loops 8 bars, between 12 and 40 seconds");
+        check(loud && headroom, "not silent, and peaking at 70%, leaving room for the sound effects");
+        check(seams, "every loop joins up without a click");
+        check(MusicGen.Make("crypt", ArtStyle.Fantasy).SequenceEqual(made[("crypt", ArtStyle.Fantasy)]), "the same every time");
+        check(!made[("hall", ArtStyle.Fantasy)].Take(5000).SequenceEqual(made[("hall", ArtStyle.SciFi)].Take(5000)) &&
+              made.Values.Select(v => v.Length).Distinct().Count() > 4, "each style and theme sounds different");
+        check(sw.ElapsedMilliseconds < 20000, $"all {made.Count} made in {sw.ElapsedMilliseconds} ms");
+        check(MusicGen.Resolve("mycustomtheme") == "hall" && MusicGen.Resolve(null) == "hall", "an unknown theme plays the hall's");
+
+        // the mixer: loops the track at the volume, crossfades to the next, and goes quiet for none
+        var mx = new MusicMixer();
+        mx.Play("hall", ArtStyle.Fantasy);
+        var buf = new short[1000];
+        mx.Fill(buf, 0.5f);
+        var hall = mx.Get("hall", ArtStyle.Fantasy);
+        check(buf.Select((v, i) => Math.Abs(v - hall[i] * 0.5f) <= 1).All(b => b), "it plays the track at the volume asked");
+        mx.Play("ice", ArtStyle.Fantasy);
+        var fade = new short[(int)(MusicMixer.Fade * MusicGen.Rate) + 10];
+        mx.Fill(fade, 1f);
+        var ice = mx.Get("ice", ArtStyle.Fantasy);
+        int k = fade.Length - 1;
+        check(fade[k] == ice[k] && fade[5] != ice[5], "switching crossfades over a second to the new track");
+        mx.Play("ice", ArtStyle.Fantasy);
+        check(mx.Track == "ice", "asking for the same track again doesn't restart it");
+        mx.Play(null, ArtStyle.Fantasy);
+        mx.Fill(fade, 1f); mx.Fill(buf, 1f);
+        check(buf.All(v => v == 0), "and no track fades to silence");
+
+        // what the game asks for
+        var g = new Game { FixedSeed = 1 };
+        string title = g.MusicTrack;
+        g.NewGame(PClass.Fighter);
+        string hub = g.MusicTrack;
+        g.StartPractice(PClass.Fighter);
+        string practice = g.MusicTrack;
+        g.GoToTitle(); g.StartArena(PClass.Fighter);
+        string arena = g.MusicTrack;
+        check(title == "title" && hub == "hall" && practice == "practice" && arena == "arena", $"the title, each map and practice have their own ({title}, {hub}, {practice}, {arena})");
+        g.GoToTitle();
+        g.Menu.Show(MenuPage.Options);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "Music volume");
+        float m0 = g.Vars.Music;
+        g.Menu.Update(new Input { Left = true }, 1f / 35f);
+        check(MathF.Abs(g.Vars.Music - (m0 - 0.1f)) < 0.001f && g.Menu.Value(g.Menu.Cursor) == $"{g.Vars.Music * 100:0}%", "Options > Music volume turns it down");
+        g.Vars.Music = 0;
+        check(g.Menu.Value(g.Menu.Cursor) == "OFF" && Settings.Lines(g).Contains("music 0"), "all the way to off, and it's saved");
+        g.Vars.Music = 0.6f;
+        g.Menu.Close();
+    }
+
+    static void GamepadChecks(Action<bool, string> check)
+    {
+        check(Gamepad.Stick(0.15f) == 0 && Gamepad.Stick(1f) == 1 && MathF.Abs(Gamepad.Stick(-0.6f) + 0.5f) < 0.001f, "sticks have a dead zone, and still reach full tilt");
+        var pad = new Gamepad();
+        Input Frame(PadState s, bool menu = false, Input start = default) { var i = start; pad.Apply(ref i, s, 1f / 60f, menu); return i; }
+        var none = new PadState { Connected = true };
+
+        var i1 = Frame(new PadState { Connected = true, LY = -1, LX = 1, RT = 1, LT = 1 });
+        check(i1.Move == 1 && i1.Strafe == 1 && i1.Fire && i1.JetHeld, "left stick moves, RT attacks, LT flies");
+        check(Frame(new PadState { Connected = true, LY = -1 }, start: new Input { Move = 1 }).Move == 1, "and adds to the keyboard without going over full speed");
+        var a1 = Frame(new PadState { Connected = true, Held = PadButton.A });
+        var a2 = Frame(new PadState { Connected = true, Held = PadButton.A });
+        check(a1.Jump && a1.Confirm && a1.JumpHeld && !a2.Jump && a2.JumpHeld, "A jumps (and confirms) once a press, and holds");
+        Frame(none);
+        var bGame = Frame(new PadState { Connected = true, Held = PadButton.B });
+        Frame(none);
+        var bMenu = Frame(new PadState { Connected = true, Held = PadButton.B }, menu: true);
+        check(bGame.Slide && !bGame.Pause && bMenu.Pause, "B slides in play, and backs out of menus");
+        Frame(none);
+        var face = Frame(new PadState { Connected = true, Held = PadButton.X | PadButton.Y | PadButton.RB | PadButton.Start | PadButton.Back });
+        check(face.Use && face.UseItem && face.Cycle == 1 && face.Pause && face.Map, "X uses, Y uses an item, RB next weapon, Start pauses, Back the map");
+        Frame(none);
+        var f1 = Frame(new PadState { Connected = true, LY = 1 }, menu: true);
+        var f2 = Frame(new PadState { Connected = true, LY = 1 }, menu: true);
+        var d1 = Frame(new PadState { Connected = true, Held = PadButton.Down }, menu: true);
+        check(f1.Down && !f2.Down && d1.Down, "in menus, a stick flick or the d-pad steps once");
+        var off = new Input { Move = 0.5f };
+        pad.Apply(ref off, new PadState { Connected = false, LY = -1, Held = PadButton.A }, 1f / 60f, false);
+        check(off.Move == 0.5f && !off.Jump, "no pad, no change");
+
+        // the right stick turns at the same rate at any frame rate
+        float Turned(float fps)
+        {
+            var g = new Game { FixedSeed = 1 };
+            g.NewGame(PClass.Fighter);
+            g.Level.Things.RemoveAll(t => t is Monster);
+            var p2 = new Gamepad();
+            float a0 = g.P.Angle;
+            for (int f = 0; f < (int)fps; f++) { var i = new Input(); p2.Apply(ref i, new PadState { Connected = true, RX = 1 }, 1f / fps, false); g.Update(i, 1f / fps); }
+            return g.P.Angle - a0;
+        }
+        float t60 = Turned(60), t144 = Turned(144);
+        check(MathF.Abs(t60 - Gamepad.TurnRate) < 0.05f && MathF.Abs(t144 - t60) < 0.05f, $"right stick turns {Gamepad.TurnRate} radians a second at full tilt ({t60:0.00} at 60 fps, {t144:0.00} at 144)");
+
+        // driving the title menu and the arena's perk choice with a pad
+        var m = new Game { FixedSeed = 1 };
+        var mp = new Gamepad();
+        void Pad(PadState s) { var i = new Input(); mp.Apply(ref i, s, 1f / 35f, m.Menu.Open || m.Mode is GameMode.Title or GameMode.ClassSelect); m.Update(i, 1f / 35f); }
+        Pad(none);
+        Pad(new PadState { Connected = true, Held = PadButton.Down }); Pad(none);
+        Pad(new PadState { Connected = true, Held = PadButton.A }); Pad(none);
+        check(m.Menu.Page == MenuPage.Courses, "the d-pad and A pick Practice on the title menu");
+        Pad(new PadState { Connected = true, Held = PadButton.B }); Pad(none);
+        check(m.Menu.Page == MenuPage.Main, "and B goes back");
+        m.StartArena(PClass.Fighter);
+        var ar = m.Level.Arena;
+        ar.Offer = new[] { Perk.Might, Perk.Swiftness, Perk.Vitality };
+        Pad(none);
+        Pad(new PadState { Connected = true, Held = PadButton.Right }); Pad(none);
+        Pad(new PadState { Connected = true, Held = PadButton.A });
+        check(ar.Offer == null && ar.Rank(Perk.Swiftness) == 1, "d-pad right and A take the second perk");
+    }
+
+    static void DifficultyChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 1 };
+        check(Difficulties.Of(g.Vars) == Difficulty.Normal, "the game starts on Normal");
+        g.Con.Execute("difficulty easy");
+        check(Difficulties.Of(g.Vars) == Difficulty.Easy && g.Vars.MonsterDamage == 0.5f && g.Vars.Damage == 1.25f && g.Vars.MonsterSpeed == 0.85f,
+              "'difficulty easy': more damage dealt, half taken, slower monsters");
+        g.Con.Execute("difficulty nightmare");
+        check(g.Vars.MonsterDamage == 1.75f && g.Vars.MonsterSpeed == 1.35f && Settings.Lines(g).Contains("difficulty nightmare"), "'difficulty nightmare', saved with the settings");
+        g.Con.Execute("monsterdamage 3");
+        check(Difficulties.Of(g.Vars) == Difficulty.Custom && !Settings.Lines(g).Any(l => l.StartsWith("difficulty")), "a console tweak makes it Custom, which isn't saved");
+
+        // the Options menu steps through the presets
+        g.Menu.Show(MenuPage.Options);
+        g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Options), "Difficulty");
+        check(g.Menu.Value(g.Menu.Cursor) == "CUSTOM", "Options shows Custom");
+        var seen = new List<string>();
+        foreach (var inp in new[] { new Input { Right = true }, new Input { Right = true }, new Input { Right = true }, new Input { Left = true }, new Input { Left = true }, new Input { Left = true }, new Input { Confirm = true } })
+        {
+            g.Menu.Update(inp, 1f / 35f);
+            seen.Add(g.Menu.Value(g.Menu.Cursor));
+        }
+        check(seen.SequenceEqual(new[] { "NORMAL", "NIGHTMARE", "NIGHTMARE", "NORMAL", "EASY", "EASY", "NORMAL" }), $"Left/Right step Easy, Normal, Nightmare; Enter goes round ({string.Join(", ", seen)})");
+        g.Menu.Close();
+
+        // it takes effect: half damage on Easy
+        g.Con.Execute("difficulty easy");
+        g.NewGame(PClass.Fighter);
+        g.P.Armor = 0;
+        int hp = g.P.Health;
+        g.DamagePlayer(20);
+        check(hp - g.P.Health == 10, $"on Easy a 20-damage hit costs 10 ({hp - g.P.Health})");
+
+        // arena scores: half on Easy, 1.5 times on Nightmare, and custom settings aren't recorded
+        check(ArenaModInfo.Score(10, ArenaMod.None, Difficulty.Easy) == 500 && ArenaModInfo.Score(10, ArenaMod.None, Difficulty.Nightmare) == 1500,
+              "arena scores: x0.5 on Easy, x1.5 on Nightmare");
+        check(ArenaModInfo.Letters(ArenaMod.None, Difficulty.Nightmare) == "X" && ArenaModInfo.Letters(ArenaMod.MeleeOnly, Difficulty.Easy) == "ME" && ArenaModInfo.Letters(ArenaMod.None, Difficulty.Normal) == "-",
+              "and the board marks them E and X");
+        foreach (var (d, waves) in new[] { ("nightmare", 2), ("custom", 1) })
+        {
+            if (d == "custom") g.Con.Execute("monsterspeed 0.2"); else g.Con.Execute("difficulty " + d);
+            g.GoToTitle();
+            g.StartArena(PClass.Mage);
+            g.Vars.God = true;
+            var a = g.Level.Arena;
+            var altar = g.Level.FindMark('!').Value;
+            g.P.X = altar.x; g.P.Y = altar.y;
+            for (int f = 0; f < 35 * 60 * 2 && a.BestWave < waves; f++) { g.Update(default, 1f / 35f); g.KillAll(); }
+            g.GoToTitle();
+        }
+        var board = g.Profile.ArenaBoard(PClass.Mage);
+        check(board.Count == 1 && board[0].Difficulty == (int)Difficulty.Nightmare && board[0].Score == 300, $"a Nightmare run scores 1.5 times; a custom one isn't recorded ({board.Count} runs)");
+        g.Con.Execute("difficulty normal");
+    }
+
     static void ArenaPerkChecks(Action<bool, string> check)
     {
         Game g = null;
@@ -3597,8 +3797,10 @@ public static class Headless
             Directory.CreateDirectory(sub);
             for (int i = 0; i < (int)Sfx.Count; i++)
                 File.WriteAllBytes(Path.Combine(sub, ((Sfx)i).ToString().ToLowerInvariant() + ".wav"), Sounds.Wav(Sounds.Make((Sfx)i, style)));
+            foreach (var track in MusicGen.Tracks)
+                File.WriteAllBytes(Path.Combine(sub, "music_" + track + ".wav"), Sounds.Wav(MusicGen.Make(track, style)));
         }
-        Console.WriteLine($"wrote {(int)Sfx.Count * 2} sounds to {dir}");
+        Console.WriteLine($"wrote {(int)Sfx.Count * 2} sounds and {MusicGen.Tracks.Count() * 2} music loops to {dir}");
         return 0;
     }
 

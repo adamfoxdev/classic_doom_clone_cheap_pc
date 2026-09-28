@@ -89,7 +89,7 @@ public sealed class Profile
     public int AddArenaRun(PClass cls, ArenaRun run)
     {
         var runs = ArenaBoard(cls);
-        if (run.Score == 0) run.Score = ArenaModInfo.Score(run.Waves, (ArenaMod)run.Mods);
+        if (run.Score == 0) run.Score = ArenaModInfo.Score(run.Waves, (ArenaMod)run.Mods, (Difficulty)run.Difficulty);
         int place = runs.Count(r => !run.Beats(r));
         if (place >= BoardSize) return 0;
         runs.Insert(place, run);
@@ -195,7 +195,7 @@ public sealed class Profile
             // runs saved before scores: 100 a wave, as a run with no modifiers scores
             foreach (var board in p.ArenaRuns.Values)
             {
-                foreach (var r in board) if (r.Score == 0) r.Score = ArenaModInfo.Score(r.Waves, (ArenaMod)r.Mods);
+                foreach (var r in board) if (r.Score == 0) r.Score = ArenaModInfo.Score(r.Waves, (ArenaMod)r.Mods, (Difficulty)r.Difficulty);
                 board.Sort((a, b) => a.Beats(b) ? -1 : b.Beats(a) ? 1 : 0);
             }
             foreach (var w in p.Weapons.Values) w.Level = Math.Clamp(w.Level, 1, MaxWeaponLevel);
@@ -232,6 +232,8 @@ public sealed class ArenaRun
     public int Waves { get; set; }
     /// <summary>The run's modifiers (an <see cref="ArenaMod"/> as a number, so the profile stays plain JSON).</summary>
     public int Mods { get; set; }
+    /// <summary>The difficulty it was played on (a <see cref="HexenSharp.Difficulty"/>; 0, Normal, for runs from before).</summary>
+    public int Difficulty { get; set; }
     public float Time { get; set; }
     public int Kills { get; set; }
     public string Name { get; set; } = "";

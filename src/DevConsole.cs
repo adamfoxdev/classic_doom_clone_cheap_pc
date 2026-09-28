@@ -12,6 +12,61 @@ public enum HudStyle { Full, Compact, Minimal, Off }
 public enum CrosshairStyle { Off, Dot, Cross, Circle }
 
 /// <summary>Tweakable game mechanics, changed from the console with "set name value".</summary>
+/// <summary>Difficulty presets: each sets the damage you deal, the damage monsters deal and how fast they move.</summary>
+public enum Difficulty { Normal, Easy, Nightmare, Custom }
+
+public static class Difficulties
+{
+    /// <summary>In the order the Options menu steps through them.</summary>
+    public static readonly Difficulty[] Presets = { Difficulty.Easy, Difficulty.Normal, Difficulty.Nightmare };
+
+    public static (float damage, float monsterDamage, float monsterSpeed) Values(Difficulty d) => d switch
+    {
+        Difficulty.Easy => (1.25f, 0.5f, 0.85f),
+        Difficulty.Nightmare => (1f, 1.75f, 1.35f),
+        _ => (1f, 1f, 1f),
+    };
+
+    /// <summary>The preset the current settings match, or Custom if they've been tweaked in the console.</summary>
+    public static Difficulty Of(GameVars v)
+    {
+        foreach (var d in Presets)
+            if (Values(d) == (v.Damage, v.MonsterDamage, v.MonsterSpeed)) return d;
+        return Difficulty.Custom;
+    }
+
+    public static void Apply(GameVars v, Difficulty d)
+    {
+        if (d == Difficulty.Custom) return;
+        (v.Damage, v.MonsterDamage, v.MonsterSpeed) = Values(d);
+    }
+
+    public static string Name(Difficulty d) => d.ToString().ToUpperInvariant();
+
+    public static string About(Difficulty d) => d switch
+    {
+        Difficulty.Easy => "+25% damage dealt, half damage taken, slower monsters",
+        Difficulty.Nightmare => "monsters hit 75% harder and move 35% faster",
+        Difficulty.Normal => "the game as it's meant to be played",
+        _ => "damage and monster settings changed in the console",
+    };
+
+    /// <summary>What a difficulty does to an arena run's score (a custom one isn't recorded at all).</summary>
+    public static float ScoreFactor(Difficulty d) => d switch
+    {
+        Difficulty.Easy => 0.5f,
+        Difficulty.Nightmare => 1.5f,
+        Difficulty.Custom => 0f,
+        _ => 1f,
+    };
+
+    /// <summary>The letter an arena run shows for its difficulty on the leaderboard ("" for Normal).</summary>
+    public static string Letter(Difficulty d) => d switch { Difficulty.Easy => "E", Difficulty.Nightmare => "X", _ => "" };
+
+    public static Difficulty Parse(string s) =>
+        Enum.GetValues<Difficulty>().FirstOrDefault(d => d.ToString().StartsWith(s ?? "?", StringComparison.OrdinalIgnoreCase), Difficulty.Custom);
+}
+
 public sealed class GameVars
 {
     public float Speed = 1f, Sens = 1f, Damage = 1f, MonsterDamage = 1f, MonsterSpeed = 1f;
@@ -26,6 +81,10 @@ public sealed class GameVars
     public int StrafeHelp = 1;
     /// <summary>Arcade mode: damage numbers, a score and a style rank for every hit.</summary>
     public bool Arcade;
+    /// <summary>Music volume, 0 (off) to 1.</summary>
+    public float Music = 0.6f;
+    /// <summary>Gamepad look speed multiplier (the right stick).</summary>
+    public float PadLook = 1f;
     public bool God, NoClip, NoTarget, Freeze, InfiniteMana, InfiniteFuel, FullBright, ShowFps, InvertMouse;
     public HudStyle Hud;
     public CrosshairStyle Crosshair;
@@ -53,6 +112,8 @@ public sealed class GameVars
         new("friction", "ground friction (Quake movement)", v => v.Friction, (v, x) => v.Friction = Math.Clamp(x, 0f, 20f)),
         new("strafehelp", "strafe-jumping helper: 0 off, 1 on the practice course, 2 everywhere", v => v.StrafeHelp, (v, x) => v.StrafeHelp = Math.Clamp((int)MathF.Round(x), 0, 2)),
         new("ghost", "race a ghost of your best run on the practice course", v => B(v.Ghost), (v, x) => v.Ghost = x != 0, true),
+        new("music", "music volume, 0 (off) to 1", v => v.Music, (v, x) => v.Music = Math.Clamp(x, 0f, 1f)),
+        new("padlook", "gamepad look speed multiplier", v => v.PadLook, (v, x) => v.PadLook = Math.Clamp(x, 0.1f, 5f)),
         new("maxhop", "top speed from strafe jumping, times your run speed", v => v.MaxHop, (v, x) => v.MaxHop = Math.Clamp(x, 1f, 5f)),
         new("chests", "chests per 200 floor cells (next game)", v => v.Chests, (v, x) => v.Chests = Math.Clamp(x, 0f, 20f)),
         new("god", "invulnerability", v => B(v.God), (v, x) => v.God = x != 0, true),
@@ -212,6 +273,18 @@ public sealed class DevConsole
             if (a.Length > 1 && n == null) { Print("usage: arena [fighter|cleric|mage]"); return; }
             _g.StartArena(n != null ? Enum.Parse<PClass>(n) : _g.P?.Class ?? PClass.Fighter);
             Open = false;
+        });
+        Add("difficulty", "[easy|normal|nightmare]", "show or set the difficulty (sets damage, monsterdamage and monsterspeed)", a =>
+        {
+            if (a.Length > 1)
+            {
+                var d = Difficulties.Parse(a[1]);
+                if (d == Difficulty.Custom) { Print("usage: difficulty [easy|normal|nightmare]"); return; }
+                Difficulties.Apply(_g.Vars, d);
+                _g.SaveSettings();
+            }
+            var now = Difficulties.Of(_g.Vars);
+            Print($"difficulty: {Difficulties.Name(now).ToLowerInvariant()} ({Difficulties.About(now)})");
         });
         Add("arenamods", "[letters|-]", "the arena's modifiers: S double-speed monsters, N no supplies, M melee only, R random class (- for none)", a =>
         {

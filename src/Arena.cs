@@ -19,6 +19,8 @@ public sealed class ArenaState
     public readonly Dictionary<Perk, int> Perks = new();
     /// <summary>The three perks on offer after a boss wave, until you pick one (the next wave waits); else null.</summary>
     public Perk[] Offer;
+    /// <summary>The highlighted perk on offer (Left/Right to move, Enter to take it), for pads and arrow keys.</summary>
+    public int OfferCursor;
     float _regen, _mana;
 
     public int Rank(Perk p) => Perks.TryGetValue(p, out int r) ? r : 0;
@@ -158,6 +160,7 @@ public sealed class ArenaState
             if (g.ArenaMode && Wave % 5 == 0)
             {
                 Offer = RollOffer();
+                OfferCursor = 0;
                 if (Offer.Length == 0) Offer = null;
                 else { g.Say("Choose a perk: press 1, 2 or 3."); g.PlaySound(Sfx.Lore, 1); }
             }
@@ -368,8 +371,13 @@ public static class ArenaModInfo
 
     public static float Multiplier(ArenaMod mods) => 1 + All.Where(m => (mods & m) != 0).Sum(Bonus);
 
-    /// <summary>A run's score: 100 a wave, times the modifiers' multiplier.</summary>
-    public static int Score(int waves, ArenaMod mods) => (int)MathF.Round(waves * 100 * Multiplier(mods));
+    /// <summary>A run's score: 100 a wave, times the modifiers' multiplier and the difficulty's (half on Easy, 1.5 on Nightmare).</summary>
+    public static int Score(int waves, ArenaMod mods, Difficulty difficulty = Difficulty.Normal) =>
+        (int)MathF.Round(waves * 100 * Multiplier(mods) * Difficulties.ScoreFactor(difficulty));
 
     public static string Letters(ArenaMod mods) => mods == ArenaMod.None ? "-" : new string(All.Where(m => (mods & m) != 0).Select(Letter).ToArray());
+
+    /// <summary>A leaderboard run's letters: its modifiers, then E (Easy) or X (Nightmare).</summary>
+    public static string Letters(ArenaMod mods, Difficulty d) =>
+        Difficulties.Letter(d) is { Length: > 0 } dl ? (mods == ArenaMod.None ? dl : Letters(mods) + dl) : Letters(mods);
 }

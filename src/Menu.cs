@@ -74,7 +74,7 @@ public sealed class MenuSystem
         MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Back").ToArray(),
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
-        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Back" },
+        MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Difficulty", "Music volume", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
     };
 
@@ -96,6 +96,8 @@ public sealed class MenuSystem
             10 => v.Ghost ? "ON" : "OFF",
             11 => v.StrafeHelp switch { 0 => "OFF", 1 => "PRACTICE", _ => "ALWAYS" },
             12 => v.Arcade ? "ON" : "OFF",
+            13 => Difficulties.Name(Difficulties.Of(v)),
+            14 => v.Music <= 0 ? "OFF" : $"{v.Music * 100:0}%",
             _ => "",
         };
     }
@@ -222,6 +224,19 @@ public sealed class MenuSystem
                     v.Arcade = !v.Arcade;
                     Say(v.Arcade ? "Arcade mode: damage numbers, score and a style rank. Keep the combo going!" : "Arcade mode off.");
                     break;
+                case 13:
+                    {
+                        // from a custom setting, Right goes to Normal and Left to Easy
+                        var presets = Difficulties.Presets;
+                        int at = Array.IndexOf(presets, Difficulties.Of(v));
+                        at = at < 0 ? (dir > 0 ? 1 : 0) : inp.Confirm ? (at + 1) % presets.Length : Math.Clamp(at + dir, 0, presets.Length - 1);
+                        Difficulties.Apply(v, presets[at]);
+                        Say($"{Difficulties.Name(presets[at])}: {Difficulties.About(presets[at])}.");
+                        break;
+                    }
+                case 14:
+                    v.Music = MathF.Round(Math.Clamp(v.Music + 0.1f * dir, 0f, 1f), 1);
+                    break;
                 default: if (inp.Confirm) Back(); return;
             }
             _g.PlaySound(Sfx.Pickup, 0.6f);
@@ -316,6 +331,10 @@ public static class Settings
         yield return "ghost " + (g.Vars.Ghost ? 1 : 0);
         yield return "strafehelp " + g.Vars.StrafeHelp;
         yield return "arcade " + (g.Vars.Arcade ? 1 : 0);
+        yield return "music " + g.Vars.Music.ToString("0.##", inv);
+        yield return "padlook " + g.Vars.PadLook.ToString("0.##", inv);
+        // a preset is saved; console tweaks to the damage settings last only the session
+        if (Difficulties.Of(g.Vars) is var d && d != Difficulty.Custom) yield return "difficulty " + d.ToString().ToLowerInvariant();
         yield return "name " + g.RunnerName;
         yield return "arenamods " + ArenaModInfo.Letters(g.ArenaMods);
     }

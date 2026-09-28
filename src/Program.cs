@@ -55,6 +55,8 @@ public static class Program
         game.LoadSettings();
         game.LoadProfile();
         var keys = new RaylibKeys();
+        var pad = new Gamepad();
+        bool padSeen = false;
         var renderer = new Renderer();
         Audio audio = null;
         if (Raylib.IsAudioDeviceReady())
@@ -87,6 +89,14 @@ public static class Program
         while (!Raylib.WindowShouldClose() && !game.QuitRequested)
         {
             var inp = ReadInput(game, keys);
+            var ps = ReadPad();
+            if (ps.Connected != padSeen)
+            {
+                padSeen = ps.Connected;
+                game.Say(padSeen ? $"Gamepad connected: {Raylib.GetGamepadName_(0)}" : "Gamepad disconnected.");
+            }
+            bool inMenu = game.Menu.Open || game.Mode is GameMode.Title or GameMode.ClassSelect or GameMode.Victory;
+            if (!game.Con.Open) pad.Apply(ref inp, ps, Raylib.GetFrameTime(), inMenu, game.Vars.PadLook);
 
             bool wantCapture = game.Mode is GameMode.Playing or GameMode.Dead && !game.Menu.Open && !game.Con.Open;
             if (wantCapture != captured)
@@ -103,6 +113,7 @@ public static class Program
             }
 
             game.Update(inp, Raylib.GetFrameTime());
+            audio?.UpdateMusic(game.MusicTrack, game.Vars.Music);
             watcher?.Poll(game, Raylib.GetFrameTime());
             renderer.Render(game);
             Raylib.UpdateTexture(tex, renderer.Fb);
@@ -168,6 +179,32 @@ public static class Program
             >= 1000 => false,
             _ => Raylib.IsKeyPressed((KeyboardKey)code) || (code == Keys.Backspace && Raylib.IsKeyPressedRepeat(KeyboardKey.Backspace)),
         };
+    }
+
+    /// <summary>The first gamepad's sticks, triggers and buttons (triggers come in as -1..1; the game wants 0..1).</summary>
+    static PadState ReadPad()
+    {
+        if (!Raylib.IsGamepadAvailable(0)) return default;
+        float Axis(GamepadAxis a) => Raylib.GetGamepadAxisMovement(0, a);
+        var s = new PadState
+        {
+            Connected = true,
+            LX = Axis(GamepadAxis.LeftX), LY = Axis(GamepadAxis.LeftY), RX = Axis(GamepadAxis.RightX), RY = Axis(GamepadAxis.RightY),
+            LT = (Axis(GamepadAxis.LeftTrigger) + 1) / 2, RT = (Axis(GamepadAxis.RightTrigger) + 1) / 2,
+        };
+        foreach (var (b, pb) in new[]
+        {
+            (GamepadButton.RightFaceDown, PadButton.A), (GamepadButton.RightFaceRight, PadButton.B), (GamepadButton.RightFaceLeft, PadButton.X),
+            (GamepadButton.RightFaceUp, PadButton.Y), (GamepadButton.LeftTrigger1, PadButton.LB), (GamepadButton.RightTrigger1, PadButton.RB),
+            (GamepadButton.MiddleLeft, PadButton.Back), (GamepadButton.MiddleRight, PadButton.Start), (GamepadButton.LeftFaceUp, PadButton.Up),
+            (GamepadButton.LeftFaceDown, PadButton.Down), (GamepadButton.LeftFaceLeft, PadButton.Left), (GamepadButton.LeftFaceRight, PadButton.Right),
+            (GamepadButton.LeftThumb, PadButton.L3), (GamepadButton.RightThumb, PadButton.R3),
+        })
+            if (Raylib.IsGamepadButtonDown(0, b)) s.Held |= pb;
+        // some pads report the triggers only as buttons
+        if (Raylib.IsGamepadButtonDown(0, GamepadButton.LeftTrigger2)) s.LT = 1;
+        if (Raylib.IsGamepadButtonDown(0, GamepadButton.RightTrigger2)) s.RT = 1;
+        return s;
     }
 
     static Input ReadInput(Game game, RaylibKeys keys)
