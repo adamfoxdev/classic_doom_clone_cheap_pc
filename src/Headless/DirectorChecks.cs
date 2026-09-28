@@ -38,7 +38,7 @@ public static partial class Headless
         check(am.Count == Game.AmbushSize(1) && g2.Messages.Any(m => m.text.StartsWith("Ambush!")), $"coming back springs an ambush of {Game.AmbushSize(1)}, soon after");
         check(am.All(m => m.Alive && m.State != AiState.Idle && Game.Dist(m.X, m.Y, g2.P.X, g2.P.Y) is >= Game.AmbushNear - 0.1f and <= Game.AmbushFar + 0.1f),
               "awake, 5 to 9 cells off");
-        check(am.All(m => m.MaxHealth == (int)(m.Def.Health * NgPlus.Health(1)) && MathF.Abs(m.DamageMult - NgPlus.Damage(1)) < 0.01f), "toughened for the tier");
+        check(am.All(m => m.MaxHealth == (int)((int)(m.Def.Health * NgPlus.Health(1)) * (m.Affix != Affix.None ? Elites.HealthMult : 1)) && MathF.Abs(m.DamageMult - NgPlus.Damage(1)) < 0.01f), "toughened for the tier");
         var natives = new Game { FixedSeed = 1 };
         natives.NewGame(PClass.Fighter);
         var hallKinds = natives.Hub[0].Things.OfType<Monster>().Where(m => !m.Def.Boss).Select(m => m.Def).ToHashSet();

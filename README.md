@@ -555,6 +555,20 @@ highest tier you've opened.
   | **Hanging Cisterns** | Every 40 seconds the floor floods for 8 s, with a warning 4 s ahead. Standing in it hurts, 4 damage every half second, and tints the view. Get up on a ledge until it drains. |
 
   ![A flood in the Cisterns](docs/ngplus_flood.png)
+- **Elites:** some ordinary monsters come with a gift, shown by an outline in its colour. The game tells you what
+  each kind does the first time you meet one.
+  - **How many:** 18% of ordinary monsters at tier 1, 8% more a tier, up to 40%. An ambush can bring them too.
+  - **What they're like:** a third tougher, and worth half as much again in experience.
+  - **Never elites:** bosses, mini-bosses, a brood and a splitter's copies.
+
+  | Gift | Outline | What it does |
+  |---|---|---|
+  | **Shielded** | blue | A shield worth half its health soaks up damage before its health does. |
+  | **Splitting** | green | When it falls it bursts into two smaller copies, each with a third of its health. |
+  | **Vampiric** | red | It heals by as much as it takes from you. |
+  | **Teleporting** | purple | Hurt it and it may blink away, 3 to 6 cells off behind you, at most once every 3 s. |
+
+  ![One elite of each kind](docs/elites.png)
 - **Ambushes:** a second run doesn't stay empty behind you.
   - **When:** walk back to somewhere you last stood more than 45 seconds ago, with nothing already after you, and
     for the next few seconds an ambush may come. The game looks every 2 seconds, with a 50% chance each time.
@@ -1124,6 +1138,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
 | `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
 | `src/GhostCodes.cs` | Ghost codes: packing a run into a line of text, and racing a friend's |
+| `src/Elites.cs` | New Game+ elites: their gifts, outlines, and what each does |
 | `src/Director.cs` | The New Game+ director: ambushes when you backtrack through places you've been |
 | `src/Hazards.cs` | New Game+ hazards: the Depths' crumbling floors, the Windspire's gusts and the Cisterns' floods |
 | `src/Rematch.cs` | Mini-boss rematches: starting one, the clock, and each boss's board |
@@ -1139,7 +1154,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches, hazards, the director, ghost codes |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches, hazards, the director, ghost codes, elites |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

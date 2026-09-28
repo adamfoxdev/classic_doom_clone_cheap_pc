@@ -126,6 +126,10 @@ public sealed class Monster : Thing
     public float SlowTime, SlowFactor = 0.5f;
     /// <summary>Seconds left frozen solid by a Deep Freeze: it can't move or attack.</summary>
     public float FrozenTime;
+    /// <summary>An elite's gift (New Game+), what's left of a shielded one's shield, and whether it's a splitter's smaller copy.</summary>
+    public Affix Affix;
+    public int Shield;
+    public bool Split;
     /// <summary>Its intro card has been shown (bosses only; see Game.CheckBossIntros).</summary>
     public bool Introduced;
     public override int Alpha => Burrowed ? 0 : BlurTime > 0 ? 90 : 256;

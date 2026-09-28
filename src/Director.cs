@@ -102,7 +102,9 @@ public sealed partial class Game
             var (sx, sy, _) = pool[i];
             pool.RemoveAt(i);
             var def = kinds[_directorRng.Next(kinds.Length)];
-            LastAmbush.Add(SpawnMonster(def, sx, sy, NgPlus.Health(NgTier), NgPlus.Damage(NgTier), NgPlus.Speed(NgTier)));
+            var am = SpawnMonster(def, sx, sy, NgPlus.Health(NgTier), NgPlus.Damage(NgTier), NgPlus.Speed(NgTier));
+            if (_eliteRng.NextDouble() < Elites.Chance(NgTier)) MakeElite(am, Elites.All[_eliteRng.Next(Elites.All.Length)]);
+            LastAmbush.Add(am);
         }
         _ambushes[Level] = _ambushes.GetValueOrDefault(Level) + 1;
         _ambushCd = AmbushCooldown(NgTier);

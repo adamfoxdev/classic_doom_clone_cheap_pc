@@ -805,6 +805,8 @@ public sealed partial class Game
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
         _modRng = new Random((FixedSeed ?? Environment.TickCount) + 17);
+        _eliteRng = new Random((FixedSeed ?? Environment.TickCount) + 41);
+        _elitesMet.Clear();
         if (ArenaMode && DailyMode) cls = Daily.For(DailyDate).cls; // the day's class, every attempt
         else if (ArenaMode && (ArenaMods & ArenaMod.RandomClass) != 0) cls = (PClass)_loot.Next(3); // a fresh roll every run
         ChestsTotal = 0;
@@ -974,6 +976,7 @@ public sealed partial class Game
         DirectorTick(step);
         UpdateWorld(step);
         RematchTick(step);
+        EliteTick(step);
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
@@ -1907,7 +1910,7 @@ public sealed partial class Game
     void KilledWith(Monster m, int slot)
     {
         if (NoXp) return;
-        int xp = (int)(Xp.Kill(m.Def) * NgPlus.Xp(NgTier));
+        int xp = (int)(Xp.Kill(m.Def) * NgPlus.Xp(NgTier) * (m.Affix != Affix.None ? Elites.XpMult : 1));
         Profile.TotalKills++;
         GainXp(xp);
         if (Profile.AddWeaponXp(P.Class, slot, xp))
@@ -2296,7 +2299,7 @@ public sealed partial class Game
                         if (m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius + 0.25f)
                         {
                             Sound(Sfx.Swing, m.X, m.Y);
-                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f) DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult));
+                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f) EliteHit(m, DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult)));
                         }
                         else if (m.Def.Missile != null) FireMissile(m);
                     }
@@ -2495,7 +2498,7 @@ public sealed partial class Game
             }
             else if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z))
             {
-                DamagePlayer(Rand(pr.DmgMin, pr.DmgMax));
+                EliteHit(pr.Owner as Monster, DamagePlayer(Rand(pr.DmgMin, pr.DmgMax)));
                 Explode(pr, null);
                 return;
             }
@@ -2677,6 +2680,11 @@ public sealed partial class Game
     {
         if (!m.Alive || dmg <= 0 || m.Blurring) return;
         if (slot >= 0) dmg = ModDamage(m, dmg, slot);
+        if (m.Shield > 0)
+        {
+            dmg = EliteShield(m, dmg); // a shielded elite's shield soaks it up first
+            if (dmg <= 0) { if (m.State == AiState.Idle) Wake(m); Sound(Sfx.Hit, m.X, m.Y); return; }
+        }
         if (m.Def.Special == Special.Charger && m.SpecialPhase == 3) dmg *= 2; // a stunned Stalker is wide open
         int dealt = Math.Min(Math.Max(1, (int)MathF.Round(dmg * Vars.Damage)), Math.Max(1, m.Health));
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
@@ -2694,6 +2702,7 @@ public sealed partial class Game
             if (slot >= 0) CodexKill(m);
             if (slot >= 0) KilledWith(m, slot);
             if (m.Def.MiniBoss != null) MiniBossDown(m);
+            EliteDied(m);
             int blood = PerkRank(Perk.Bloodthirst);
             if (blood > 0 && slot >= 0) P.Health = Math.Min(P.MaxHealth, P.Health + 4 * blood);
             if (slot >= 0) ChainLightning(m, dmg, slot);
@@ -2706,6 +2715,7 @@ public sealed partial class Game
             return;
         }
         if (slot >= 0) ChainLightning(m, dmg, slot);
+        EliteHurt(m);
         if (m.Def.Blurs && m.State != AiState.Attack && RandF() < 0.4f) { StartBlur(m); return; }
         if (RandF() < m.Def.PainChance && m.State != AiState.Attack)
         {
@@ -2733,12 +2743,13 @@ public sealed partial class Game
         _chaining = false;
     }
 
-    internal void DamagePlayer(int dmg)
+    /// <summary>Hurts you; returns how much health it took.</summary>
+    internal int DamagePlayer(int dmg)
     {
         var p = P;
-        if (Mode != GameMode.Playing || Vars.God || Relaxed) return;
+        if (Mode != GameMode.Playing || Vars.God || Relaxed) return 0;
         dmg = Math.Max(0, (int)MathF.Round(dmg * Vars.MonsterDamage));
-        if (dmg == 0) return;
+        if (dmg == 0) return 0;
         int saved = Math.Min(p.Armor, (int)(dmg * p.Def.ArmorSave));
         p.Armor -= saved;
         p.Health -= dmg - saved;
@@ -2754,10 +2765,11 @@ public sealed partial class Game
             Mode = GameMode.Dead;
             SaveProfile();
             PlaySound(Sfx.PlayerDeath, 1);
-            if (ArenaMode) { EndArenaRun(); Say("Press Enter to try again."); return; }
+            if (ArenaMode) { EndArenaRun(); Say("Press Enter to try again."); return dmg - saved; }
             Say(CanRespawn ? "You have died. Press Enter to return to the checkpoint." : "You have died. Press Enter to try again.");
         }
         else PlaySound(Sfx.PlayerPain, 1);
+        return dmg - saved;
     }
 
     // ================================================================ console / cheat helpers

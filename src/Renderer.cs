@@ -1209,6 +1209,9 @@ public sealed class Renderer
             int light = t.FullBright ? 256 : Light(th);
             int vis = t.FullBright ? Math.Max(Vis(th, depth), 160) : Vis(th, depth);
             bool painFlash = t is Monster m && m.State == AiState.Pain;
+            // an elite's outline: the sprite's edge texels, in its gift's colour
+            uint outline = t is Monster { Affix: not Affix.None } em && em.Alive ? Elites.Colour(em.Affix) : 0;
+            bool frozen = t is Monster { FrozenTime: > 0 };
             int alpha = t.Alpha;
             for (int x = x0; x < x1; x++)
             {
@@ -1221,7 +1224,12 @@ public sealed class Renderer
                     uint c = tex.Px[v * tex.W + u];
                     if (Col.A(c) == 0) continue;
                     if (painFlash) c = Col.Lerp(c, Col.Rgb(255, 255, 255), 70);
+                    if (frozen) c = Col.Lerp(c, Col.Rgb(170, 230, 255), 150);
                     c = Col.Fog(c, light, vis, th.FogColor);
+                    if (outline != 0 && (u == 0 || v == 0 || u == tex.W - 1 || v == tex.H - 1
+                        || Col.A(tex.Px[v * tex.W + u - 1]) == 0 || Col.A(tex.Px[v * tex.W + u + 1]) == 0
+                        || Col.A(tex.Px[(v - 1) * tex.W + u]) == 0 || Col.A(tex.Px[(v + 1) * tex.W + u]) == 0))
+                        c = Col.Lerp(c, outline, 200);
                     if (alpha < 256) { Fb[idx] = Col.Lerp(Fb[idx], c, alpha); continue; } // see-through: no depth write
                     Fb[idx] = c;
                     _depth[idx] = depth;
