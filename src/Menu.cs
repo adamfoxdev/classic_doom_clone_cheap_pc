@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -16,7 +16,7 @@ public sealed class MenuSystem
     bool _captureArmed;
     public string Notice = "";
     public float NoticeTime;
-    public const int BindRows = 15;
+    public const int BindRows = 15, AchievementRows = 11;
 
     /// <summary>Whose leaderboard the Leaderboard page shows: Left/Right switch class, Up/Down the course.</summary>
     public PClass BoardClass;
@@ -72,7 +72,8 @@ public sealed class MenuSystem
         MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Courses => Courses.All.Select(c => c.Name).Append("Back").ToArray(),
         MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Back").ToArray(),
-        MenuPage.Character => Profile.Skills.Select(SkillName).Append("Back").ToArray(),
+        MenuPage.Character => Profile.Skills.Select(SkillName).Append("Achievements").Append("Back").ToArray(),
+        MenuPage.Achievements => HexenSharp.Achievements.All.Select(a => a.Name).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Difficulty", "Music volume", "Back" },
         _ => Bindings.All.Select(b => b.Label).Concat(new[] { "Reset to defaults", "Back" }).ToArray(),
@@ -130,6 +131,15 @@ public sealed class MenuSystem
         if (inp.Up) { Cursor = (Cursor + items.Length - 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
         if (inp.Down) { Cursor = (Cursor + 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
 
+        if (Page == MenuPage.Achievements)
+        {
+            if (Cursor < Scroll) Scroll = Cursor;
+            if (Cursor >= Scroll + AchievementRows) Scroll = Cursor - AchievementRows + 1;
+            Scroll = Math.Clamp(Scroll, 0, Math.Max(0, items.Length - 1 - AchievementRows)); // Back sits below the list, not in it
+            if (inp.Confirm && Cursor == items.Length - 1) Back();
+            return;
+        }
+
         if (Page == MenuPage.Bindings)
         {
             bool onAction = Cursor < Bindings.Count;
@@ -153,7 +163,11 @@ public sealed class MenuSystem
 
         if (Page == MenuPage.Character && (inp.Right || inp.Confirm))
         {
-            if (Cursor >= Profile.Skills.Length) { if (inp.Confirm) Back(); return; }
+            if (Cursor >= Profile.Skills.Length)
+            {
+                if (inp.Confirm) { if (items[Cursor] == "Achievements") Show(MenuPage.Achievements); else Back(); }
+                return;
+            }
             var skill = Profile.Skills[Cursor];
             var pr = _g.Profile;
             if (_g.SpendSkill(skill)) { Say($"{SkillName(skill)} rank {pr.Rank(skill)}: {Profile.Effect(skill, pr.Rank(skill)).ToLowerInvariant()}"); _g.PlaySound(Sfx.Item, 1); }

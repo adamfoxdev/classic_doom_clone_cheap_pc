@@ -149,7 +149,7 @@ public sealed class Checkpoint
     public float X, Y, Floor, Angle;
 }
 
-public sealed class Game
+public sealed partial class Game
 {
     public GameMode Mode = GameMode.Title;
     public Level[] Hub;
@@ -714,7 +714,14 @@ public sealed class Game
     /// <summary>The culprit's confessed and you've closed the dialogue: on to the next job, or the end of the story.</summary>
     public void CaseSolved()
     {
-        if (StoryCase + 1 >= HexenSharp.Story.Cases.Length) { Mode = GameMode.Victory; PlaySound(Sfx.Relic, 1); return; }
+        if (StoryCase + 1 >= HexenSharp.Story.Cases.Length)
+        {
+            Mode = GameMode.Victory; PlaySound(Sfx.Relic, 1);
+            Profile.StoryWins++;
+            Achievements.Check(this);
+            SaveProfile();
+            return;
+        }
         StartStory(StoryCase + 1);
         Say("A new job comes in over the wire.");
     }
@@ -816,6 +823,8 @@ public sealed class Game
         ApplyProfile();
         P.Health = P.MaxHealth;
         RunXp = 0; XpPopup = 0;
+        Cheated = false; RunDeaths = 0;
+        _nightmareThroughout = Difficulties.Of(Vars) == Difficulty.Nightmare;
         P.FloorZ = Level.FloorUnder(P.X, P.Y, P.Radius);
         Messages.Clear();
         Mode = GameMode.Playing;
@@ -846,6 +855,9 @@ public sealed class Game
         if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
         dt = MathF.Min(dt, 0.05f);
         Time += dt;
+        AchievementTime -= dt;
+        if (Difficulties.Of(Vars) != Difficulty.Nightmare) _nightmareThroughout = false;
+        if (AchievementsOn && (_achieveCheck -= dt) <= 0) { _achieveCheck = 0.25f; Achievements.Check(this); }
 
         // the developer console (~) pauses the game while it is open
         if (inp.ConsoleToggle) Con.Open = !Con.Open;
@@ -1227,7 +1239,20 @@ public sealed class Game
             {
                 Mode = GameMode.Victory;
                 PlaySound(Sfx.Teleport, 1);
-                if (!TestingMap) { Profile.Wins++; GainXp(Xp.Victory); }
+                if (!TestingMap)
+                {
+                    Profile.Wins++;
+                    if (Relaxed) Profile.RelaxedWins++;
+                    else
+                    {
+                        Profile.ClassicWins++;
+                        if (RunDeaths == 0) Profile.FlawlessWins++;
+                        if (_nightmareThroughout && Difficulties.Of(Vars) == Difficulty.Nightmare) Profile.NightmareWins++;
+                        if (!Profile.ClassWins.Contains(P.Class.ToString())) Profile.ClassWins.Add(P.Class.ToString());
+                    }
+                    GainXp(Xp.Victory);
+                    Achievements.Check(this);
+                }
                 SaveProfile();
                 return;
             }
@@ -1628,6 +1653,7 @@ public sealed class Game
     {
         c.Opened = true;
         P.ChestsOpened++;
+        Profile.ChestsOpened++;
         GainXp(Xp.Chest);
         PlaySound(Sfx.Chest, 1);
 
@@ -1754,6 +1780,29 @@ public sealed class Game
     public string ProfilePath;
     /// <summary>Experience earned this game, and the "+XP" pop-up by the level bar.</summary>
     public int RunXp, XpPopup;
+
+    /// <summary>A cheat's been used this game (console give, kill, god mode...): no achievements until a new one.</summary>
+    public bool Cheated;
+    /// <summary>Check for achievements as you play (the screenshot tool turns it off, so no banner photobombs a shot).</summary>
+    public bool AchievementsOn = true;
+    /// <summary>Deaths this game, and whether it's been on Nightmare all along, for the achievements.</summary>
+    public int RunDeaths;
+    bool _nightmareThroughout;
+    float _achieveCheck;
+    /// <summary>The last achievement unlocked, shown as a banner for a few seconds.</summary>
+    public AchievementDef AchievementBanner;
+    public float AchievementTime;
+
+    /// <summary>An achievement's just unlocked: say so, show the banner, and pay its experience (anywhere, practice included).</summary>
+    public void AchievementUnlocked(AchievementDef a)
+    {
+        Say($"Achievement unlocked: {a.Name}! +{a.Xp} XP");
+        AchievementBanner = a;
+        AchievementTime = 4f;
+        PlaySound(Sfx.Secret, 1);
+        GainXp(a.Xp, always: true);
+        SaveProfile();
+    }
     public float XpPopupTime;
 
     /// <summary>Experience for everything you do.</summary>
@@ -1788,9 +1837,9 @@ public sealed class Game
     bool NoXp => TestingMap && !ArenaMode;
 
     /// <summary>Adds experience, announcing level-ups.</summary>
-    public void GainXp(int amount)
+    public void GainXp(int amount, bool always = false)
     {
-        if (amount <= 0 || NoXp) return;
+        if (amount <= 0 || (NoXp && !always)) return;
         RunXp += amount;
         XpPopup = XpPopupTime > 0 ? XpPopup + amount : amount;
         XpPopupTime = 1.6f;
@@ -2151,6 +2200,8 @@ public sealed class Game
             else { m.BlurDX = -m.BlurDX; m.BlurDY = -m.BlurDY; }
             if (m.State == AiState.Chase) return;
         }
+
+        if (m.Def.Special != Special.None && m.Alive && MiniBossTick(m, dt, dist)) return;
 
         switch (m.State)
         {
@@ -2549,9 +2600,10 @@ public sealed class Game
     }
 
     /// <summary>Hurts a monster. `slot` is the weapon you hit it with (-1 when it wasn't you), for experience.</summary>
-    void DamageMonster(Monster m, int dmg, int slot = -1)
+    internal void DamageMonster(Monster m, int dmg, int slot = -1)
     {
         if (!m.Alive || dmg <= 0 || m.Blurring) return;
+        if (m.Def.Special == Special.Charger && m.SpecialPhase == 3) dmg *= 2; // a stunned Stalker is wide open
         int dealt = Math.Min(Math.Max(1, (int)MathF.Round(dmg * Vars.Damage)), Math.Max(1, m.Health));
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
         if (slot >= 0)
@@ -2563,6 +2615,7 @@ public sealed class Game
             Sound(Sfx.Death, m.X, m.Y);
             P.Kills++;
             if (slot >= 0) KilledWith(m, slot);
+            if (m.Def.MiniBoss != null) MiniBossDown(m);
             int blood = PerkRank(Perk.Bloodthirst);
             if (blood > 0 && slot >= 0) P.Health = Math.Min(P.MaxHealth, P.Health + 4 * blood);
             if (slot >= 0) ChainLightning(m, dmg, slot);
@@ -2617,6 +2670,7 @@ public sealed class Game
         {
             p.Health = 0;
             p.Dead = true;
+            RunDeaths++;
             p.Z = 0; p.VZ = 0; p.VX = p.VY = 0; p.SlideTime = 0; p.SlideLow = 0;
             Mode = GameMode.Dead;
             SaveProfile();
@@ -2682,9 +2736,13 @@ public sealed class Game
     }
 
     /// <summary>Spawns a thing (by map glyph) a short distance in front of the player.</summary>
-    public bool Summon(char glyph)
+    public bool Summon(char glyph) => SummonThing(ThingFactory.Create(glyph, 0, 0));
+
+    /// <summary>Puts a monster (a mini-boss, say) in front of you, awake.</summary>
+    public bool SummonMonster(MonsterDef def) => SummonThing(new Monster(def) { NextBlinkHp = (int)(def.Health * 0.8f) });
+
+    bool SummonThing(Thing t)
     {
-        var t = ThingFactory.Create(glyph, 0, 0);
         if (t == null) return false;
         for (float d = 1.6f; d >= 0.6f; d -= 0.2f)
         {

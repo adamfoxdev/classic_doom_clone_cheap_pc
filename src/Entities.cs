@@ -96,6 +96,10 @@ public sealed class MonsterDef
     public float AttackTime = 0.5f, Cooldown = 1.5f, PainChance = 0.5f, SightRange = 14f;
     public bool Boss;
     public bool Blurs;                 // dodges by turning see-through and darting sideways
+    /// <summary>A mini-boss's trick (see MiniBosses), its id for your profile, and how close it wakes without seeing you.</summary>
+    public Special Special;
+    public string MiniBoss;
+    public float WakeRange;
 }
 
 public sealed class Monster : Thing
@@ -108,6 +112,11 @@ public sealed class Monster : Thing
     public bool AttackFired;
     public float DamageMult = 1f, SpeedMult = 1f;   // raised by arena waves
     public float BlurTime, BlurDX, BlurDY;          // Dark Bishop dodge
+    // mini-boss state: its trick's cooldown and timer, which step of it (wind-up, charge, stun), the charge's heading,
+    // the health at which it next blinks away, and (for a brood) who summoned it
+    public float SpecialCd, SpecialTime, DashX, DashY;
+    public int SpecialPhase, NextBlinkHp;
+    public Monster Summoner;
     public bool Blurring => BlurTime > 0;
     public override int Alpha => Blurring ? 90 : 256;
 

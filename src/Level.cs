@@ -749,7 +749,7 @@ public static class Maps
             "#OOOOOOO#,,,,,,,,,,,,,,,,,,,,,,#",
             "#O.....O#,,c,,,,,,,,,,,,,,c,,&,#",
             "#O.....O#,,,,T,,,7,,,,T,,,,,,,,#",
-            "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
+            "#O.t.t.O#,,,,,,,,,,,,,,,,,,3,,,#",
             "#OE.H...S,,,,,,,,,,1,,,,,,,,,,,#",
             "#O.t.t.O#,,,,,,,,,,,,,,,,,,,,,,#",
             "#O.....O#,,,,T,,,9,,,,T,,,,g,,,#",
@@ -924,6 +924,37 @@ public static class Maps
             "#,,,,,,,,,,,,,,,,,,,,,,,,#",
             "##########################",
         }, Height: 2f),
+        // Hanging Cisterns: optional, through portal 3 in Winnowing Hall's courtyard (where the Chaos Arena's portal
+        // stood). A roofless cistern with three ledges far above its floor, each a stone-block puzzle: push (and pull,
+        // Shift+E) the blocks onto its pressure plates. Fly between them with the jetpack (a spare waits by the portal);
+        // the ledges step up 1.5 at a time, so one tank reaches the next. The top ledge's lever and every plate together
+        // raise the portcullis to the vault. A secret nook hides in the antechamber's corner.
+        Elevate(Raise(new("Hanging Cisterns", "The Hanging Cisterns. Stone weights, pressure plates, and ledges only the winged can reach.", "spire", new[]
+        {
+            "OOOOOOOOOOOOOOOOOOOOOOOOOOOOOO",
+            "O&.....Ot,,,,,,,,,,,,,,,,,,,tO",
+            "O..u.r.O,b,,,,,,,,,,,,,,,,,g,O",
+            "O......P,,,,a,,,,,,,,,,,,,,,,O",
+            "O.b..q.O,,,,,,e,,,,,,,,,,,,,,O",
+            "O......O,,,,,,,,,,,,,+,p,,,,,O",
+            "OOOOOOOO,,,,,,,,,,,,,,,X,X,p,O",
+            "O.....&O,,,,,,,,,,,,,,p,,,p,,L",
+            "O..e.b.O,,,,,,,,,,,,,,,p,X,,^O",
+            "O......O,,,,,,,,c,,,,^,,,p,,^O",
+            "OOOO...D,,,,e,,,,,,,,,,,,,,,,O",
+            "O%.Z...O,,,,,,,,,,h,,,,,,,,,,O",
+            "O.&O.g.Ot,,,,,,,,,,,,,,,,,,,,O",
+            "OOOOOOOO,,,,,,,,,,,+,,,,,,,,,O",
+            "O&.....O,,+,,,,,,,,,p,,X,,p,,O",
+            "O....h.O,,,,X,p,,,,,,,p,,,,,,O",
+            "O......D,,,,,p,^,,,,,X,,,p^,,O",
+            "O.3....O,,,p,X,,,,,,,,,p,,,,,O",
+            "O...J..O,,,,,^,,,,,,^,,,,,,,,O",
+            "Ot....tO,=,,,,,,,t,,,,,,,,,,,O",
+            "OOOOOOOOOOOOOOOOOOOOOOOOOOOOOO",
+        }),
+            (1, 1, 6, 19, '3'), (8, 1, 28, 19, 'k')),
+            (10, 14, 16, 18, '6'), (19, 13, 27, 18, 'c'), (21, 5, 28, 9, 'i')),
     };
 
     /// <summary>
@@ -951,7 +982,7 @@ public static class Maps
         }),
             (1, 1, 5, 7, '3'), (7, 1, 24, 13, '7'));
 
-    public static Level[] BuildHub() => Hub.Select(d => d.Build()).ToArray();
+    public static Level[] BuildHub() => Hub.Select(d => { var lv = d.Build(); MiniBosses.Place(lv); return lv; }).ToArray();
 
     /// <summary>Every built-in map, for exporting and the editor: the hub's, then the Chaos Arena.</summary>
     public static IEnumerable<MapDef> Builtin => Hub.Append(ChaosArena);

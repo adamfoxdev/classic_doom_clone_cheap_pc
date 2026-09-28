@@ -65,18 +65,19 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   | Mage | Sapphire Wand | Frost Shards | Arc of Death |
 - **Blue and green mana.** The Fighter's axe still works without mana, just weaker.
 - **Hub levels.** Portals connect *Winnowing Hall*, *The Frozen Keep*, *Darkmere Crypt*, the *Windspire* and
-  the optional *Deepdelve Quarry*, *Bedrock Depths*, *Barren World*, *Void Crossing* and *Verdant Moon*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
+  the optional *Hanging Cisterns*, *Deepdelve Quarry*, *Bedrock Depths*, *Barren World*, *Void Crossing* and *Verdant Moon*. Each map keeps its state (dead monsters, opened doors, pulled levers, smashed rubble) when you leave and come back.
 - **Puzzles.** Levers raise portcullises, the Fire Key and Steel Key open locked doors in other maps, and the
   exit stays sealed until the Heresiarch is dead. **Pushable stone blocks** go onto **pressure plates**: `E`
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
   gates open once all its levers are pulled *and* all its plates are covered. Lift a block off a plate and the
   gate drops again.
+- **Mini-bosses** on four of the optional maps, each with a trick of its own. See [Mini-bosses](#mini-bosses).
 - **Chaos Arena** (**Arena** on the title menu): endless wave survival, with its own leaderboard and medals.
   Step on the golden altar to start. Each wave has more monsters and tougher types (Afrits from wave 2,
   Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed scale up every wave, and every fifth
   wave adds Heresiarchs. Supplies appear at the altar after each wave. See [Chaos Arena](#chaos-arena).
 - **Secrets and lore (both styles):** each map hides a secret passage behind a wall that looks like any
-  other; press `E` on it to slide it open. 21 lore stones tell the story of the hub; press `E` to read one.
+  other; press `E` on it to slide it open. 25 lore stones tell the story of the hub; press `E` to read one.
 - **Treasure chests** are scattered randomly through every map each new game. Open one with `E`: it spills
   1–3 random items (health, mana, armor, flasks, rarely an urn or a weapon piece you're missing). Watch out,
   roughly one in eight is a trap and a monster bursts out. Seen chests show on the automap, and the victory
@@ -455,13 +456,54 @@ Portal **7**, in the courtyard between its two northern trees, strands you on th
 enough ore to repair your ship. Then fly it through the Void Crossing to the Verdant Moon, whose portal 9 brings you
 back to the courtyard.
 
-**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 23 relics, which
-are spread over all nine maps (including the Windspire, where some sit on high ledges, and the
+Optional: portal **3**, towards the courtyard's east wall, leads to the **Hanging Cisterns**, a block-puzzle map
+you'll need the jetpack for (a spare waits by the portal).
+- **The ledges:** three hang high above the drained cistern's floor, stepping up 1.5 at a time so one tank of
+  fuel reaches the next. Each has a checkpoint pad, and a lift pad on the floor takes you back up.
+- **The puzzles:** each ledge is a stone-block puzzle. Push blocks with `E` and pull them with `Shift+E` onto
+  its pressure plates, and remember blocks only slide on level stone.
+  - **Low ledge:** two blocks, pillars in the way.
+  - **Middle ledge:** two blocks. One has to be pulled, as a lore stone in the antechamber hints.
+  - **High ledge:** three blocks, a fourteen-move puzzle.
+- **The vault:** with every plate weighed down, pull the lever on the high ledge's east wall. The portcullis to
+  the vault in the north-west lifts, with a Mystic Urn, armor, a flask and mana inside.
+- **The secret:** a secret wall in the antechamber's south-west corner hides a nook.
+
+The ledge puzzles were designed with `tools/puzzles/solve_blocks.py`, a small solver that searches every push and
+pull. Run it to check a redesign still works; it prints the moves the self-test plays through.
+
+![The Hanging Cisterns: the ledges from the cistern floor](docs/cisterns_floor.png)
+![The middle ledge's blocks and pillars](docs/cisterns_ledge.png)
+
+**Relaxed mode:** the route is the same, but instead of killing the Heresiarch you need all 26 relics, which
+are spread over all ten maps (including the Windspire and the Hanging Cisterns, where some sit on high ledges, and the
 Bedrock Depths, where they're buried in the rock) before the
 exit rune wakes. Secret walls sit in the wall
 between Winnowing Hall's great hall and courtyard (open it from the courtyard side), under the Keep's west room,
 under the crypt's south-west room, at the east end of the Windspire's
-north-east ledge, and at the east end of the quarry's strongroom.
+north-east ledge, at the east end of the quarry's strongroom, and in the Hanging Cisterns' antechamber.
+
+### Mini-bosses
+
+Four of the optional maps each have a mini-boss. It's a bigger, recoloured version of one of the usual monsters,
+with a trick of its own; a health bar shows low in the view while you fight it.
+
+| Mini-boss (sci-fi) | Where | Its trick |
+|---|---|---|
+| **Quarry Warden** (Mining Mech) | Deepdelve Quarry, sealed in the cave in the middle of the rock field | Wakes when you come within 7 cells, even through rock, and burrows through the rubble to you. Up close it raises its fists and slams the ground for 25: jump just as they come down and it misses. |
+| **Dust Stalker** (Rogue Harvester) | The Barren World's southern plain | Lowers its head, then charges in a straight line for 28 and a shove. Sidestep and if it hits rock it's stunned for a moment and takes double damage. |
+| **Thornmother** (Hive Queen) | The Verdant Moon's meadow | Floats, fires seekers, and every 8 seconds calls two of her brood, four at most. They fall when she does. |
+| **Drowned Keeper** (Coolant Wraith) | The Hanging Cisterns' floor | Flings fireballs, and each time it loses a fifth of its health it vanishes and reappears somewhere else, usually up on a ledge, so bring the jetpack. |
+
+- **Loot:** each drops a Mystic Urn and armor and pays 250 XP on top of the kill.
+- **Big Game Hunter:** beating all four earns the achievement, and your profile remembers which you've beaten.
+- **Relaxed style:** they're as peaceful as everything else.
+- **Console:** `summon warden`, `summon stalker`, `summon thornmother` or `summon keeper` brings one to you.
+
+![The Quarry Warden, burrowed out into its gallery](docs/quarry_warden.png)
+![The Dust Stalker](docs/dust_stalker.png)
+![The Thornmother](docs/thornmother.png)
+![The Drowned Keeper](docs/drowned_keeper.png)
 
 ## Story mode
 
@@ -583,6 +625,47 @@ points with `Enter`. Every skill has 10 ranks:
 harder per level. The game announces each level-up, and the character screen shows every weapon's level and
 progress.
 
+**Achievements:** there are 21, listed under **Character → Achievements**. Each pays experience once, when it
+unlocks, with a banner and a message; this works anywhere, practice and the arena included. The list shows which
+you've got and when, and how far along you are with the ones that build up.
+
+| Achievement | What it takes | XP |
+|---|---|---|
+| First Blood | Kill a monster | 25 |
+| Slayer | Kill 500 monsters | 250 |
+| Treasure Hunter | Open 50 treasure chests | 150 |
+| Secret Keeper | Find every secret in one game | 200 |
+| Loremaster | Read every lore stone in one game | 200 |
+| Heresiarch Slain | Win the game in the classic style | 300 |
+| Untouchable | Win in the classic style without dying once | 500 |
+| Nightmare Walker | Win on Nightmare, start to finish | 750 |
+| Pilgrim | Win in the relaxed style: find every relic | 300 |
+| Jack of All Trades | Win as all three classes | 500 |
+| On the Podium | Earn a medal on a practice course | 50 |
+| Gold Standard | Earn gold on every timed practice course | 500 |
+| Speed Demon | Reach 250% of your run speed | 150 |
+| Gladiator | Clear wave 5 in the arena | 100 |
+| Champion of Chaos | Clear wave 20 in the arena | 750 |
+| Glutton for Punishment | Clear wave 5 in the arena with three or more modifiers | 300 |
+| Overcharged | Take an arena perk to rank III | 100 |
+| Veteran | Reach level 10 | 150 |
+| Master of Arms | Raise a weapon to level 10 | 250 |
+| Case Closed | Solve every case in Story mode | 300 |
+| Big Game Hunter | Defeat every mini-boss on the optional maps | 500 |
+
+- **Hub game only:** the one-game ones (secrets, lore) count only in a game through the hub, not on practice
+  courses, in the arena or on custom maps.
+- **Earned early:** ones your profile has already earned, such as kills, levels, medals and arena records, unlock
+  the first time the game checks.
+- **No cheating:** achievements don't unlock in a game where you've cheated. That covers god mode, noclip,
+  notarget, infinite mana or fuel, console commands such as `give`, `kill`, `summon`, `map`, `tp`, `xp`, `reveal`
+  and `visitN`, gameplay settings changed with `set` (speed, fire rate, gravity and so on) and custom difficulty.
+  Starting a new game clears it.
+- **Saving:** they're kept in your profile.
+
+![Achievements](docs/achievements.png)
+![An achievement unlocking](docs/achievement_banner.png)
+
 ## Options and key bindings
 
 Open **Options** from the title menu, or press `Esc` in game and pick Options.
@@ -658,8 +741,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
-| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
-| `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon) |
+| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|flask\|...>` | spawn something in front of you (the last four are the mini-bosses) |
+| `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
 | `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `-` none |
@@ -773,6 +856,8 @@ in both looks (`76_…`, `77_…`).
 | `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
+| `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
+| `src/Achievements.cs` | The achievements: what each takes, its experience, and the checks that unlock them |
 | `src/Gamepad.cs` | Gamepad layout: sticks, triggers and buttons turned into game input |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |
 | `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |

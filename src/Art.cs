@@ -67,6 +67,7 @@ public static class Art
         BuildWeapons();
         if (style == ArtStyle.SciFi) SciFiArt.Apply();
         if (style == ArtStyle.SciFi && Rendered) RenderedArt.Apply();
+        MiniBosses.BuildArt(); // from whichever monsters the style has
         RubbleCracked = CrackStages(Rubble);
         RubbleChunk = Chunk(Rubble);
         Ores = OreColors.Select((c, k) => Veins(Rubble, c, 300 + (uint)k)).ToArray();

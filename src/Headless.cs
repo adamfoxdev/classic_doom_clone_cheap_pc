@@ -23,7 +23,7 @@ public static class Headless
             var reach = lv.Reachable(start.Item1, start.Item2);
             var flyTo = lv.Reachable(start.Item1, start.Item2, move: Level.Move.Fly);
             for (int i = 0; i < lv.Marks.Length; i++)
-                if (lv.Marks[i] != '\0') Check(lv.Marks[i] == '+' ? flyTo[i] : reach[i], $"mark '{lv.Marks[i]}' at {i % lv.W},{i / lv.W} reachable");
+                if (lv.Marks[i] != '\0') Check(lv.Marks[i] is '+' or '^' ? flyTo[i] : reach[i], $"mark '{lv.Marks[i]}' at {i % lv.W},{i / lv.W} reachable"); // pads and plates may be up a jetpack flight
             foreach (var t in lv.Things)
             {
                 if (t is Pickup pk && pk.Kind is PickupKind.SteelKey or PickupKind.FireKey or PickupKind.Weapon2 or PickupKind.Weapon3)
@@ -62,6 +62,8 @@ public static class Headless
         StoryChecks(Check);
         Console.WriteLine("Arena mode:");
         ArenaModeChecks(Check);
+        Console.WriteLine("Achievements:");
+        AchievementChecks(Check);
         Console.WriteLine("Music:");
         MusicChecks(Check);
         Console.WriteLine("Gamepad:");
@@ -98,6 +100,10 @@ public static class Headless
         JetpackChecks(Check);
         Console.WriteLine("Windspire:");
         SpireChecks(Check);
+        Console.WriteLine("Hanging Cisterns:");
+        CisternChecks(Check);
+        Console.WriteLine("Mini-bosses:");
+        MiniBossChecks(Check);
         Console.WriteLine("Deepdelve Quarry and rubble:");
         QuarryChecks(Check);
         VerticalAimChecks(Check);
@@ -682,6 +688,216 @@ public static class Headless
         }
         var wav = Sounds.Wav(new short[] { 1, -1 });
         check(wav.Length == 48 && wav[0] == 'R' && wav[8] == 'W' && BitConverter.ToInt32(wav, 24) == Sounds.Rate, "WAV export writes a valid header");
+    }
+
+    /// <summary>
+    /// The Hanging Cisterns' three ledge puzzles, solved by a search over pushes and pulls (tools/puzzles/solve_blocks.py,
+    /// which prints these): where to stand, which way the block goes, and whether it's a pull.
+    /// </summary>
+    static readonly (string ledge, float floor, (bool pull, int x, int y, char dir)[] moves)[] CisternSolutions =
+    {
+        ("low ledge", 1.5f, new[] { (false, 12, 17, 'E'), (false, 12, 14, 'S'), (false, 12, 15, 'S'), (false, 12, 16, 'S'), (false, 11, 18, 'E'), (false, 13, 17, 'E'), (false, 15, 18, 'N') }),
+        ("middle ledge", 3f, new[] { (false, 22, 16, 'W'), (false, 20, 15, 'S'), (false, 22, 14, 'E'), (false, 23, 14, 'E'), (false, 25, 13, 'S'), (false, 24, 15, 'E'), (true, 26, 16, 'S'), (false, 20, 16, 'S') }),
+        ("high ledge", 4.5f, new[] { (false, 25, 5, 'S'), (false, 24, 6, 'W'), (false, 23, 6, 'W'), (false, 21, 5, 'S'), (false, 21, 6, 'S'), (false, 21, 7, 'S'), (false, 24, 8, 'E'),
+            (false, 25, 8, 'E'), (false, 26, 8, 'E'), (false, 25, 6, 'S'), (false, 24, 8, 'E'), (false, 25, 8, 'E'), (false, 27, 7, 'S'), (false, 26, 9, 'E') }),
+    };
+
+    static void MiniBossChecks(Action<bool, string> check)
+    {
+        // one on each optional map, awake to their own look in both styles
+        var hub = Maps.BuildHub();
+        foreach (var (map, def, x, y) in MiniBosses.Places)
+        {
+            var lv = hub.First(l => l.RawName == map);
+            var m = lv.Things.OfType<Monster>().SingleOrDefault(t => t.Def == def);
+            check(m != null && !lv.BlocksCircle(m.X, m.Y, def.Radius) && m.State == AiState.Idle, $"the {def.Name} waits in the {map}");
+        }
+        foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
+        {
+            Art.Init(style);
+            bool looks = MiniBosses.All.All(d => Art.Monsters.TryGetValue(d.Art, out var set) && set.Length == Art.Monsters["ettin"].Length
+                && set.All(t => t.Px.Count(px => Col.A(px) != 0) > 50));
+            bool own = !Art.Monsters["warden"][0].Px.SequenceEqual(Art.Monsters["ettin"][0].Px);
+            check(looks && own, $"each has its own recoloured sprites ({style})");
+        }
+        Art.Init(ArtStyle.SciFi);
+        check(Words.T("Quarry Warden") == "Mining Mech" && Words.T("Thornmother") == "Hive Queen", "and sci-fi names");
+
+        Game Fresh(string map, float px, float py)
+        {
+            var gg = new Game { FixedSeed = 1 };
+            gg.NewGame(PClass.Fighter);
+            gg.Warp(Array.FindIndex(gg.Hub, l => l.RawName == map));
+            gg.Level.Things.RemoveAll(t => t is Monster { Def.MiniBoss: null });
+            gg.P.X = px; gg.P.Y = py; gg.P.FloorZ = gg.Level.FloorAt(px, py); gg.P.Health = 400; gg.P.MaxHealth = 400;
+            return gg;
+        }
+        void Run(Game gg, int frames, Func<bool> until = null) { for (int k = 0; k < frames && (until == null || !until()); k++) gg.Update(default, 1f / 35f); }
+
+        // the Quarry Warden hears you through the rock, burrows to you, and slams the ground
+        var g = Fresh("Deepdelve Quarry", 14.5f, 4.5f);
+        var w = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Warden);
+        int rubble0 = g.Level.Cells.Count(c => c == Level.Rubble);
+        Run(g, 5);
+        check(w.State != AiState.Idle && !g.Level.Sight(w.X, w.Y, g.P.X, g.P.Y), "the Quarry Warden wakes when you come near, though the rock hides you");
+        float d0 = Game.Dist(w.X, w.Y, g.P.X, g.P.Y);
+        Run(g, 35 * 25, () => Game.Dist(w.X, w.Y, g.P.X, g.P.Y) < 2.4f);
+        check(g.Level.Cells.Count(c => c == Level.Rubble) < rubble0 && Game.Dist(w.X, w.Y, g.P.X, g.P.Y) < 2.4f, $"it burrows through the rubble to you ({d0:0.0} -> {Game.Dist(w.X, w.Y, g.P.X, g.P.Y):0.0} away, {rubble0 - g.Level.Cells.Count(c => c == Level.Rubble)} blocks)");
+        w.SpecialCd = 0;
+        int hp = g.P.Health;
+        Run(g, 35 * 2, () => w.SpecialPhase == 1);
+        Run(g, 35, () => w.SpecialPhase == 0);
+        check(w.SpecialCd > 3f && hp - g.P.Health >= Game.SlamDamage, $"up close it slams the ground ({hp - g.P.Health} damage)");
+        w.SpecialCd = 0; w.X = g.P.X + 1.6f; w.Y = g.P.Y; w.AttackCd = 5;
+        Run(g, 35, () => w.SpecialPhase == 1);
+        Run(g, 35, () => w.SpecialTime < 0.3f); // time the jump: in the air when the fists come down
+        hp = g.P.Health;
+        g.Update(new Input { Jump = true }, 1f / 35f);
+        for (int k = 0; k < 35 && w.SpecialPhase == 1; k++) g.Update(new Input { JumpHeld = true }, 1f / 35f);
+        check(w.SpecialPhase == 0 && g.P.Health == hp, "jump as it brings its fists down and the slam misses");
+
+        // the Dust Stalker winds up and charges; dodge it into a wall and it's stunned and takes double damage
+        g = Fresh("Barren World", 16.5f, 12.5f);
+        var st = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Stalker);
+        Run(g, 35 * 6, () => st.SpecialPhase == 2);
+        check(st.SpecialPhase == 2, "the Dust Stalker winds up, then charges");
+        hp = g.P.Health;
+        Run(g, 35 * 2, () => st.SpecialPhase != 2);
+        check(hp - g.P.Health >= Game.ChargeDamage - 2, $"standing in its way hurts ({hp - g.P.Health} damage)");
+        st.SpecialCd = 0; st.X = 16.5f; st.Y = 12.5f; st.AttackCd = 5; g.P.X = 16.5f; g.P.Y = 7.5f;
+        Run(g, 35 * 6, () => st.SpecialPhase == 2);
+        g.P.X = 21.5f; // sidestep: it thunders on past, into the rocks up north
+        Run(g, 35 * 3, () => st.SpecialPhase == 3);
+        check(st.SpecialPhase == 3, "sidestep and it runs into the rocks, stunned");
+        int shp = st.Health;
+        g.DamageMonster(st, 20, 0);
+        check(shp - st.Health == 40, "and takes double damage while it's dazed");
+
+        // the Thornmother calls her brood, four at most, and they die with her
+        g = Fresh("Verdant Moon", 14.5f, 9.5f);
+        var tm = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Thornmother);
+        g.Vars.God = true;
+        Run(g, 35 * 9);
+        int brood = g.Level.Things.Count(t => t is Monster o && o.Summoner == tm && o.Alive);
+        Run(g, 35 * 30);
+        int brood2 = g.Level.Things.Count(t => t is Monster o && o.Summoner == tm && o.Alive);
+        check(brood == 2 && brood2 == Game.MaxBrood, $"the Thornmother calls her brood, two at a time, four at most ({brood}, then {brood2})");
+        g.Vars.God = false;
+        int xp0 = g.Profile.TotalXp;
+        g.DamageMonster(tm, 100000, 0);
+        check(!tm.Alive && g.Level.Things.All(t => t is not Monster o || o.Summoner != tm || !o.Alive), "when she falls, her brood falls with her");
+        var drops = g.Level.Things.OfType<Pickup>().Where(pk => Game.Dist(pk.X, pk.Y, tm.X, tm.Y) < 1).Select(pk => pk.Kind).ToList();
+        check(drops.Contains(PickupKind.Urn) && drops.Contains(PickupKind.Armor), "she drops a Mystic Urn and armour");
+        check(g.Profile.TotalXp - xp0 >= Game.MiniBossXp && g.Profile.MiniBosses.Contains("thornmother"), $"and pays {Game.MiniBossXp} XP on top, remembered in your profile");
+
+        // the Drowned Keeper blinks away as it's hurt, up onto the ledges
+        g = Fresh("Hanging Cisterns", 12.5f, 9.5f);
+        var kp = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Keeper);
+        Run(g, 10);
+        check(g.BossInFight() == kp, "a mini-boss you're fighting gets a health bar");
+        var r = new Renderer();
+        r.Render(g);
+        check(r.Fb.Count(px => px == Col.Rgb(220, 50, 40)) > 100, "drawn low in the view");
+        float kx = kp.X, ky = kp.Y;
+        g.DamageMonster(kp, 70, 0);
+        Run(g, 2);
+        check(Game.Dist(kx, ky, kp.X, kp.Y) > 2 && Game.Dist(kp.X, kp.Y, g.P.X, g.P.Y) >= 5 && g.Level.FloorAt(kp.X, kp.Y) > 0,
+              $"the Drowned Keeper blinks away when hurt, up onto a ledge ({g.Level.FloorAt(kp.X, kp.Y)} up)");
+
+        // relaxed: they're as peaceful as the rest
+        var rel = new Game { FixedSeed = 1, Style = GameStyle.Relaxed };
+        rel.NewGame(PClass.Fighter);
+        rel.Warp(Array.FindIndex(rel.Hub, l => l.RawName == "Deepdelve Quarry"));
+        rel.P.X = 14.5f; rel.P.Y = 4.5f;
+        int rr = rel.Level.Cells.Count(c => c == Level.Rubble);
+        Run(rel, 35 * 10);
+        check(rel.Level.Cells.Count(c => c == Level.Rubble) == rr, "in the relaxed style they leave you (and the rock) alone");
+
+        // all four: Big Game Hunter; and the console can summon them
+        var hunter = new Game { FixedSeed = 1, Profile = new Profile { MiniBosses = MiniBosses.All.Select(d => d.MiniBoss).ToList() } };
+        Achievements.Check(hunter);
+        check(hunter.Profile.Achievements.ContainsKey("big_game"), "beating all four is Big Game Hunter");
+        hunter.NewGame(PClass.Fighter);
+        hunter.Con.Execute("summon stalker");
+        check(hunter.Level.Things.OfType<Monster>().Any(m => m.Def == MiniBosses.Stalker && m.State != AiState.Idle), "'summon stalker' brings one to you");
+    }
+
+    static void CisternChecks(Action<bool, string> check)
+    {
+        var g = new Game { FixedSeed = 2 };
+        void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
+        g.NewGame(PClass.Cleric);
+        int ci = Array.FindIndex(g.Hub, l => l.RawName == "Hanging Cisterns");
+        check(ci == g.Hub.Length - 1, "the Hanging Cisterns join the end of the hub, so no other map moves");
+        g.Warp(ci);
+        var lv = g.Level;
+        var p = g.P;
+        lv.Things.RemoveAll(t => t is Monster or Chest);
+        var arrive = lv.FindMark('3').Value;
+        check(MathF.Abs(p.X - arrive.x) < 0.01f && lv.PlateCount == 7 && lv.LeverCount == 1 && lv.Checkpoints.Count == 3,
+              "you arrive by portal 3; seven plates, one lever, a checkpoint on each of three ledges");
+        float Dist(float tx, float ty) => MathF.Sqrt((tx - p.X) * (tx - p.X) + (ty - p.Y) * (ty - p.Y));
+        void Face(float tx, float ty) => p.Angle = MathF.Atan2(ty - p.Y, tx - p.X);
+        void WalkTo(float tx, float ty) { for (int k = 0; k < 35 * 8 && Dist(tx, ty) > 0.15f; k++) { Face(tx, ty); Tick(new Input { Move = MathF.Min(1, Dist(tx, ty) * 2) }); } }
+        bool FlyTo(float tx, float ty, float floor)
+        {
+            Tick(default, 70); // let the tank recharge
+            Tick(new Input { JetHeld = true });
+            for (int k = 0; k < 35 * 4 && p.FloorZ + p.Z < floor + 0.5f; k++) Tick(new Input { JetHeld = true });
+            for (int k = 0; k < 35 * 8 && Dist(tx, ty) > 0.15f; k++) { Face(tx, ty); Tick(new Input { Move = MathF.Min(1, Dist(tx, ty) * 2), JetHeld = p.FloorZ + p.Z < floor + 0.4f }); }
+            for (int k = 0; k < 35 * 5 && p.Flying; k++) Tick(new Input { SlideHeld = true });
+            return p.OnGround && MathF.Abs(p.FloorZ - floor) < 0.01f;
+        }
+
+        // the spare jetpack by the portal, then out through the door into the cistern
+        WalkTo(4.5f, 18.5f);
+        check(p.HasJetpack, "a spare jetpack waits by the portal");
+        WalkTo(6.5f, 16.5f); p.Angle = 0;
+        Tick(new Input { Use = true }); Tick(default, 35);
+        WalkTo(8.6f, 16.5f);
+        check(p.FloorZ == 0 && lv.FloorAt(12.5f, 16.5f) == 1.5f && !lv.PuzzleSolved, "the cistern floor, with the ledges far above it");
+        int gate = Array.IndexOf(lv.Cells, 'P');
+        check(lv.DoorOpen[gate] <= 0, "the vault's portcullis is shut");
+
+        // fly up to each ledge in turn, and solve it
+        var landings = new[] { (10.5f, 14.5f), (19.5f, 13.5f), (21.5f, 5.5f) };
+        int movesOk = 0, movesAll = 0;
+        for (int li = 0; li < CisternSolutions.Length; li++)
+        {
+            var (name, floor, moves) = CisternSolutions[li];
+            bool landed = FlyTo(landings[li].Item1, landings[li].Item2, floor);
+            check(landed, $"fly up to the {name} ({floor} up)");
+            if (!landed) return;
+            int plates0 = lv.PlatesCovered;
+            foreach (var (pull, x, y, dir) in moves)
+            {
+                movesAll++;
+                var (dx, dy) = dir switch { 'E' => (1, 0), 'W' => (-1, 0), 'S' => (0, 1), _ => (0, -1) };
+                // the block sits beside you: ahead for a push, and for a pull it's on the far side, coming toward you
+                int bx = pull ? x - dx : x + dx, by = pull ? y - dy : y + dy;
+                p.X = x + 0.5f; p.Y = y + 0.5f; p.FloorZ = floor; p.Z = 0; p.VX = p.VY = 0;
+                Face(bx + 0.5f, by + 0.5f);
+                Tick(new Input { Use = true, Walk = pull }); Tick(default);
+                if (lv.Cell(bx + dx, by + dy) == 'X' && lv.Cell(bx, by) != 'X') movesOk++;
+            }
+            check(lv.PlatesCovered - plates0 == new[] { 2, 2, 3 }[li], $"the {name}'s blocks all sit on its plates ({lv.PlatesCovered - plates0} more covered)");
+        }
+        check(movesOk == movesAll && lv.PlatesCovered == lv.PlateCount && !lv.PuzzleSolved, $"every push and pull works ({movesOk}/{movesAll}); the lever's still to pull");
+
+        // the high lever, and the vault opens
+        p.X = 28.5f; p.Y = 7.5f; p.FloorZ = 4.5f; p.Angle = 0;
+        Tick(new Input { Use = true }); Tick(default, 35 * 2);
+        check(lv.PuzzleSolved && lv.DoorOpen[gate] >= 1f, "the lever up on the high ledge, with every plate weighed down, raises the vault's portcullis");
+        var reach = lv.Reachable((int)arrive.x, (int)arrive.y);
+        check(lv.Things.OfType<Pickup>().Where(t => t.X < 7 && t.Y < 6).All(t => reach[(int)t.Y * lv.W + (int)t.X]), "the vault's treasure can be walked to");
+
+        // lore, and the secret nook in the antechamber
+        check(Enumerable.Range(0, lv.Things.OfType<LoreStone>().Count()).All(i => !Discovery.LoreText("Hanging Cisterns", i).Contains("worn away")), "every lore stone has its text");
+        int z = Array.IndexOf(lv.Cells, 'Z');
+        p.X = z % lv.W + 1.5f; p.Y = z / lv.W + 0.5f; p.FloorZ = 0; p.Angle = MathF.PI;
+        int secrets = p.Secrets;
+        Tick(new Input { Use = true }); Tick(default, 35);
+        check(p.Secrets == secrets + 1, "a secret wall in the antechamber's corner");
     }
 
     static void SpireChecks(Action<bool, string> check)
@@ -1936,7 +2152,7 @@ public static class Headless
         check(ui.Binds.Get(Act.Character, 0) == Keys.Letter('K'), "K is the character key");
         ui.Update(new Input { Character = true }, 1f / 35f);
         check(ui.Paused && ui.Menu.Page == MenuPage.Character, "K opens the character screen and pauses");
-        check(ui.Menu.Items(MenuPage.Character).SequenceEqual(new[] { "Vitality", "Power", "Agility", "Focus", "Thrusters", "Back" }), "it lists the five skills");
+        check(ui.Menu.Items(MenuPage.Character).SequenceEqual(new[] { "Vitality", "Power", "Agility", "Focus", "Thrusters", "Achievements", "Back" }), "it lists the five skills, then Achievements");
         ui.Update(new Input { Confirm = true }, 1f / 35f);
         check(ui.Profile.Rank(Skill.Vitality) == 1 && ui.P.MaxHealth == 110 && ui.Profile.Points == 0, "Enter spends a point on the selected skill");
         ui.Update(new Input { Confirm = true }, 1f / 35f);
@@ -1959,7 +2175,8 @@ public static class Headless
         var exit = win.Level.FindMark('E').Value;
         win.P.X = exit.x; win.P.Y = exit.y;
         win.Update(default, 1f / 35f);
-        check(win.Mode == GameMode.Victory && win.Profile.Wins == 1 && win.Profile.TotalXp == Game.Xp.Victory, $"winning adds a win and {Game.Xp.Victory} XP");
+        int achieved = win.Profile.Achievements.Keys.Sum(id => Achievements.Find(id).Xp); // the first win unlocks a few
+        check(win.Mode == GameMode.Victory && win.Profile.Wins == 1 && win.Profile.TotalXp - achieved == Game.Xp.Victory, $"winning adds a win and {Game.Xp.Victory} XP");
 
         // console
         var c = new Game { FixedSeed = 1, Profile = new Profile() };
@@ -2055,7 +2272,7 @@ public static class Headless
             }
         check(covered == shaftLedgeCells, $"landing anywhere on a ledge counts for its checkpoint ({covered}/{shaftLedgeCells} cells)");
         check(lv.Marks.Count(m => m == '=') == 1 && lv.Floors[Array.IndexOf(lv.Marks, '=')] == 0, "one lift pad on the ground floor");
-        check(hub.Where(l => l != lv).All(l => l.Checkpoints.Count == 0), "only the Windspire has checkpoints");
+        check(hub.Where(l => l != lv && l.RawName != "Hanging Cisterns").All(l => l.Checkpoints.Count == 0), "only the Windspire and the Hanging Cisterns have checkpoints");
 
         var g = new Game { FixedSeed = 5 };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
@@ -2403,9 +2620,13 @@ public static class Headless
         g.P.X -= 1.2f; Tick(default);
         check(g.Level == keepLv, "and brings you back to the vault");
 
-        // the Chaos Arena has moved to its own title menu item: no portal 3, and no arena, in the hub
-        check(g.Hub.All(l => l.FindMark('3') == null) && g.Hub.All(l => l.Arena == null && l.RawName != "Chaos Arena"),
-              "the Chaos Arena isn't in the hub any more (it's Arena on the title menu)");
+        // the Chaos Arena has its own title menu item; portal 3 in the courtyard leads to the Hanging Cisterns now
+        check(g.Hub.All(l => l.Arena == null && l.RawName != "Chaos Arena"), "the Chaos Arena isn't in the hub any more (it's Arena on the title menu)");
+        g.Warp(0);
+        Tick(default);
+        var p3 = g.Level.FindMark('3').Value;
+        g.P.X = p3.x; g.P.Y = p3.y; g.P.PortalLock = false; Tick(default);
+        check(g.Level.RawName == "Hanging Cisterns", "portal 3 in the courtyard leads to the Hanging Cisterns");
     }
 
     static void MovementChecks(Action<bool, string> check)
@@ -2498,6 +2719,134 @@ public static class Headless
         check(g.Level == g.Hub[3], "typing 'visit4' warps to the fourth map");
         foreach (char c in "mapsco") Tick(new Input { Typed = c.ToString() });
         check(g.Level.Seen.All(s => s), "typing 'mapsco' reveals the map");
+    }
+
+    static void AchievementChecks(Action<bool, string> check)
+    {
+        var all = Achievements.All;
+        check(all.Length >= 20 && all.Select(a => a.Id).Distinct().Count() == all.Length && all.All(a => a.Xp > 0 && a.Name.Length <= 26),
+              $"{all.Length} achievements, each with its own id and some experience");
+
+        // the first kill with a weapon: First Blood, its experience, a message and a banner, once
+        var g = new Game { FixedSeed = 1 };
+        g.Update(default, 1f / 35f);
+        check(g.Profile.Achievements.Count == 0, "a new profile has none");
+        g.NewGame(PClass.Fighter);
+        var p = g.P;
+        g.Level.Things.RemoveAll(t => t is Monster);
+        var ettin = new Monster(Monster.Ettin) { X = p.X + 0.9f, Y = p.Y, Level = g.Level, Health = 1 };
+        g.Level.Things.Add(ettin);
+        p.Angle = 0;
+        int xp0 = g.Profile.TotalXp;
+        for (int f = 0; f < 35 && ettin.Alive; f++) g.Update(new Input { Fire = true }, 1f / 35f);
+        for (int f = 0; f < 10; f++) g.Update(default, 1f / 35f);
+        check(!ettin.Alive && g.Profile.Achievements.ContainsKey("first_blood") && g.AchievementBanner?.Id == "first_blood"
+              && g.Messages.Any(m => m.text == "Achievement unlocked: First Blood! +25 XP"), "a first kill unlocks First Blood, with a message and a banner");
+        check(g.Profile.TotalXp - xp0 == Game.Xp.Kill(Monster.Ettin) + 25, "and pays its 25 XP on top of the kill's");
+        var r = new Renderer();
+        r.Render(g);
+        check(r.Fb.Count(px => px == Col.Rgb(230, 190, 80)) > 150, "the banner shows over the view");
+        int xp1 = g.Profile.TotalXp;
+        Achievements.Check(g);
+        check(g.Profile.TotalXp == xp1, "each one pays once");
+
+        // cheats: nothing unlocks for the rest of that game
+        p.VX = 2.6f * g.RunSpeed; p.VY = 0;
+        g.Con.Execute("god"); g.Con.Execute("god");
+        Achievements.Check(g);
+        check(g.Cheated && !g.Profile.Achievements.ContainsKey("speed"), "using a cheat (even switched off again) blocks achievements that game");
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.Con.Execute("set fov 90");
+        g.Con.Execute("sens 2");
+        check(!g.Cheated, "a new game clears it; looks and feel settings aren't cheats");
+        g.Con.Execute("set gravity 4");
+        check(g.Cheated, "but gameplay ones are");
+        g.Con.Execute("set gravity 12");
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+
+        // speed, secrets and lore in the game you're playing
+        g.P.VX = 2.6f * g.RunSpeed; g.P.VY = 0;
+        Achievements.Check(g);
+        check(g.Profile.Achievements.ContainsKey("speed"), "Speed Demon: 250% of your run speed");
+        var sec = Achievements.Find("secrets");
+        check(sec.Progress(g) == (0, g.SecretsTotal), $"progress shows how far along you are (0 of {g.SecretsTotal} secrets)");
+        g.P.Secrets = g.SecretsTotal; g.P.LoreRead = g.LoreTotal;
+        Achievements.Check(g);
+        check(g.Profile.Achievements.ContainsKey("secrets") && g.Profile.Achievements.ContainsKey("lore"), "every secret, every lore stone in one game");
+        var pr = new Game { FixedSeed = 1 };
+        pr.StartPractice(PClass.Fighter, Courses.Hangar);
+        pr.P.Secrets = 99; pr.P.LoreRead = 99;
+        Achievements.Check(pr);
+        check(!pr.Profile.Achievements.ContainsKey("secrets"), "which a practice course's own counts don't satisfy");
+
+        // ones your profile has already earned unlock at the title
+        var old = new Game { FixedSeed = 1, Profile = new Profile { TotalKills = 612, Level = 12 } };
+        old.Update(default, 1f / 35f);
+        check(new[] { "first_blood", "slayer", "veteran" }.All(old.Profile.Achievements.ContainsKey), "a profile that already has 600 kills and level 12 gets theirs straight away");
+
+        // winning: classic, flawless, nightmare, relaxed, every class
+        Game Win(PClass cls, GameStyle style = GameStyle.Classic, bool die = false, string difficulty = "normal")
+        {
+            var w = new Game { FixedSeed = 1, Profile = new Profile() };
+            w.Con.Execute("difficulty " + difficulty, quiet: true);
+            w.Style = style;
+            w.NewGame(cls);
+            w.Level.Things.RemoveAll(t => t is Monster);
+            if (die) { w.Checkpoint = new Checkpoint { Level = w.Level, X = w.P.X, Y = w.P.Y, Health = 100 }; w.DamagePlayer(100000); w.Update(new Input { Confirm = true }, 1f / 35f); for (int f = 0; f < 200 && w.Mode == GameMode.Dead; f++) w.Update(new Input { Confirm = f % 2 == 0 }, 1f / 35f); }
+            if (style == GameStyle.Relaxed) w.P.Relics = w.RelicsTotal;
+            w.Level = w.Hub[0];
+            w.Level.BossDead = true;
+            var ex = w.Level.FindMark('E').Value;
+            w.P.X = ex.x; w.P.Y = ex.y;
+            w.Update(default, 1f / 35f);
+            return w;
+        }
+        var w1 = Win(PClass.Fighter);
+        check(w1.Mode == GameMode.Victory && w1.Profile.Achievements.ContainsKey("heresiarch") && w1.Profile.Achievements.ContainsKey("flawless")
+              && !w1.Profile.Achievements.ContainsKey("nightmare"), "a classic win without dying: Heresiarch Slain and Untouchable");
+        var w2 = Win(PClass.Fighter, die: true);
+        check(w2.Profile.ClassicWins == 1 && w2.RunDeaths == 1 && !w2.Profile.Achievements.ContainsKey("flawless"), "a win after dying isn't Untouchable");
+        var w3 = Win(PClass.Mage, difficulty: "nightmare");
+        check(w3.Profile.Achievements.ContainsKey("nightmare"), "a win on Nightmare is Nightmare Walker");
+        var w4 = Win(PClass.Cleric, GameStyle.Relaxed);
+        check(w4.Profile.Achievements.ContainsKey("pilgrim") && !w4.Profile.Achievements.ContainsKey("heresiarch"), "a relaxed win is Pilgrim");
+        var prof = new Profile { ClassWins = new() { "Fighter", "Cleric" } };
+        var three = new Game { FixedSeed = 1, Profile = prof };
+        check(Achievements.Find("all_classes").Progress(three) == (2, 3), "Jack of All Trades counts the classes you've won as");
+        prof.ClassWins.Add("Mage");
+        Achievements.Check(three);
+        check(prof.Achievements.ContainsKey("all_classes"), "and unlocks with the third");
+
+        // practice medals and the arena
+        var med = new Game { FixedSeed = 1 };
+        med.Profile.AddCourseRun(Courses.Hangar.Key(PClass.Fighter), 18f, "A", DateTime.Now);
+        Achievements.Check(med);
+        check(med.Profile.Achievements.ContainsKey("podium") && !med.Profile.Achievements.ContainsKey("gold_all"), "a bronze is On the Podium");
+        foreach (var c in Courses.Timed) med.Profile.AddCourseRun(c.Key(PClass.Fighter), c.MedalTimes(PClass.Fighter).gold - 0.1f, "A", DateTime.Now);
+        Achievements.Check(med);
+        check(med.Profile.Achievements.ContainsKey("gold_all"), "gold on every timed course is Gold Standard");
+        var ar = new Game { FixedSeed = 1 };
+        ar.ArenaMods = ArenaMod.DoubleSpeed | ArenaMod.NoSupplies | ArenaMod.MeleeOnly;
+        ar.StartArena(PClass.Fighter);
+        ar.Level.Arena.Started = true; ar.Level.Arena.BestWave = 5;
+        Achievements.Check(ar);
+        check(ar.Profile.Achievements.ContainsKey("arena_5") && ar.Profile.Achievements.ContainsKey("arena_mods") && !ar.Profile.Achievements.ContainsKey("arena_20"),
+              "clearing wave 5 with three modifiers: Gladiator and Glutton for Punishment");
+
+        // kept with the profile, and listed on the Character screen
+        var back = System.Text.Json.JsonSerializer.Deserialize<Profile>(ar.Profile.ToJson());
+        check(back.Achievements.ContainsKey("arena_mods"), "saved with your profile");
+        ar.Paused = true; ar.Menu.Show(MenuPage.Character);
+        ar.Menu.Cursor = Array.IndexOf(ar.Menu.Items(MenuPage.Character), "Achievements");
+        ar.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(ar.Menu.Page == MenuPage.Achievements, "Character > Achievements opens the list");
+        for (int k = 0; k < all.Length; k++) ar.Menu.Update(new Input { Down = true }, 1f / 35f);
+        check(ar.Menu.Cursor == all.Length && ar.Menu.Scroll == all.Length - MenuSystem.AchievementRows, "it scrolls to the end");
+        r.Render(ar);
+        ar.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(ar.Menu.Page == MenuPage.Character, "and Back returns to the Character screen");
     }
 
     static void MusicChecks(Action<bool, string> check)
@@ -3255,7 +3604,7 @@ public static class Headless
         // secrets and lore exist in both modes
         var classic = new Game { FixedSeed = 4 };
         classic.NewGame(PClass.Fighter);
-        check(classic.SecretsTotal == 5 && classic.LoreTotal == 21, $"5 secrets and 21 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
+        check(classic.SecretsTotal == 6 && classic.LoreTotal == 25, $"6 secrets and 25 lore stones in the hub ({classic.SecretsTotal}, {classic.LoreTotal})");
         check(classic.RelicsTotal == 0 && classic.Hub.All(l => !l.Things.Any(t => t is Pickup { Kind: PickupKind.Relic })), "classic mode has no relics");
         check(classic.Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Urn })) >= 4, "classic secret nooks hold Mystic Urns");
         check(classic.Hub.SelectMany(l => l.Things.OfType<LoreStone>()).All(st => !st.Text.Contains("worn away")), "every lore stone has text");
@@ -3891,7 +4240,7 @@ public static class Headless
     public static int Screenshots(string dir)
     {
         Directory.CreateDirectory(dir);
-        var g = new Game { FixedSeed = 1 };
+        var g = new Game { FixedSeed = 1, AchievementsOn = false };
         var r = new Renderer();
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
         void Shot(string name)
@@ -4261,6 +4610,54 @@ public static class Headless
         Shot("51_spire_checkpoint");
         g.Messages.Clear();
 
+        // the Hanging Cisterns: the ledges from the cistern floor, then the middle ledge's blocks and plates from above
+        {
+            int ci = Array.FindIndex(g.Hub, l => l.RawName == "Hanging Cisterns");
+            g.Warp(ci);
+            g.Level.Things.RemoveAll(t => t is Monster);
+            g.Messages.Clear();
+            PlaceCam(9.5f, 10.5f, 0, 0, 0.55f, 18);
+            Tick(default, 3); PlaceCam(9.5f, 10.5f, 0, 0, 0.55f, 18);
+            g.Messages.Clear();
+            Shot("102_cisterns_floor");
+            PlaceCam(18.6f, 12.4f, 0, 3.9f, 0.62f, -30);
+            Tick(default, 1); PlaceCam(18.6f, 12.4f, 0, 3.9f, 0.62f, -30);
+            g.Messages.Clear();
+            Shot("103_cisterns_ledge");
+            g.P.Flying = false;
+        }
+
+        // the mini-bosses, each awake and facing you in its own map, with its health bar
+        foreach (var (name, map, dx, dy, pitch) in new[]
+        {
+            ("104_quarry_warden", "Deepdelve Quarry", -2.6f, 0f, 0f),
+            ("105_dust_stalker", "Barren World", 0f, -3.2f, 0f),
+            ("106_thornmother", "Verdant Moon", -3.2f, 0.6f, 6f),
+            ("107_drowned_keeper", "Hanging Cisterns", -3.0f, 0.4f, 6f),
+        })
+        {
+            g.Warp(Array.FindIndex(g.Hub, l => l.RawName == map));
+            var boss = g.Level.Things.OfType<Monster>().FirstOrDefault(t => t.Def.MiniBoss != null);
+            if (boss == null)
+            {
+                // an earlier shot cleared this map's monsters: put its mini-boss back
+                MiniBosses.Place(g.Level);
+                boss = g.Level.Things.OfType<Monster>().First(t => t.Def.MiniBoss != null);
+            }
+            g.Level.Things.RemoveAll(t => t is Monster { Def.MiniBoss: null });
+            // the quarry's warden is shown having burrowed out into its gallery
+            if (map == "Deepdelve Quarry") { boss.X = 14.5f; boss.Y = 3.5f; }
+            float cx = boss.X + dx, cy = boss.Y + dy;
+            g.Vars.Freeze = true;
+            PlaceCam(cx, cy, g.Level.FloorAt(cx, cy), 0, MathF.Atan2(boss.Y - cy, boss.X - cx), pitch);
+            boss.State = AiState.Chase; boss.Health = (int)(boss.Def.Health * 0.7f);
+            Tick(default, 2);
+            PlaceCam(cx, cy, g.Level.FloorAt(cx, cy), 0, MathF.Atan2(boss.Y - cy, boss.X - cx), pitch);
+            g.Messages.Clear();
+            Shot(name);
+            g.Vars.Freeze = false;
+        }
+
         // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on
         RenderedArtSheet(Path.Combine(dir, "52_rendered_sheet.png"), SheetItems, 8);
         RenderedArtSheet(Path.Combine(dir, "55_rendered_monsters.png"), SheetMonsters, 6);
@@ -4433,7 +4830,22 @@ public static class Headless
             g.Update(new Input { Character = true }, 1f / 35f);
             g.Menu.Cursor = 1;
             Shot("59_character_screen");
+            // the achievements: a few earned, the highlighted one showing its progress
+            var achDay = new DateTime(2026, 9, 21);
+            foreach (var (id, d) in new[] { ("first_blood", 0), ("treasure", 2), ("podium", 3), ("speed", 3), ("arena_5", 5), ("veteran", 6), ("secrets", 7) })
+                g.Profile.Achievements[id] = achDay.AddDays(d);
+            g.Profile.TotalKills = 212;
+            g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Character), "Achievements");
+            g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+            g.Menu.Cursor = 1;
+            Shot("100_achievements");
             g.Menu.Close(); g.Paused = false;
+            // the banner as one unlocks
+            g.Messages.Clear();
+            g.AchievementUnlocked(Achievements.Find("lore"));
+            g.Messages.Clear();
+            Shot("101_achievement_banner");
+            g.AchievementTime = 0;
             g.Profile = saved;
         }
         g.SetArtStyle(ArtStyle.Fantasy);

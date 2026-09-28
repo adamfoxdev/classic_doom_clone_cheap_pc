@@ -502,16 +502,24 @@ public sealed class DevConsole
     void Summon(string what)
     {
         if (!InGame()) return;
+        // the mini-bosses by their first word: warden, stalker, thornmother, keeper
+        var boss = what == null ? null : MiniBosses.All.FirstOrDefault(d => d.Art.StartsWith(what, StringComparison.OrdinalIgnoreCase));
+        if (boss != null) { Print(_g.SummonMonster(boss) ? $"summoned {boss.Name}" : "no room in front of you"); return; }
         var match = what == null ? default : Summonable.FirstOrDefault(s => s.name.StartsWith(what, StringComparison.OrdinalIgnoreCase));
         if (match.name == null)
         {
-            Print("usage: summon <" + string.Join("|", Summonable.Select(s => s.name)) + ">");
+            Print("usage: summon <" + string.Join("|", Summonable.Select(s => s.name).Concat(MiniBosses.All.Select(d => d.Art))) + ">");
             return;
         }
         Print(_g.Summon(match.glyph) ? $"summoned {match.name}" : "no room in front of you");
     }
 
     int _quiet;
+
+    /// <summary>Commands that make achievements too easy: using one marks the game as cheated.</summary>
+    static readonly HashSet<string> CheatCommands = new() { "give", "summon", "kill", "map", "tp", "xp", "reveal", "god", "noclip", "notarget" };
+    /// <summary>Settings that change how the game plays (not just how it looks or feels): changing one is a cheat too.</summary>
+    static readonly HashSet<string> CheatVars = new() { "speed", "firerate", "manacost", "gravity", "jump", "slidespeed", "accel", "airaccel", "friction", "maxhop", "freeze", "chests", "infinitemana", "infinitefuel" };
 
     /// <summary>Runs a command. Quiet mode (used when loading settings) prints nothing.</summary>
     public void Execute(string line, bool quiet)
@@ -532,10 +540,16 @@ public sealed class DevConsole
 
         var cheat = Cheats.FirstOrDefault(c => c.code == name);
         if (cheat.code != null) { Execute(cheat.cmd); return; }
-        if (name.StartsWith("visit") && name.Length > 5) { Map(name[5..]); return; }
+        if (name.StartsWith("visit") && name.Length > 5) { _g.Cheated = true; Map(name[5..]); return; }
 
         var cmd = _commands.FirstOrDefault(c => c.Name == name);
-        if (cmd != null) { cmd.Run(args); return; }
+        if (cmd != null)
+        {
+            if (_quiet == 0 && (CheatCommands.Contains(name) || (name == "set" && args.Length > 2 && CheatVars.Contains(args[1].ToLowerInvariant()))))
+                _g.Cheated = true; // no achievements this game
+            cmd.Run(args);
+            return;
+        }
 
         // "speed 2" works as shorthand for "set speed 2"; "speed" alone prints it
         var v = GameVars.Find(name);
