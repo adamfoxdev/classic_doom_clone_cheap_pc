@@ -914,7 +914,7 @@ public sealed class Renderer
             if (newF > curF)
             {
                 // the floor steps up: the face of the step
-                var riser = box ? Art.Block : lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Floor)] : Art.StepRiser;
+                var riser = box ? Art.Block : lv.Dig ? Art.RubbleCracked[lv.CrackStage(ci, Level.Face.Floor)] : lv.Theme.Riser ?? Art.StepRiser;
                 WallSpan(x, riser, d, side, wx, newF, box ? lv.Floors[ci] : curF, clipTop, clipBot, rdx, rdy, baseLight, null, Hi(ci, box ? Level.Face.Wall : Level.Face.Floor));
                 if (box && lv.Floors[ci] > curF) WallSpan(x, Art.StepRiser, d, side, wx, lv.Floors[ci], curF, clipTop, clipBot, rdx, rdy, baseLight);
                 clipBot = MathF.Min(clipBot, RowOf(newF, d));

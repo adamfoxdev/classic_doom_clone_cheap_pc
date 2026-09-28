@@ -5,6 +5,8 @@ public sealed class Theme
 {
     public Dictionary<char, Tex> Walls = new();
     public Tex FloorIn, CeilIn, FloorOut, Sky;
+    /// <summary>The face of a step or ledge (null for the usual one; 'wallcolor' sets it).</summary>
+    public Tex Riser;
     public uint FogColor;
     public float FogDist = 14f; // distance at which everything is fully fogged
     public int Light = 256;

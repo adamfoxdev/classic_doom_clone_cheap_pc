@@ -1,7 +1,7 @@
 namespace HexenSharp;
 
 /// <summary>
-/// Recolouring the current map's floor, ceiling (and sky) and fog from the console, to try out what reads best in a
+/// Recolouring the current map's floor, ceiling (and sky), walls (and the faces of steps) and fog from the console, to try out what reads best in a
 /// mode. A colour tints the texture, keeping its pattern with the colour as its average; 'flat' paints it one solid
 /// colour; 'off' puts the map's own back. It lasts until you leave the map (or it's rebuilt, as on Restart).
 /// </summary>
@@ -73,12 +73,12 @@ public static class MapColors
 public sealed partial class Game
 {
     /// <summary>The map's own floor, ceiling, sky and fog, kept while they're recoloured (so 'off' can put them back).</summary>
-    sealed record ThemeLook(Tex FloorIn, Tex FloorOut, Tex CeilIn, Tex Sky, uint Fog);
+    sealed record ThemeLook(Tex FloorIn, Tex FloorOut, Tex CeilIn, Tex Sky, uint Fog, Dictionary<char, Tex> Walls, Tex Riser);
     readonly System.Runtime.CompilerServices.ConditionalWeakTable<Theme, ThemeLook> _looks = new();
 
-    ThemeLook Look(Theme th) => _looks.GetValue(th, t => new ThemeLook(t.FloorIn, t.FloorOut, t.CeilIn, t.Sky, t.FogColor));
+    ThemeLook Look(Theme th) => _looks.GetValue(th, t => new ThemeLook(t.FloorIn, t.FloorOut, t.CeilIn, t.Sky, t.FogColor, new Dictionary<char, Tex>(t.Walls), t.Riser));
 
-    public enum MapSurface { Floor, Ceiling, Fog }
+    public enum MapSurface { Floor, Ceiling, Walls, Fog }
 
     /// <summary>Recolours a surface of the current map (null puts its own back); says what it did.</summary>
     public string SetMapColour(MapSurface what, uint? col, bool flat = false)
@@ -95,11 +95,17 @@ public sealed partial class Game
                 th.CeilIn = col is { } c ? MapColors.Recolour(own.CeilIn, c, flat) : own.CeilIn;
                 th.Sky = col is { } s ? MapColors.Recolour(own.Sky, s, flat) : own.Sky;
                 break;
+            case MapSurface.Walls:
+                // every kind of plain wall (each tinted from its own texture, so bricks stay bricks), and step faces;
+                // doors, levers, blocks, rubble and ore keep their looks, so you can still tell them apart
+                foreach (var (glyph, tex) in own.Walls) th.Walls[glyph] = col is { } w ? MapColors.Recolour(tex, w, flat) : tex;
+                th.Riser = col is { } r ? MapColors.Recolour(own.Riser ?? Art.StepRiser, r, flat) : own.Riser;
+                break;
             case MapSurface.Fog:
                 th.FogColor = col ?? own.Fog;
                 break;
         }
-        string name = what switch { MapSurface.Floor => "floor", MapSurface.Ceiling => "ceiling and sky", _ => "fog" };
+        string name = what switch { MapSurface.Floor => "floor", MapSurface.Ceiling => "ceiling and sky", MapSurface.Walls => "walls", _ => "fog" };
         return col is { } k ? $"{name}: {MapColors.Hex(k)}{(flat && what != MapSurface.Fog ? " (flat)" : "")}" : $"{name}: the map's own";
     }
 
@@ -108,6 +114,6 @@ public sealed partial class Game
     {
         if (Level?.Theme is not { } th) return "no map loaded";
         return $"floor {MapColors.Hex(MapColors.Average(Level.Outdoor.Any(o => o) ? th.OutdoorFloor : th.FloorIn))}  ceiling {MapColors.Hex(MapColors.Average(th.CeilIn))}"
-               + $"  sky {MapColors.Hex(MapColors.Average(th.Sky))}  fog {MapColors.Hex(th.FogColor)}";
+               + $"  walls {MapColors.Hex(MapColors.Average(th.Walls.TryGetValue('#', out var w) ? w : Art.Stone))}  sky {MapColors.Hex(MapColors.Average(th.Sky))}  fog {MapColors.Hex(th.FogColor)}";
     }
 }

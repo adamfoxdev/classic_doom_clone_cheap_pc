@@ -446,6 +446,7 @@ public static partial class Headless
                 g.Con.Execute("floorcolor sand", quiet: true);
                 g.Con.Execute("ceilcolor sky flat", quiet: true);
                 g.Con.Execute("fogcolor 170 200 230", quiet: true);
+                g.Con.Execute("wallcolor 90 70 60", quiet: true);
                 ball.X = Soccer.LineE - 6; ball.Y = Soccer.SpotY - 1; ball.Z = 0; ball.Grounded = true; ball.VX = ball.VY = ball.VZ = 0;
                 g.P.X = Soccer.LineE - 11; g.P.Y = Soccer.SpotY + 1.5f; g.P.Angle = MathF.Atan2(ball.Y - g.P.Y, ball.X - g.P.X) + 0.05f; g.P.Pitch = -6;
                 Tick(default, 2);
