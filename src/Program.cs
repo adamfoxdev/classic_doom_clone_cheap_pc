@@ -10,6 +10,7 @@ public static class Program
         Art.Init();
         if (args.Contains("--selftest")) return Headless.SelfTest();
         if (args.Contains("--shots")) return Headless.Screenshots(args.SkipWhile(a => a != "--shots").Skip(1).FirstOrDefault() ?? "shots");
+        if (args.Contains("--bench-compare")) return BenchCompare.Run(args);
         if (args.Contains("--bench")) return Headless.Bench(int.TryParse(Arg(args, "--bench"), out int n) ? n : 300);
         if (args.Contains("--sounds")) return Headless.ExportSounds(Arg(args, "--sounds") ?? "sounds");
         if (args.Contains("--check-map")) return Arg(args, "--check-map") is { } check ? MapFiles.Check(check) : Usage();
@@ -34,7 +35,7 @@ public static class Program
     static int Usage()
     {
         Console.WriteLine("usage: HexenSharp [--play map.hxm [--class fighter|cleric|mage] [--relaxed]] | --check-map map.hxm |");
-        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --shots dir | --sounds dir | --bench [frames]");
+        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --shots dir | --sounds dir | --bench [frames] | --bench-compare limit base.txt... -- head.txt...");
         return 2;
     }
 

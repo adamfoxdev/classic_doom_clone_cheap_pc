@@ -68,3 +68,91 @@ public static partial class Headless
         Console.WriteLine($"{"average",-32} {total / BenchViews.Length,9:0.000}");
     }
 }
+
+/// <summary>
+/// Comparing two benchmarks (--bench-compare limit base.txt... -- head.txt...), for CI: each side's --bench output
+/// (one or more runs; each view's best is taken, which shrugs off a noisy run), the single-thread timings view by
+/// view. It fails (exit 1) if the head is more than `limit` times slower than the base on average, or on any one view
+/// by more than ViewLimit times and MinSlowdownMs (single views are noisier, so only a big jump there counts).
+/// </summary>
+public static class BenchCompare
+{
+    public const double MinSlowdownMs = 0.05, ViewLimit = 1.5;
+
+    /// <summary>The single-thread section of a --bench run: each view's time per frame, in ms.</summary>
+    public static Dictionary<string, double> Parse(string text)
+    {
+        var views = new Dictionary<string, double>();
+        bool single = false;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (line.StartsWith("-- ")) { if (single && views.Count > 0) break; single = line.StartsWith("-- 1 thread") && !line.StartsWith("-- 1 threads"); continue; }
+            if (!single || line.StartsWith("view ") || line.StartsWith("average")) continue;
+            // "name ... ms p95 fps": the name is everything before the last three numbers
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 4) continue;
+            if (!double.TryParse(parts[^3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double ms)) continue;
+            string name = string.Join(' ', parts[..^3]);
+            views[name] = views.TryGetValue(name, out double had) ? Math.Min(had, ms) : ms;
+        }
+        return views;
+    }
+
+    /// <summary>Several runs: each view's best.</summary>
+    public static Dictionary<string, double> Best(IEnumerable<string> texts)
+    {
+        var best = new Dictionary<string, double>();
+        foreach (var t in texts)
+            foreach (var (k, v) in Parse(t))
+                best[k] = best.TryGetValue(k, out double had) ? Math.Min(had, v) : v;
+        return best;
+    }
+
+    /// <summary>The verdict, and a Markdown table of it.</summary>
+    public static (bool ok, string report) Compare(Dictionary<string, double> baseline, Dictionary<string, double> head, double limit)
+    {
+        var sb = new System.Text.StringBuilder();
+        var common = baseline.Keys.Where(head.ContainsKey).ToList();
+        if (common.Count == 0) return (true, "No views in common to compare (the benchmark changed): skipped.");
+        sb.AppendLine("| View | Base ms | This PR ms | Change |");
+        sb.AppendLine("|---|---:|---:|---:|");
+        bool ok = true;
+        foreach (var k in common)
+        {
+            double b = baseline[k], h = head[k], ratio = h / Math.Max(1e-6, b);
+            bool bad = ratio > Math.Max(limit, ViewLimit) && h - b > MinSlowdownMs;
+            ok &= !bad;
+            sb.AppendLine($"| {k} | {b:0.000} | {h:0.000} | {Pct(ratio)}{(bad ? " **too slow**" : "")} |");
+        }
+        double bAvg = common.Average(k => baseline[k]), hAvg = common.Average(k => head[k]), avgRatio = hAvg / Math.Max(1e-6, bAvg);
+        bool avgBad = avgRatio > limit;
+        ok &= !avgBad;
+        sb.AppendLine($"| **average** | {bAvg:0.000} | {hAvg:0.000} | {Pct(avgRatio)}{(avgBad ? " **too slow**" : "")} |");
+        sb.AppendLine();
+        sb.AppendLine(ok ? $"Within {(limit - 1) * 100:0}% of the base." : $"Slower than the base by more than {(limit - 1) * 100:0}%.");
+        return (ok, sb.ToString());
+    }
+
+    static string Pct(double ratio) { int p = (int)Math.Round((ratio - 1) * 100); return (p > 0 ? "+" : "") + p + "%"; }
+
+    public static int Run(string[] args)
+    {
+        // --bench-compare limit base files... -- head files...
+        int at = Array.IndexOf(args, "--bench-compare");
+        var rest = args.Skip(at + 1).ToList();
+        if (rest.Count < 4 || !double.TryParse(rest[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double limit) || !rest.Contains("--"))
+        {
+            Console.WriteLine("usage: --bench-compare limit base.txt... -- head.txt...");
+            return 2;
+        }
+        int sep = rest.IndexOf("--");
+        var baseFiles = rest.Skip(1).Take(sep - 1).ToList();
+        var headFiles = rest.Skip(sep + 1).ToList();
+        var (ok, report) = Compare(Best(baseFiles.Select(File.ReadAllText)), Best(headFiles.Select(File.ReadAllText)), limit);
+        Console.WriteLine(report);
+        string summary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
+        if (!string.IsNullOrEmpty(summary)) File.AppendAllText(summary, "## Renderer benchmark\n\n" + report + "\n");
+        return ok ? 0 : 1;
+    }
+}

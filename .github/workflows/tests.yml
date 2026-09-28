@@ -53,3 +53,38 @@ jobs:
           path: shots/
           if-no-files-found: ignore
           retention-days: 14
+
+  # The renderer benchmark, this branch against the base it's merging into, built and run on the same machine (so
+  # the runner's speed cancels out). Each side runs the single-thread benchmark three times, taking each view's best.
+  # Fails if this branch is more than 25% slower on average, or 50% on any one view.
+  perf:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build this branch
+        run: dotnet build -c Release -o "$RUNNER_TEMP/head"
+
+      - name: Build the base
+        run: |
+          git worktree add "$RUNNER_TEMP/base-src" "${{ github.event.pull_request.base.sha }}"
+          dotnet build "$RUNNER_TEMP/base-src" -c Release -o "$RUNNER_TEMP/base"
+
+      - name: Benchmark both, alternately
+        run: |
+          for i in 1 2 3; do
+            dotnet "$RUNNER_TEMP/base/HexenSharp.dll" --bench 200 > "$RUNNER_TEMP/base-$i.txt"
+            dotnet "$RUNNER_TEMP/head/HexenSharp.dll" --bench 200 > "$RUNNER_TEMP/head-$i.txt"
+          done
+          cat "$RUNNER_TEMP/head-1.txt"
+
+      - name: Compare
+        run: dotnet "$RUNNER_TEMP/head/HexenSharp.dll" --bench-compare 1.25 "$RUNNER_TEMP"/base-*.txt -- "$RUNNER_TEMP"/head-*.txt

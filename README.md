@@ -1034,6 +1034,7 @@ dotnet run -c Release -- --selftest       # validates maps (reachability) and ru
 dotnet run -c Release -- --shots shots    # renders scripted screenshots headlessly into ./shots
 dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styles, as WAV files into ./sounds
 dotnet run -c Release -- --bench [frames] # times the renderer on fixed views, from rooms to the tall open maps
+dotnet run -c Release -- --bench-compare 1.25 base.txt -- head.txt   # fails if head's --bench is >25% slower
 dotnet run -c Release -- --play map.hxm   # play-tests a map file, reloading it whenever it's saved
 dotnet run -c Release -- --check-map map.hxm   # prints the editor's checks for a map (exit code 1 if unplayable)
 dotnet run -c Release -- --export-maps maps    # writes every built-in hub map as a .hxm file
@@ -1062,6 +1063,15 @@ Cisterns, a few hundred times each, on one thread and then on all of them. It pr
 **CI:** `.github/workflows/tests.yml` runs on every pull request and every push to `main`. It builds, runs the
 self-test and the editor test (installing Playwright and Chromium), then renders the screenshot tour and uploads it as
 a `screenshots` artifact, so each PR's screenshots can be looked through. Any failed check fails the run.
+
+**Performance check:** on a pull request a second job, `perf`, benchmarks the branch against the base it's merging
+into.
+- **How:** it builds both on the same runner, so the runner's speed cancels out. It then runs each side's
+  single-thread `--bench 200` three times, alternating, and takes each view's best.
+- **When it fails:** if the branch is more than 25% slower on average, or 50% slower on any one view (single views
+  are noisier, and changes under 0.05 ms don't count).
+- **The report:** a per-view table in the job's summary.
+- **Locally:** `--bench-compare 1.25 base-*.txt -- head-*.txt` runs the same comparison on saved `--bench` output.
 
 ## Rendered art pack (Blender)
 
