@@ -365,14 +365,14 @@ public sealed class Renderer
         int n = ArenaModInfo.All.Length;
         for (int i = 0; i < items.Length; i++)
         {
-            int y = 41 + i * 11 + (i >= n ? 5 : 0);
+            int y = 40 + i * 9 + (i >= n ? 4 : 0);
             bool sel = i == m.Cursor;
             if (i >= n) { MenuItem(items[i], y, sel); continue; }
             var mod = ArenaModInfo.All[i];
             bool set = (g.ArenaMods & mod) != 0;
-            if (sel) Rect(40, y - 2, 240, 11, Col.Rgb(70, 40, 20));
+            if (sel) Rect(40, y - 1, 240, 9, Col.Rgb(70, 40, 20));
             Text(48, y, items[i].ToUpperInvariant(), sel ? MenuSel : MenuText);
-            string val = set ? $"ON  +{ArenaModInfo.Bonus(mod) * 100:0}%" : "OFF";
+            string val = !set ? "OFF" : ArenaModInfo.Bonus(mod) > 0 ? $"ON  +{ArenaModInfo.Bonus(mod) * 100:0}%" : "ON";
             Text(272 - Font.Width(val), y, val, set ? on : sel ? MenuSel : MenuDim);
         }
         bool daily = m.Cursor < items.Length && items[m.Cursor] == "Daily challenge";
@@ -382,7 +382,7 @@ public sealed class Renderer
             : null;
         if (about != null)
             foreach (var (line, k) in Wrap(about, 50).Select((l, k) => (l, k)))
-                CenterText(line, 136 + k * 10, daily ? on : blue);
+                CenterText(line, 137 + k * 9, daily ? on : blue);
         var diff = Difficulties.Of(g.Vars);
         var mods = daily ? Daily.For(Daily.Today).mods : g.ArenaMods;
         CenterText(diff == Difficulty.Custom ? "CUSTOM DIFFICULTY: RUNS AREN'T RECORDED"
@@ -1895,7 +1895,7 @@ public sealed class Renderer
             Right($"{Keys.Name(g.Binds.Get(Act.Use, 0))}: {(g.P.CurWeapon.Rail ? "RAIL TRIAL" : "DRILL")}", 0, Col.Rgb(240, 236, 220));
             if (best > 0) Right($"BEST {best}", 10, Col.Rgb(255, 220, 90));
         }
-        if (g.RocketJumps > 0) Right($"ROCKET JUMPS {g.RocketJumps}", g.Drilling ? 30 : best > 0 ? 20 : 10, Col.Rgb(255, 170, 80));
+        if (g.RocketJumps > 0) Right($"ROCKET JUMPS {g.RocketJumps}", g.Drilling || g.RailTrial ? 30 : best > 0 ? 20 : 10, Col.Rgb(255, 170, 80));
     }
 
     /// <summary>On the tower: how high you've climbed, your best, and the seed.</summary>

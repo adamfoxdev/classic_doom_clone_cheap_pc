@@ -229,7 +229,8 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | `Space` | Jump (tap it as you land to bunny hop) |
 | `Q` | Jetpack: hold to take off and climb |
 | `C` | Slide (while moving); hold while flying to sink |
-| `1` `2` `3` / mouse wheel | Select weapon |
+| `1` `2` `3` / mouse wheel | Select weapon (the Quake weapons you find go on `4` and up) |
+| Middle click / `Z` | Zoom: hold it to narrow the view to 30 degrees (the mouse slows to match) |
 | `F` | Use a healing item (Quartz Flask, else Mystic Urn) |
 | Right click / `B` | Place a rubble block you've broken loose |
 | `Shift` | Walk |
@@ -443,6 +444,13 @@ weapon.
   - Three wait up on ledges: 2 cells up on the east side and in the north-west corner, and 3.5 cells up in the
     north-east corner. A jump won't get you onto any of them; a rocket jump will.
   - A dummy you knock down stands back up at its spot after a second and a half.
+- **Rail trials:** press Use with the railgun in hand for a thirty-second rail trial.
+  - Targets pop up far down the field, one at a time, and slide from side to side.
+  - Each is gone after two and a half seconds.
+  - A hit scores 100, plus up to 100 more the sooner it comes.
+  - Missed slugs count against your accuracy.
+  - The corner shows the time left, the score, the hits and your accuracy.
+  - The best trials go on your class's board: a Rail Trials page on the Leaderboard, after the Shooting Range.
 - **The drill:** press Use for a one-minute drill. Every dummy you knock down scores 100 points, 150 for a moving one
   and 200 for one up on a ledge. The top-right corner shows the time left, the score, the dummies down and your
   shots. When the minute's up, the drill goes on your class's board: **Leaderboard** has a Shooting Range page,
@@ -606,6 +614,44 @@ The grenade launcher is Quake's:
 ![A lob over the wall](docs/grenade_lob.png)
 ![A grenade jump up onto the first ledge](docs/grenade_jump.png)
 
+#### Tricks, wall slides and zoom
+
+- **Zoom:** hold the middle mouse button or `Z`, and the view narrows to 30 degrees. Mouse look slows to match, so
+  your aim moves the same across the screen. Every weapon aims along the zoomed view. Let go and it widens again.
+- **Wall slides:** while a blast's push has you flying, meeting a wall at an angle turns three quarters of your
+  speed into it along the wall, instead of losing it. Chained jumps round corners keep their pace.
+- **Trick callouts:** the name of the trick flashes across the view:
+
+  | Trick | How |
+  |---|---|
+  | Wall kick | in the air, a rocket into the wall beside you kicks you away from it |
+  | Combo jump | a grenade and a rocket going off under you within 0.3 seconds, for extra height |
+  | Double rocket | two of your rockets together |
+  | Chain jump | a blast that catches you while you're still flying from the last one |
+
+![A wall kick, called out](docs/wall_kick.png)
+
+#### The rocket tower
+
+**Practice → Rocket Tower** is an endless climb from a seed, with the rocket launcher as your only weapon.
+
+- **The tower** is a stack of twelve shafts. Each has a base and three platforms spiralling up its walls, about
+  eight cells in all. Reach a shaft's top platform and you're carried to the foot of the next one, the climb
+  carrying on.
+- **It gets harder** as it goes:
+  - Each rise grows from about 1.8 cells to 2.75.
+  - The platforms move out to the corners, so the gaps widen.
+  - From the fifth shaft, the platforms shrink from 3 cells across to 2.
+- **One fall** to a shaft's floor ends the run. The height you climbed goes on your class's board (a Rocket Tower
+  page on the Leaderboard, after Endless), and you start again at the foot, on the same seed.
+- **Each platform** says how high you are and how much higher the next is. The top-right corner shows your height,
+  your best and the seed.
+- **As on the other rocket courses:** your rockets can't kill you, and your health and ammo come back.
+- **The demo** rocket jumps up it platform by platform, to about 32 cells on seed 1234.
+- **Seeds:** each pick rolls a new one; `tower 1234` in the console plays seed 1234.
+
+![The rocket tower, the demo partway up](docs/rocket_tower.png)
+
 #### The rocket-jump course
 
 **Practice → Rocket Jump** is a timed course of six platforms, each too high or too far to reach with a jump. The
@@ -637,6 +683,21 @@ rocket launcher is your only weapon there.
 ![The start of the rocket-jump course](docs/rocket_course.png)
 ![The demo mid-flight](docs/rocket_course_demo.png)
 
+### Grenadiers, Juggernauts and infighting
+
+- **The Grenadier** lobs Quake grenades at you. They arc, bounce, and go off after two and a half seconds or when
+  they touch you. The blast does a quarter of a rocket's damage, but pushes you with all of it.
+- **The Juggernaut** is slow and heavy. Its punch does 5 to 9, but shoves you away and up at 9 cells a second:
+  mind the ledges near it.
+- **Where:** they join the arena's waves, Grenadiers from wave 6 and Juggernauts from wave 8. `n` and `j` place
+  them on a custom map, and the codex has them.
+- **Infighting:** a monster's missile or grenade now hits other kinds of monster in its way. The one it hits turns
+  on the one that threw it, and fights it until one of them falls. Missiles pass through their own kind, and
+  bosses and mini-bosses keep their minds on you. Stand where their shots cross and let them sort each other out.
+
+![A Grenadier and a Juggernaut](docs/brutes.png)
+![Instagib: a streak going](docs/instagib.png)
+
 ### Chaos Arena
 
 **Arena** on the title menu opens its setup page, where you can switch on modifiers; **Start**, then a class,
@@ -653,6 +714,11 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
   | No supplies (N) | no health, mana or items at the altar between waves, and the armoury is bare (arsenal upgrades still come) | +40% |
   | Melee only (M) | only your first weapon; the others won't come out | +50% |
   | Random class (R) | skips the class screen and rolls a class for every run | +15% |
+  | Instagib (I) | a railgun alone, with endless slugs, and one slug kills anything; a streak counts slugs that hit in a row (a miss ends it). Runs go on their own board, by waves then best streak | - |
+  | Rocket Arena (Q) | all five Quake weapons, full ammo, 200 health and 100 armour, no pickups; ammo and health come back in full after each wave, and your own blasts push you but don't hurt | - |
+
+  The two Quake modes set your weapons, so switching one on turns off the other, and Melee only. They add nothing
+  to the score multiplier.
 
 - **Perks:** after each boss wave (every fifth), the next wave waits while you pick one of three perks with `1`,
   `2` or `3`. You can take each perk up to three times, and they last for the run. They're listed in the HUD's
@@ -1016,6 +1082,14 @@ editor saves, and its checks give exactly the same messages.
   - **Hazard:** none, wind gusts or floods, as on the Windspire and in the Cisterns.
   - **Elites:** the chance each ordinary monster is an elite, up to 50%.
   - **In the file:** `hazard:` and `elites:` header lines, written only when set.
+- **Jump courses:** the editor has what you need to build your own rocket and grenade courses.
+  - **Quake weapons only**, a checkbox in the right-hand panel: the map gives the five Quake weapons alone, fully
+    loaded. Ammo never runs out, your health comes back, and your own blasts can't kill you, as on the practice
+    courses. In the file it's a `quake: yes` header line.
+  - **Practice targets** (`i`): dummies that fall to any weapon and stand back up after a second and a half.
+  - **Checkpoint pads** (`+`) and **lift pads** (`=`) work as on the practice courses: land on a ledge to light its
+    pad, and a lift pad takes you back up to your highest one.
+  - **Grenadiers** (`n`) and **Juggernauts** (`j`) are in the monster palette.
 - **Files:** Save writes the file directly in Chrome and Edge (other browsers download it). You can also drag a
   file onto the page, or view/paste the map as text. Your draft is kept in the browser between visits.
 
@@ -1236,7 +1310,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
 | `daily [yyyy-mm-dd]` | play the daily challenge (an old day's is practice only) |
 | `renderthreads [1-8]` | how many threads draw the 3D view (all your cores by default, up to 8) |
-| `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `-` none |
+| `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `I` instagib, `Q` Rocket Arena, `-` none |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |
@@ -1252,6 +1326,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `ghostcode` | share your best on this timed course (or your last endless run) as a code: printed, copied and saved to a file |
 | `ghostload [file]` | race a friend's ghost from the code on the clipboard, or a `.hxghost` file; `ghostclear` goes back to your own |
 | `endless [seed]` | play the endless practice course on a new seed, or on the one you name |
+| `tower [seed]` | play the endless rocket tower on a new seed, or on the one you name |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -1404,6 +1479,10 @@ in both looks (`76_…`, `77_…`).
 | `src/Endless.cs` | The endless practice course: its seeded platforms, falling, and its board |
 | `src/Range.cs` | The shooting range: its map, the weapon rack, target dummies, the drill and its board |
 | `src/RocketCourse.cs` | The rocket-jump practice course: its platforms, hints and demo pilot |
+| `src/Tricks.cs` | Wall slides and the trick callouts (wall kick, combo jump, double rocket, chain jump) |
+| `src/Tower.cs` | The endless rocket tower: its seeded shafts, the carry between them, its board and demo pilot |
+| `src/QuakeModes.cs` | Rail trials on the range, and the arena's Instagib and Rocket Arena modes |
+| `src/Brutes.cs` | The Grenadier and the Juggernaut, and monsters fighting each other |
 | `src/QuakeArms.cs` | The Quake ammo, the super shotgun and lightning gun, and the weapons hidden through the campaign |
 | `src/Grenades.cs` | The Quake grenade launcher (its arc, bounces and fuse), the grenade course and its demo pilot |
 | `src/Railgun.cs` | The Quake III railgun: its instant slug through everything in line, and its spiral trail |
@@ -1468,3 +1547,4 @@ Maps are ASCII grids in `src/Level.cs`:
 | `+` | checkpoint pad (its whole ledge counts; respawn here) | `=` | lift pad (back to your highest checkpoint) |
 | `w` `x` | weapon piece for slot 2 / slot 3 | `t` `p` `T` | torch, pillar, tree |
 | `G` `R` `Y` `o` `y` | mini-bosses: Quarry Warden, Dust Stalker, Thornmother, Drowned Keeper, Rock Wyrm (custom maps) | `m` | weapon mod (one of the four, rolled at the start) |
+| `n` `j` | Grenadier, Juggernaut | `i` | practice target (stands back up a moment after it's knocked down) |

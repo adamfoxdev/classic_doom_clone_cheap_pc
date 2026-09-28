@@ -69,6 +69,10 @@ public static class ShootingRange
             (1, 1, 7, 7, Maps.FloorGlyph(LowLedge)));
     }
 
+    /// <summary>A standing target dummy at (x, y), as the map glyph 'i' places one.</summary>
+    public static Monster MakeTarget(float x, float y) =>
+        new(Dummy) { X = x, Y = y, State = AiState.Idle, Target = new RangeTarget { HomeX = x, HomeY = y, Kind = Kind.Still, Phase = x } };
+
     /// <summary>A target dummy's picture: a straw man on a post with a painted target on its chest.</summary>
     public static void BuildArt() => Art.Monsters["dummy"] = Art.PoseSet(DrawDummy);
 
@@ -123,7 +127,7 @@ public sealed partial class Game
     /// </summary>
     /// <summary>A rail trial is on (see RailTrials).</summary>
     public bool RailTrial;
-    public bool SafeRockets => Practicing && (Course.Range || Course.Rockets || Course.Grenades || Course.Tower);
+    public bool SafeRockets => (Practicing && (Course.Range || Course.Rockets || Course.Grenades || Course.Tower)) || Level?.Quake == true;
 
     /// <summary>On a fresh range: the full loadout (your class's first weapon in hand), the rack, and the dummies.</summary>
     void SetUpRange()
@@ -183,11 +187,17 @@ public sealed partial class Game
         for (int k = 1; k < QuakeAmmo.Kinds; k++) p.Ammo[k] = QuakeAmmo.Max((AmmoKind)k);
         if (!OnRange) return;
         RailTick(dt);
-        foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target is { Kind: not ShootingRange.Kind.Trial } && !m.Alive).ToList())
-            if ((m.Target.DownFor += dt) >= ShootingRange.RespawnTime) StandUp(m);
         if (!Drilling) return;
         DrillLeft -= dt;
         if (DrillLeft <= 0) EndDrill();
+    }
+
+    /// <summary>Knocked-down targets stand back up (on the range and custom maps; the grenade course's stay down, and trials' go).</summary>
+    void TargetsTick(float dt)
+    {
+        if (Level == null || (Practicing && Course.Grenades)) return;
+        foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target is { Kind: not ShootingRange.Kind.Trial } && !m.Alive).ToList())
+            if ((m.Target.DownFor += dt) >= ShootingRange.RespawnTime) StandUp(m);
     }
 
     /// <summary>A dummy stands back up at its spot, whole.</summary>

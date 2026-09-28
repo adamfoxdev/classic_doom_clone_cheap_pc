@@ -61,6 +61,16 @@ public sealed partial class Game
         Level.Things.RemoveAll(t => t is Pickup { Kind: not PickupKind.Upgrade }); // no pickups: what you have is what you get
     }
 
+    /// <summary>A custom map for the Quake weapons: you have the five alone, fully loaded (RangeTick keeps them so).</summary>
+    void SetUpQuakeMap()
+    {
+        var p = P;
+        p.Loadout = QuakeArms.All.ToArray();
+        p.HasWeapon = Enumerable.Repeat(true, p.Loadout.Length).ToArray();
+        p.Weapon = 0; p.PendingWeapon = -1; p.Raise = 0;
+        for (int k = 1; k < QuakeAmmo.Kinds; k++) p.Ammo[k] = QuakeAmmo.Max((AmmoKind)k);
+    }
+
     /// <summary>Each frame of a Quake mode: instagib's slugs never run out.</summary>
     void QuakeArenaTick()
     {

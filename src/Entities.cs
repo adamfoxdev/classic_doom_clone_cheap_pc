@@ -338,6 +338,7 @@ public static class ThingFactory
             'd' => new Monster(Monster.Bishop),
             'n' => new Monster(Brutes.Grenadier),
             'j' => new Monster(Brutes.Juggernaut),
+            'i' => ShootingRange.MakeTarget(x, y), // a practice target (custom maps): it stands back up when knocked down
             'h' => new Pickup(PickupKind.Vial, 0.35f),
             'q' => new Pickup(PickupKind.Flask, 0.4f),
             'u' => new Pickup(PickupKind.Urn, 0.45f),

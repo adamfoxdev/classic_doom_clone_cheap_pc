@@ -86,5 +86,27 @@ public static partial class Headless
         for (int k = 0; k < 35 * 10 && afrit.Health == afritHp; k++) Tick(new Input());
         check(afrit.Health < afritHp, "the ettin goes after the afrit and hits it, not you");
         check(g.Infights >= 1, $"infights counted ({g.Infights})");
+
+        // a custom map for jump courses: 'quake: yes' gives the Quake weapons alone, and 'i' targets stand back up
+        string text = "# Hexen Sharp map\nname: Jump Test\ntheme: hall\nheight: 4\nquake: yes\n---\n"
+            + "##########\n#@......i#\n#..n..j..#\n#+......=#\n##########\n";
+        var doc = MapDoc.Parse(text);
+        check(doc.Quake && doc.Serialize() == text, "a map file can be marked for the Quake weapons ('quake: yes'), and saves back the same");
+        g = new Game { FixedSeed = 1, AchievementsOn = false };
+        g.StartTest(doc.ToDef(), PClass.Cleric);
+        p = g.P;
+        var target = g.Level.Things.OfType<Monster>().Single(m => m.Target != null);
+        check(g.Level.Quake && p.Weapons.SequenceEqual(QuakeArms.All) && p.Ammo[(int)AmmoKind.Rockets] == 100
+              && g.Level.Things.OfType<Monster>().Count(m => m.Def == Brutes.Grenadier || m.Def == Brutes.Juggernaut) == 2,
+            "playing it you have the five Quake weapons, fully loaded; n and j place a Grenadier and a Juggernaut");
+        g.Level.Things.RemoveAll(t => t is Monster { Target: null });
+        g.DamageMonster(target, 1000, 0);
+        bool down = !target.Alive;
+        Tick(new Input(), 70);
+        check(down && target.Alive && target.Health == target.MaxHealth, "an i target falls and stands back up");
+        p.Ammo[(int)AmmoKind.Rockets] = 1; p.Health = 5; p.Pitch = -Rockets.LookDown; p.Cooldown = 0;
+        Tick(new Input { Fire = true, Jump = true });
+        Tick(new Input(), 30);
+        check(p.Health >= 1 && g.Mode == GameMode.Playing && p.Ammo[(int)AmmoKind.Rockets] == 100, "there your rockets can't kill you, and ammo never runs out");
     }
 }

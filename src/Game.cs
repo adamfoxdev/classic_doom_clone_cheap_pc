@@ -910,6 +910,7 @@ public sealed partial class Game
         P.Health = P.MaxHealth;
         RailTrial = false;
         if (ArenaMode) SetUpQuakeArena();
+        if (Level.Quake && !Practicing && !ArenaMode) SetUpQuakeMap();
         RunXp = 0; XpPopup = 0;
         Cheated = false; RunDeaths = 0;
         Intro = null; HitStop = 0; Shake = 0;
@@ -1043,6 +1044,7 @@ public sealed partial class Game
         TrickTick(dt);
         TowerTick(step);
         QuakeArenaTick();
+        TargetsTick(step);
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;

@@ -132,6 +132,8 @@
       <select id="fHazard" title="A hazard the map has every time it's played (the hub's usually come only in New Game+)"></select></div>
     <div class="field"><label for="fElites">Elites</label>
       <select id="fElites" title="The chance each ordinary monster is an elite, with a gift (the hub's come only in New Game+)"></select></div>
+    <div class="field"><label for="fQuake">Weapons</label>
+      <label title="The map gives the Quake weapons alone, with endless ammo, and your own blasts can't kill you: for jump courses"><input id="fQuake" type="checkbox"> Quake weapons only</label></div>
     <div class="field"><label>Size</label>
       <div class="row" style="margin:0"><input id="fW" type="number" min="3" max="128"> × <input id="fH" type="number" min="3" max="128">
       <button id="bResize" title="Resize, keeping the top-left corner">Apply</button></div></div>
@@ -238,9 +240,10 @@ const PIECES = [
   ["9", "Portal 9", "Teleporter 9", "Markers"],
   ["*", "Arena spawn rune", "Arena spawn pad", "Markers"], ["!", "Arena altar", "Arena start pad", "Markers"],
   ["+", "Checkpoint pad", "Checkpoint pad", "Markers"], ["=", "Lift pad (to checkpoint)", "Lift pad (to checkpoint)", "Markers"],
+  ["i", "Practice target (stands back up)", "Practice target (stands back up)", "Markers"],
   ["e", "Ettin", "Brute mech", "Monsters"], ["a", "Afrit", "Drone", "Monsters"], ["c", "Centaur", "Strider", "Monsters"],
   ["C", "Slaughtaur", "Siege strider", "Monsters"], ["d", "Dark Bishop", "Psi wraith", "Monsters"],
-  ["H", "Heresiarch", "Overmind", "Monsters"],
+  ["H", "Heresiarch", "Overmind", "Monsters"], ["n", "Grenadier", "Demolition mech", "Monsters"], ["j", "Juggernaut", "Riot mech", "Monsters"],
   ["G", "Quarry Warden (mini-boss)", "Mining mech (mini-boss)", "Mini-bosses"], ["R", "Dust Stalker (mini-boss)", "Rogue harvester (mini-boss)", "Mini-bosses"],
   ["Y", "Thornmother (mini-boss)", "Hive queen (mini-boss)", "Mini-bosses"], ["o", "Drowned Keeper (mini-boss)", "Coolant wraith (mini-boss)", "Mini-bosses"],
   ["y", "Rock Wyrm (mini-boss; set it in rubble)", "Borer drone (mini-boss; set it in rubble)", "Mini-bosses"],
@@ -254,7 +257,7 @@ const PIECES = [
   ["t", "Torch", "Light pylon", "Decor"], ["p", "Pillar", "Pillar", "Decor"], ["T", "Tree", "Tree", "Decor"],
 ];
 const KNOWN = new Set(PIECES.map(p => p[0]));
-const MINIBOSSES = "GRYoy", MONSTERS = "eacCdH" + MINIBOSSES, PICKUPS = "hqubgkfrwx%Jm", DECOR = "tpT";
+const MINIBOSSES = "GRYoy", MONSTERS = "eacCdHnj" + MINIBOSSES, PICKUPS = "hqubgkfrwx%Jm", DECOR = "tpT";
 const HAZARDS = [["none", "None"], ["wind", "Wind gusts"], ["flood", "Floods"]];
 
 function heightFromGlyph(c, fallback) {
@@ -276,7 +279,7 @@ const isFloorGlyph = c => (c >= "1" && c <= "9") || (c >= "a" && c <= "z");
 const isWall = c => WALLS.includes(c) && !DOORS.includes(c);
 
 function newDoc(w, h) {
-  const d = { name: "Untitled", theme: "hall", height: 1.5, hazard: "none", elites: 0, w, h, cells: [], heights: [], floors: [] };
+  const d = { name: "Untitled", theme: "hall", height: 1.5, hazard: "none", elites: 0, quake: false, w, h, cells: [], heights: [], floors: [] };
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       d.cells.push(x === 0 || y === 0 || x === w - 1 || y === h - 1 ? "#" : ".");
@@ -297,6 +300,7 @@ function serialize(d) {
   return `# Hexen Sharp map\nname: ${d.name}\ntheme: ${d.theme}\nheight: ${fmtHeight(d.height)}\n`
     + (d.hazard && d.hazard !== "none" ? `hazard: ${d.hazard}\n` : "")
     + (d.elites > 0 ? `elites: ${fmtChance(d.elites)}\n` : "")
+    + (d.quake ? "quake: yes\n" : "")
     + "---\n"
     + rowsOf(d, d.cells).join("\n") + "\n"
     + (hasH || hasF ? "---\n" + rowsOf(d, d.heights).join("\n") + "\n" : "")
@@ -305,7 +309,7 @@ function serialize(d) {
 
 /** MapDoc.Parse + MapDoc.FromDef */
 function parse(text) {
-  let name = "Untitled", theme = "hall", height = 1, hazard = "none", elites = 0;
+  let name = "Untitled", theme = "hall", height = 1, hazard = "none", elites = 0, quake = false;
   const rows = [], heights = [], floors = [];
   let section = 0;
   for (const raw of text.replace(/\r/g, "").split("\n")) {
@@ -321,6 +325,7 @@ function parse(text) {
       if (!isNaN(h)) height = Math.min(MAX_H, Math.max(MIN_H, Math.round(h * 2) / 2));
     }
     else if (line.startsWith("hazard:")) hazard = line.slice(7).trim().toLowerCase();
+    else if (line.startsWith("quake:")) quake = ["yes", "true", "1"].includes(line.slice(6).trim().toLowerCase());
     else if (line.startsWith("elites:")) {
       const e = parseFloat(line.slice(7).trim());
       if (!isNaN(e)) elites = Math.min(0.5, Math.max(0, Math.round(e * 100) / 100));
@@ -330,7 +335,7 @@ function parse(text) {
   if (!THEMES.includes(theme)) theme = "hall";
   const w = Math.max(...rows.map(r => r.length)), h = rows.length;
   if (!HAZARDS.some(z => z[0] === hazard)) hazard = "none";
-  const d = { name, theme, height, hazard, elites, w, h, cells: [], heights: [], floors: [] };
+  const d = { name, theme, height, hazard, elites, quake, w, h, cells: [], heights: [], floors: [] };
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const c = x < rows[y].length && KNOWN.has(rows[y][x]) ? rows[y][x] : ".";
@@ -394,7 +399,7 @@ function validateCore(d) {
   if (start < 0) { issues.push("! Place a player start (@) first."); return issues; }
   const reach = reachable(d, start, moveRise(d));
   let unreachable = 0;
-  d.cells.forEach((c, i) => { if ((MONSTERS + PICKUPS + "$").includes(c) && !reach[i]) unreachable++; });
+  d.cells.forEach((c, i) => { if ((MONSTERS + PICKUPS + "$i").includes(c) && !reach[i]) unreachable++; });
   const exit = d.cells.indexOf("E");
   if (exit < 0) issues.push("No exit (E): the map can't be won.");
   else if (!reach[exit]) issues.push("The exit can't be reached from the start.");
@@ -412,7 +417,7 @@ function validate(d) {
   for (const msg of validateCore(d)) {
     let cells = [];
     if (msg.includes("exit")) cellsOf(c => c === "E").forEach(i => cells.push(i));
-    if (msg.includes("monster(s)")) cells = cellsOf((c, i) => (MONSTERS + PICKUPS + "$").includes(c) && !reach[i]);
+    if (msg.includes("monster(s)")) cells = cellsOf((c, i) => (MONSTERS + PICKUPS + "$i").includes(c) && !reach[i]);
     if (msg.includes("Portals")) cells = cellsOf(c => c >= "0" && c <= "9");
     out.push({ kind: msg.startsWith("!") ? "block" : "warn", text: msg.replace(/^! /, ""), cells });
   }
@@ -487,7 +492,7 @@ function resize(w, h) {
   if (w === d.w && h === d.h) return;
   pushUndo();
   const nd = newDoc(w, h);
-  Object.assign(nd, { name: d.name, theme: d.theme, height: d.height, hazard: d.hazard, elites: d.elites });
+  Object.assign(nd, { name: d.name, theme: d.theme, height: d.height, hazard: d.hazard, elites: d.elites, quake: d.quake });
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
@@ -558,7 +563,7 @@ function drawGlyph(g, c, x, y, s, under) {
     c.fillRect(cx - s * .15, cy - s * .3, s * .3, s * .6); letter(g, "#111");
   } else {
     // items: diamonds
-    const color = { m: "#ff78e0", k: "#6fa8ff", f: "#ff7050", J: "#8fe3ff", "&": "#62e0c0", $: "#c89b52", "%": "#ffe070", u: "#e8c050", V: "#e0e4ec", A: "#8a7e70" }[g] || THING_COLOR.I;
+    const color = { i: "#f0d060", m: "#ff78e0", k: "#6fa8ff", f: "#ff7050", J: "#8fe3ff", "&": "#62e0c0", $: "#c89b52", "%": "#ffe070", u: "#e8c050", V: "#e0e4ec", A: "#8a7e70" }[g] || THING_COLOR.I;
     c.fillStyle = color; c.beginPath();
     c.moveTo(cx, cy - r); c.lineTo(cx + r, cy); c.lineTo(cx, cy + r); c.lineTo(cx - r, cy); c.closePath(); c.fill();
     letter(g, "#1a1a1a");
@@ -689,7 +694,7 @@ function setTool(t) {
 function refreshProps() {
   const d = st.doc;
   $("fName").value = d.name; $("fTheme").value = d.theme; $("fHeight").value = String(d.height);
-  $("fHazard").value = d.hazard || "none"; $("fElites").value = String(d.elites || 0);
+  $("fHazard").value = d.hazard || "none"; $("fElites").value = String(d.elites || 0); $("fQuake").checked = !!d.quake;
   $("fW").value = d.w; $("fH").value = d.h;
   const file = st.handle?.name || fileName(d.name);
   $("playCmd").textContent = `dotnet run -c Release -- --play path/to/${file}`;
@@ -927,6 +932,7 @@ for (const [v, label] of HAZARDS) $("fHazard").add(new Option(label, v));
 for (const e of [0, 0.1, 0.2, 0.3, 0.4, 0.5]) $("fElites").add(new Option(e === 0 ? "None" : `${Math.round(e * 100)}% of monsters`, String(e)));
 $("fHazard").onchange = () => { pushUndo(); st.doc.hazard = $("fHazard").value; changed(false); };
 $("fElites").onchange = () => { pushUndo(); st.doc.elites = parseFloat($("fElites").value); changed(false); };
+$("fQuake").onchange = () => { pushUndo(); st.doc.quake = $("fQuake").checked; changed(false); };
 $("bResize").onclick = () => resize(+$("fW").value, +$("fH").value);
 
 const builtins = window.HEXEN_BUILTIN_MAPS || [];

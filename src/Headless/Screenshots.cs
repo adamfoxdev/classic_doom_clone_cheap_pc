@@ -417,6 +417,81 @@ public static partial class Headless
             }
             g.GoToTitle();
 
+            // the rocket tower: the demo partway up
+            g.StartTower(PClass.Fighter, 1234);
+            g.StartDemo();
+            for (int k = 0; k < 35 * 9 + 10; k++) Tick(default);
+            Shot("145_rocket_tower");
+            g.EndDemo();
+
+            // a rail trial on the range, a target popping up far off
+            g.StartPractice(PClass.Mage, ShootingRange.Course);
+            g.GiveExtra(Railgun.Gun);
+            Tick(default, 20);
+            g.P.X = 20.5f; g.P.Y = 22.5f; g.P.FloorZ = 0; g.P.Angle = -MathF.PI / 2; g.P.Pitch = 4;
+            Tick(new Input { Use = true });
+            Monster rt = null;
+            for (int k = 0; k < 60 && rt == null; k++) { Tick(default); rt = g.Level.Things.OfType<Monster>().FirstOrDefault(m => m.Target?.Kind == ShootingRange.Kind.Trial && m.Alive); }
+            if (rt != null) g.P.Angle = MathF.Atan2(rt.Y - g.P.Y, rt.X - g.P.X);
+            Tick(new Input { ZoomHeld = true }, 12);
+            if (rt != null) g.P.Angle = MathF.Atan2(rt.Y - g.P.Y, rt.X - g.P.X) + 0.04f; // (it slides: aim again)
+            Tick(new Input { ZoomHeld = true });
+            Shot("146_rail_trial_zoom");
+            g.GoToTitle();
+
+            // instagib: a slug through a wave, the streak up in the corner
+            g.ArenaMods = ArenaMod.Instagib;
+            g.StartArena(PClass.Fighter);
+            {
+                var lv = g.Level;
+                // the most open spot under the tall roof, looking the longest clear way across it
+                int tall = Enumerable.Range(0, lv.W * lv.H).Where(c => lv.Cells[c] == '\0' && lv.Heights[c] - lv.Floors[c] >= 3f)
+                    .MaxBy(c => Enumerable.Range(1, 12).TakeWhile(d => !lv.BlocksCircle(c % lv.W + 0.5f + d, c / lv.W + 0.5f, 0.6f)).Count());
+                g.P.X = tall % lv.W + 0.5f; g.P.Y = tall / lv.W + 0.5f; g.P.FloorZ = lv.Floors[tall]; g.P.Angle = 0; g.P.Pitch = 4;
+                g.Vars.Freeze = true;
+                Tick(default, 20);
+                // a streak going: four slugs, each through a monster in the way
+                for (int k = 0; k < 4; k++) { g.Level.Things.Add(new Monster(Monster.Ettin) { X = g.P.X + 3f, Y = g.P.Y, Level = lv, State = AiState.Chase }); g.P.Cooldown = 0; Tick(new Input { Fire = true }); }
+                Tick(default, 10);
+                foreach (var (dx, dy, def) in new[] { (3f, -0.05f, Monster.Centaur), (4.8f, 0.1f, Monster.Ettin), (6.5f, -0.1f, Brutes.Grenadier) })
+                    g.Level.Things.Add(new Monster(def) { X = g.P.X + dx, Y = g.P.Y + dy, Level = lv, State = AiState.Chase });
+                g.P.Angle = 0.18f;
+                Tick(default, 2);
+                g.P.Cooldown = 0; g.P.Angle = 0;
+                Tick(new Input { Fire = true });
+                g.P.Angle = 0.18f;
+                Tick(default, 3);
+                g.Vars.Freeze = false;
+                Shot("147_instagib");
+            }
+            g.ArenaMods = ArenaMod.None;
+            g.GoToTitle();
+
+            // the Grenadier and the Juggernaut, side by side in Free Roam
+            g.StartPractice(PClass.Cleric, Courses.FreeRoam);
+            g.P.X = 32.5f; g.P.Y = 32.5f; g.P.Angle = 0; g.P.Pitch = 6;
+            g.Level.Things.Add(new Monster(Brutes.Grenadier) { X = 35.5f, Y = 31.8f, Level = g.Level, State = AiState.Idle });
+            g.Level.Things.Add(new Monster(Brutes.Juggernaut) { X = 36f, Y = 33.4f, Level = g.Level, State = AiState.Idle });
+            g.Vars.Freeze = true;
+            g.Messages.Clear(); g.Say("A Grenadier and a Juggernaut: one throws you with bombs, the other with its fists.");
+            Tick(default, 3);
+            g.Vars.Freeze = false;
+            Shot("148_brutes");
+
+            // a wall kick, called out
+            g.StartPractice(PClass.Fighter, ShootingRange.Course);
+            g.Level.Things.RemoveAll(t => t is Monster);
+            g.GiveRocketLauncher();
+            Tick(default, 20);
+            g.P.X = 37.5f; g.P.Y = 22.5f; g.P.FloorZ = 0; g.P.Z = 1f; g.P.VZ = 2f; g.P.Angle = 0; g.P.Pitch = 0; g.P.Cooldown = 0;
+            Tick(new Input { Fire = true });
+            for (int k = 0; k < 10 && g.LastTrick == Trick.None; k++) Tick(default);
+            g.P.Angle = MathF.PI - 0.3f;
+            Tick(default, 16);
+            g.P.DamageFlash = 0;
+            Shot("149_wall_kick");
+            g.GoToTitle();
+
             // the grenade course: the yard and the low wall; a lob in the air over it; a grenade jump up the first ledge
             g.StartPractice(PClass.Cleric, GrenadeCourse.Course);
             g.P.X = 6.5f; g.P.Y = 6.5f; g.P.Angle = -0.12f; g.P.Pitch = 10f;

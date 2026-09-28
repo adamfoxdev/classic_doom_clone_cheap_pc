@@ -306,13 +306,15 @@ public sealed class DevConsole
             var now = Difficulties.Of(_g.Vars);
             Print($"difficulty: {Difficulties.Name(now).ToLowerInvariant()} ({Difficulties.About(now)})");
         });
-        Add("arenamods", "[letters|-]", "the arena's modifiers: S double-speed monsters, N no supplies, M melee only, R random class (- for none)", a =>
+        Add("arenamods", "[letters|-]", "the arena's modifiers: S double-speed monsters, N no supplies, M melee only, R random class, I instagib, Q Rocket Arena (- for none)", a =>
         {
             if (a.Length > 1)
             {
                 var mods = ArenaMod.None;
                 foreach (char c in a[1].ToUpperInvariant())
                     foreach (var m in ArenaModInfo.All) if (ArenaModInfo.Letter(m) == c) mods |= m;
+                if ((mods & ArenaMod.Instagib) != 0) mods &= ~(ArenaMod.RocketArena | ArenaMod.MeleeOnly); // the Quake modes set your weapons
+                else if ((mods & ArenaMod.RocketArena) != 0) mods &= ~ArenaMod.MeleeOnly;
                 _g.ArenaMods = mods;
                 _g.SaveSettings();
             }
