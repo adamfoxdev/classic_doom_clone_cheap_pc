@@ -117,6 +117,22 @@ public sealed class Profile
         return board.IndexOf(run) + 1;
     }
 
+    /// <summary>Rocket tower runs, the best ten for each class (highest, then quickest).</summary>
+    public List<TowerRun> TowerRuns { get; set; } = new();
+
+    public List<TowerRun> TowerBoard(PClass cls) =>
+        TowerRuns.Where(r => r.Class == cls.ToString()).OrderByDescending(r => r.Height).ThenBy(r => r.Time).Take(BoardSize).ToList();
+
+    public float TowerBest(PClass cls) => TowerRuns.Where(r => r.Class == cls.ToString()).Select(r => r.Height).DefaultIfEmpty(0).Max();
+
+    public int AddTowerRun(TowerRun run)
+    {
+        TowerRuns.Add(run);
+        var board = TowerBoard(Enum.Parse<PClass>(run.Class));
+        TowerRuns.RemoveAll(r => r.Class == run.Class && !board.Contains(r));
+        return board.IndexOf(run) + 1;
+    }
+
     /// <summary>Shooting range drills, the best ten for each class (highest score, then fewest shots).</summary>
     public List<RangeRun> RangeRuns { get; set; } = new();
 
@@ -276,6 +292,7 @@ public sealed class Profile
             p.MiniBosses ??= new();
             p.DailyRuns ??= new();
             p.EndlessRuns ??= new();
+            p.TowerRuns ??= new();
             p.RangeRuns ??= new();
             p.KillsBy ??= new();
             p.RematchRuns ??= new();

@@ -166,7 +166,7 @@ public static partial class Headless
         g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
         g.Menu.Cursor = 3;
         g.Menu.Update(new Input { Right = true }, 1f / 35f);
-        g.Menu.Cursor = 4;
+        g.Menu.Cursor = ArenaModInfo.All.Length; // Start
         g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
         check(g.ArenaMods == ArenaMod.RandomClass && g.ArenaMode && g.Mode == GameMode.Playing, "Random class: Start goes straight in");
         var classes = new HashSet<PClass>();
@@ -449,7 +449,7 @@ public static partial class Headless
         g.Profile.DailyRuns.Add(new DailyRun { Date = today.ToString("yyyy-MM-dd"), Name = "RIVAL", Score = 99999, Waves = 30 });
         check(Daily.Streak(g.Profile, "TESTER", today) == 3 && Daily.Streak(g.Profile, "TESTER", today.AddDays(1)) == 3, "a streak counts the days in a row, up to today (or yesterday, till you play)");
         g.Paused = true; g.Menu.Show(MenuPage.Leaderboard);
-        for (int k = 0; k < 11 && !g.Menu.BoardDaily; k++) g.Menu.Update(new Input { Down = true }, 1f / 35f);
+        for (int k = 0; k < 16 && !g.Menu.BoardDaily; k++) g.Menu.Update(new Input { Down = true }, 1f / 35f);
         var r = new Renderer();
         r.Render(g);
         int top = r.Fb.Count(px => px == Col.Rgb(230, 190, 80)), mineLit = r.Fb.Count(px => px == Col.Rgb(120, 255, 140));

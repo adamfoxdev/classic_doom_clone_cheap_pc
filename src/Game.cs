@@ -271,6 +271,7 @@ public sealed partial class Game
         Course = course ?? Courses.Hangar;
         Rematch = null;
         if (Course.Endless && Course.Seed <= 0) Course = Endless.For(Endless.NewSeed()); // picked from the menu: a fresh seed
+        if (Course.Tower && Course.Seed <= 0) Course = Tower.For(Endless.NewSeed());
         if (Course.Range) Style = GameStyle.Classic; // weapons out: it's a range
         var c = Course;
         HubSource = () => new[] { c.Map().Build() };
@@ -447,6 +448,7 @@ public sealed partial class Game
                 UpdatePlayer(pilot, DemoPilot.Tick);
                 UpdateWorld(DemoPilot.Tick);
                 RangeTick(DemoPilot.Tick); // the demo's health and mana come back as yours do
+                TowerTick(DemoPilot.Tick);
             }
             return false;
         }
@@ -462,6 +464,7 @@ public sealed partial class Game
         if (Course.Range) SetUpRange();
         if (Course.Rockets) SetUpRocketCourse();
         if (Course.Grenades) SetUpGrenadeCourse();
+        if (Course.Tower) SetUpTower();
         ResetRun();
     }
 
@@ -485,6 +488,7 @@ public sealed partial class Game
     {
         var plats = Course.Platforms;
         int reached = Level.CheckpointsReached.Count, total = Level.Checkpoints.Count;
+        if (Course.Tower) return TowerHint(zone);
         if (Course.Grenades)
             return reached <= 1 ? Course.Intro
                 : $"Checkpoint {reached} of {total}." + (CourseTargetsLeft > 0 ? $" {CourseTargetsLeft} target{(CourseTargetsLeft == 1 ? "" : "s")} still standing." : " Every target down: on to the exit.");
@@ -568,6 +572,7 @@ public sealed partial class Game
     {
         RunTime = 0; RunStarted = false; EndlessReached = 0;
         if (Practicing && Course.Grenades) ResetCourseTargets();
+        if (Practicing && Course.Tower) { TowerHeight = 0; TowerPlatform = 0; _towerCarry = -1; }
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         Recording = new GhostTrack();
@@ -1032,6 +1037,7 @@ public sealed partial class Game
         EliteTick(step);
         RangeTick(step);
         TrickTick(dt);
+        TowerTick(step);
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
@@ -1590,6 +1596,7 @@ public sealed partial class Game
                     };
                 PlaySound(Sfx.Secret, 0.7f);
                 if (OnEndless) EndlessPlatform(zone);
+                if (OnTower) TowerLanded(zone);
                 if (Practicing) Say(CourseHint(zone) + GhostSplit(zone));
                 else { Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count})."); SaveNow(); }
             }
@@ -1600,6 +1607,7 @@ public sealed partial class Game
         if (onLift && !_onLift)
         {
             if (OnEndless) { EndEndlessRun(false); onLift = false; } // on the endless course a fall ends the run
+            else if (OnTower) { EndTowerRun(false); onLift = false; } // on the tower too
             else if (Checkpoint != null && Checkpoint.Level == lv)
             {
                 MoveTo(Checkpoint.X, Checkpoint.Y, Checkpoint.Angle);

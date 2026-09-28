@@ -324,6 +324,15 @@ public sealed class DevConsole
             _g.StartDemo();
             Open = false;
         });
+        Add("tower", "[seed]", "the endless rocket tower: a new seed, or the one you name", a =>
+        {
+            int seed = 0;
+            if (a.Length > 1 && (!int.TryParse(a[1], out seed) || seed <= 0)) { Print("tower: the seed is a whole number above 0"); return; }
+            _g.Style = GameStyle.Classic;
+            _g.StartTower(_g.P?.Class ?? PClass.Fighter, seed);
+            Print($"rocket tower, seed {_g.Course.Seed}");
+            Open = false;
+        });
         Add("endless", "[seed]", "the endless practice course: a new seed, or the one you name", a =>
         {
             int seed = 0;

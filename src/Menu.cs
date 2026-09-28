@@ -21,16 +21,28 @@ public sealed class MenuSystem
     /// <summary>Whose leaderboard the Leaderboard page shows: Left/Right switch class, Up/Down the course.</summary>
     public PClass BoardClass;
     public Course BoardCourse = Courses.Hangar;
-    /// <summary>The Leaderboard page shows the arena's board (waves) rather than a course's (times).</summary>
-    public bool BoardArena;
-    /// <summary>The Leaderboard page shows the daily challenge's board, for the day BoardDay back from today.</summary>
-    public bool BoardDaily;
-    /// <summary>The Leaderboard page shows the endless course's board.</summary>
-    public bool BoardEndless;
-    /// <summary>The Leaderboard page shows the shooting range's drill board.</summary>
-    public bool BoardRange;
-    /// <summary>The Leaderboard page shows a mini-boss's rematch board: which one (in MiniBosses.All).</summary>
-    public bool BoardRematch;
+    /// <summary>
+    /// Which board the Leaderboard page shows: a timed course's id (BoardCourse), or one of the other boards, which
+    /// come after the timed courses in the order of OtherBoards.
+    /// </summary>
+    public string BoardPage = "hangar";
+    public static readonly string[] OtherBoards = { "endless", "tower", "range", "rail", "rematch", "arena", "instagib", "daily" };
+    bool Is(string page) => BoardPage == page;
+    void Set(string page, bool on) { if (on) BoardPage = page; else if (BoardPage == page) BoardPage = BoardCourse.Id; }
+    /// <summary>The arena's board (waves) rather than a course's (times).</summary>
+    public bool BoardArena { get => Is("arena"); set => Set("arena", value); }
+    /// <summary>The daily challenge's board, for the day BoardDay back from today.</summary>
+    public bool BoardDaily { get => Is("daily"); set => Set("daily", value); }
+    public bool BoardEndless { get => Is("endless"); set => Set("endless", value); }
+    /// <summary>The endless rocket tower's board.</summary>
+    public bool BoardTower { get => Is("tower"); set => Set("tower", value); }
+    /// <summary>The shooting range's drill board, and its rail trials'.</summary>
+    public bool BoardRange { get => Is("range"); set => Set("range", value); }
+    public bool BoardRail { get => Is("rail"); set => Set("rail", value); }
+    /// <summary>A mini-boss's rematch board: which one (in MiniBosses.All).</summary>
+    public bool BoardRematch { get => Is("rematch"); set => Set("rematch", value); }
+    /// <summary>The instagib arena's board.</summary>
+    public bool BoardInstagib { get => Is("instagib"); set => Set("instagib", value); }
     public int BoardBoss;
     public int BoardDay;
 
@@ -46,11 +58,8 @@ public sealed class MenuSystem
         {
             BoardClass = _g.P?.Class ?? PClass.Fighter;
             BoardCourse = _g.Practicing && _g.Course.Timed ? _g.Course : Courses.Hangar;
-            BoardArena = _g.ArenaMode && !_g.DailyMode;
-            BoardDaily = _g.DailyMode;
-            BoardEndless = _g.OnEndless;
-            BoardRange = _g.OnRange;
-            BoardRematch = _g.Rematch != null;
+            BoardPage = _g.ArenaMode && _g.DailyMode ? "daily" : _g.ArenaMode && _g.InstagibOn ? "instagib" : _g.ArenaMode ? "arena"
+                : _g.OnEndless ? "endless" : _g.OnTower ? "tower" : _g.OnRange ? (_g.RailTrial ? "rail" : "range") : _g.Rematch != null ? "rematch" : BoardCourse.Id;
             BoardBoss = _g.Rematch != null ? Array.IndexOf(MiniBosses.All, _g.Rematch) : 0;
             BoardDay = 0;
         }
@@ -225,18 +234,12 @@ public sealed class MenuSystem
             }
             if (inp.Up || inp.Down)
             {
-                // the timed courses, then the endless course, the range, rematches, the arena and the daily challenge, round and round
-                var timed = Courses.Timed;
-                int n = timed.Length + 5;
-                int i = BoardEndless ? timed.Length : BoardRange ? timed.Length + 1 : BoardRematch ? timed.Length + 2 : BoardArena ? timed.Length + 3
-                    : BoardDaily ? timed.Length + 4 : Array.IndexOf(timed, BoardCourse);
-                i = (i + (inp.Up ? n - 1 : 1)) % n;
-                BoardEndless = i == timed.Length;
-                BoardRange = i == timed.Length + 1;
-                BoardRematch = i == timed.Length + 2;
-                BoardArena = i == timed.Length + 3;
-                BoardDaily = i == timed.Length + 4;
-                if (i < timed.Length) BoardCourse = timed[i];
+                // the timed courses, then the other boards (endless, the tower, the range, ... the daily challenge), round and round
+                var pages = Courses.Timed.Select(c => c.Id).Concat(OtherBoards).ToArray();
+                int n = pages.Length, i = Array.IndexOf(pages, BoardPage);
+                i = ((i < 0 ? 0 : i) + (inp.Up ? n - 1 : 1)) % n;
+                BoardPage = pages[i];
+                if (Courses.Timed.FirstOrDefault(c => c.Id == BoardPage) is { } course) BoardCourse = course;
                 BoardDay = 0;
                 _g.PlaySound(Sfx.Swing, 0.5f);
             }

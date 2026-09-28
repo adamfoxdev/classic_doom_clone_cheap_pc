@@ -121,7 +121,9 @@ public sealed partial class Game
     /// <summary>
     /// The range and the rocket-jump course: mana never runs out, health comes back, and your own rockets can't kill you.
     /// </summary>
-    public bool SafeRockets => Practicing && (Course.Range || Course.Rockets || Course.Grenades);
+    /// <summary>A rail trial is on (see RailTrials).</summary>
+    public bool RailTrial;
+    public bool SafeRockets => Practicing && (Course.Range || Course.Rockets || Course.Grenades || Course.Tower);
 
     /// <summary>On a fresh range: the full loadout (your class's first weapon in hand), the rack, and the dummies.</summary>
     void SetUpRange()

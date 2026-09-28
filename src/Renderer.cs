@@ -179,6 +179,11 @@ public sealed class Renderer
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.EndlessBest(c)}");
                         CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
                     }
+                    if (course.Tower)
+                    {
+                        var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.TowerBest(c):0.0}");
+                        CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                    }
                     if (course.Range)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.RangeBest(c)}");
@@ -204,6 +209,7 @@ public sealed class Renderer
         if (m.BoardArena) { DrawArenaBoard(g, def); return; }
         if (m.BoardDaily) { DrawDailyBoard(g); return; }
         if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
+        if (m.BoardTower) { DrawTowerBoard(g, def); return; }
         if (m.BoardRange) { DrawRangeBoard(g, def); return; }
         if (m.BoardRematch) { DrawRematchBoard(g); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
@@ -1767,6 +1773,7 @@ public sealed class Renderer
         if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
         if (g.OnEndless && style != HudStyle.Off) DrawEndlessHud(g);
         if (g.OnRange && style != HudStyle.Off) DrawRangeHud(g);
+        if (g.OnTower && style != HudStyle.Off) DrawTowerHud(g);
         if (g.LastTrick != Trick.None && g.TrickAge < Tricks.CalloutTime && style != HudStyle.Off)
         {
             // a trick's name across the view, fading as it goes
@@ -1874,6 +1881,51 @@ public sealed class Renderer
             if (best > 0) Right($"BEST {best}", 10, Col.Rgb(255, 220, 90));
         }
         if (g.RocketJumps > 0) Right($"ROCKET JUMPS {g.RocketJumps}", g.Drilling ? 30 : best > 0 ? 20 : 10, Col.Rgb(255, 170, 80));
+    }
+
+    /// <summary>On the tower: how high you've climbed, your best, and the seed.</summary>
+    void DrawTowerHud(Game g)
+    {
+        int y = g.Vars.ShowFps ? 12 : 3;
+        float best = g.Profile.TowerBest(g.P.Class);
+        void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
+        Right($"HEIGHT {g.TowerHeight:0.0}", 0, g.RunStarted ? Col.Rgb(240, 236, 220) : Col.Rgb(150, 150, 160));
+        if (best > 0) Right($"BEST {best:0.0}", 10, Col.Rgb(255, 220, 90));
+        Right($"SEED {g.Course.Seed}", best > 0 ? 20 : 10, Col.Rgb(150, 150, 160));
+    }
+
+    /// <summary>The rocket tower's board for one class: the highest climbs, then the quickest.</summary>
+    void DrawTowerBoard(Game g, ClassDef def)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        CenterText($"ROCKET TOWER   < {def.Name.ToUpperInvariant()} >", 26, blue);
+        CenterText("HEIGHT CLIMBED, IN CELLS", 36, gold);
+        var runs = g.Profile.TowerBoard(m.BoardClass);
+        if (runs.Count == 0)
+        {
+            CenterText("NO CLIMBS YET.", 70, MenuText);
+            CenterText("PICK PRACTICE > ROCKET TOWER ON THE TITLE MENU.", 82, MenuDim);
+        }
+        else
+        {
+            var latest = runs.MaxBy(r => r.When);
+            Text(18, 48, "#", MenuDim); Text(40, 48, "HEIGHT", MenuDim); Text(96, 48, "SEED", MenuDim); Text(142, 48, "TIME", MenuDim);
+            Text(184, 48, "NAME", MenuDim); Text(258, 48, "DATE", MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
+                Text(18, y, $"{i + 1,2}", c);
+                Text(40, y, $"{r.Height:0.0}", c);
+                Text(96, y, $"{r.Seed}", c);
+                Text(142, y, $"{r.Time:0.0}", c);
+                Text(184, y, r.Name, c);
+                Text(258, y, r.When == default ? "-" : r.When.ToString("MM-dd"), c);
+            }
+        }
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
     }
 
     /// <summary>The shooting range's board for one class: the best drills.</summary>

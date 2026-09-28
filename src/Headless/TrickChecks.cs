@@ -62,5 +62,39 @@ public static partial class Headless
         float top = 0;
         for (int k = 0; k < 60; k++) { Tick(new Input()); top = MathF.Max(top, p.Z); }
         check(g.LastTrick == Trick.ComboJump && g.TrickCounts[(int)Trick.ComboJump] == 1, $"a grenade and a rocket going off under you together: {Tricks.Name(g.LastTrick)} ({top:0.0} cells up)");
+
+        // the endless rocket tower: shafts of rising platforms from a seed, each rise a rocket jump, growing
+        var plan = Tower.Plan(1234);
+        var rises = plan.Zip(plan.Skip(1)).Where(q => q.First.Shaft == q.Second.Shaft).Select(q => q.Second.Floor - q.First.Floor).ToList();
+        check(plan.Select(q => q.Shaft).Distinct().Count() == Tower.Shafts && plan.All(q => q.Floor <= 8.5f) && rises.All(r => r is >= 1.75f and <= 2.75f)
+              && rises.Take(6).Average() < rises.TakeLast(6).Average() && Tower.Plan(1234).SequenceEqual(plan) && !Tower.Plan(99).SequenceEqual(plan),
+            $"the rocket tower's {Tower.Shafts} shafts rise {rises.Min():0.##} to {rises.Max():0.##} a platform, higher as they go, the same every time for a seed");
+        g = new Game { FixedSeed = 1, AchievementsOn = false };
+        g.StartTower(PClass.Fighter, 1234);
+        p = g.P;
+        check(g.OnTower && p.Weapons.Length == 1 && p.CurWeapon.Rocket, "the tower gives you the rocket launcher alone");
+        g.StartDemo();
+        float climbed = 0;
+        int shaftsDone = 0;
+        for (int k = 0; k < 35 * 90 && g.Demo; k++)
+        {
+            float was = g.TowerHeight;
+            g.Update(new Input(), 1f / 35f);
+            climbed = MathF.Max(climbed, g.TowerHeight);
+            if (g.TowerPlatform < plan.Length && plan[g.TowerPlatform].Shaft > shaftsDone && plan[g.TowerPlatform].Floor == Tower.Base) shaftsDone = plan[g.TowerPlatform].Shaft;
+        }
+        check(shaftsDone >= 2 && climbed >= 16f, $"the demo rocket jumps up it, carried on from shaft to shaft ({shaftsDone} shafts done, {climbed:0.0} cells)");
+        g.EndDemo();
+        // your own go: climb onto the second platform, then fall: the run goes on the board, and you start again at the foot
+        var second = plan[1];
+        var (sx, sy) = Tower.Cell(0, second.X + 1, second.Y + 1);
+        p.X = sx + 0.5f; p.Y = sy + 0.5f; p.FloorZ = second.Floor; p.Z = 0.2f;
+        Tick(new Input(), 10);
+        float reached = g.TowerHeight;
+        var (fx, fy) = Tower.Cell(0, 5, 5);
+        p.X = fx + 0.5f; p.Y = fy + 0.5f; p.Z = 0.5f;
+        Tick(new Input(), 30);
+        check(reached > 1.5f && g.LastTower?.Height == reached && g.TowerHeight == 0 && MathF.Abs(p.X - g.Level.StartX) < 0.1f && g.Profile.TowerBest(PClass.Fighter) == reached,
+            $"a fall to the shaft's floor ends the run at {reached:0.0} cells, on your board, and you start again at the foot");
     }
 }

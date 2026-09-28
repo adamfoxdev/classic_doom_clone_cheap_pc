@@ -344,31 +344,38 @@ public static class PerkInfo
 /// still go by the waves cleared.
 /// </summary>
 [Flags]
-public enum ArenaMod { None = 0, DoubleSpeed = 1, NoSupplies = 2, MeleeOnly = 4, RandomClass = 8 }
+public enum ArenaMod { None = 0, DoubleSpeed = 1, NoSupplies = 2, MeleeOnly = 4, RandomClass = 8, Instagib = 16, RocketArena = 32 }
 
 public static class ArenaModInfo
 {
-    public static readonly ArenaMod[] All = { ArenaMod.DoubleSpeed, ArenaMod.NoSupplies, ArenaMod.MeleeOnly, ArenaMod.RandomClass };
+    /// <summary>The Quake modes: at most one at a time (instagib wins).</summary>
+    public static bool Quake(ArenaMod m) => m is ArenaMod.Instagib or ArenaMod.RocketArena;
+
+    public static readonly ArenaMod[] All = { ArenaMod.DoubleSpeed, ArenaMod.NoSupplies, ArenaMod.MeleeOnly, ArenaMod.RandomClass, ArenaMod.Instagib, ArenaMod.RocketArena };
 
     public static string Name(ArenaMod m) => m switch
     {
         ArenaMod.DoubleSpeed => "Double-speed monsters",
         ArenaMod.NoSupplies => "No supplies",
         ArenaMod.MeleeOnly => "Melee only",
+        ArenaMod.Instagib => "Instagib",
+        ArenaMod.RocketArena => "Rocket Arena",
         _ => "Random class",
     };
 
     /// <summary>The letter each modifier shows as on the leaderboard.</summary>
-    public static char Letter(ArenaMod m) => m switch { ArenaMod.DoubleSpeed => 'S', ArenaMod.NoSupplies => 'N', ArenaMod.MeleeOnly => 'M', _ => 'R' };
+    public static char Letter(ArenaMod m) => m switch { ArenaMod.DoubleSpeed => 'S', ArenaMod.NoSupplies => 'N', ArenaMod.MeleeOnly => 'M', ArenaMod.Instagib => 'I', ArenaMod.RocketArena => 'Q', _ => 'R' };
 
     /// <summary>What each modifier adds to the score multiplier.</summary>
-    public static float Bonus(ArenaMod m) => m switch { ArenaMod.DoubleSpeed => 0.6f, ArenaMod.NoSupplies => 0.4f, ArenaMod.MeleeOnly => 0.5f, _ => 0.15f };
+    public static float Bonus(ArenaMod m) => m switch { ArenaMod.DoubleSpeed => 0.6f, ArenaMod.NoSupplies => 0.4f, ArenaMod.MeleeOnly => 0.5f, ArenaMod.Instagib => 0f, ArenaMod.RocketArena => 0f, _ => 0.15f };
 
     public static string About(ArenaMod m) => m switch
     {
         ArenaMod.DoubleSpeed => "MONSTERS MOVE TWICE AS FAST.",
         ArenaMod.NoSupplies => "NO HEALTH, MANA OR ITEMS BETWEEN WAVES AND A BARE ARMOURY (ARSENAL UPGRADES STILL COME).",
         ArenaMod.MeleeOnly => "ONLY YOUR FIRST WEAPON: NO STAFFS, AXES OR SPELLS.",
+        ArenaMod.Instagib => "ONLY A RAILGUN, AND ONE SLUG KILLS ANYTHING. KEEP YOUR STREAK: ITS OWN BOARD.",
+        ArenaMod.RocketArena => "EVERY QUAKE WEAPON, FULL AMMO EACH WAVE, 200 HEALTH, NO PICKUPS, AND YOUR BLASTS DON'T HURT YOU.",
         _ => "A RANDOM CLASS EACH RUN, INSTEAD OF PICKING ONE.",
     };
 
