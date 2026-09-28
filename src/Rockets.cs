@@ -32,8 +32,8 @@ public static class Rockets
         Speed = 12.5f, Splash = SplashRadius, Rocket = true, ArtIndex = 9, Sound = Sfx.Explode,
     };
 
-    /// <summary>Every weapon in the game: each class's three, then the rocket launcher and the railgun.</summary>
-    public static WeaponDef[] AllWeapons() => ClassDef.All.SelectMany(c => c.Weapons).Append(Launcher).Append(Railgun.Gun).ToArray();
+    /// <summary>Every weapon in the game: each class's three, then the rocket launcher, the railgun and the grenade launcher.</summary>
+    public static WeaponDef[] AllWeapons() => ClassDef.All.SelectMany(c => c.Weapons).Append(Launcher).Append(Railgun.Gun).Append(Grenades.Launcher).ToArray();
 
     /// <summary>The rocket's climb angle (radians, up positive) for a view pitch, with `proj` the view's projection distance.</summary>
     public static float AimAngle(float pitch, float proj)
@@ -146,6 +146,7 @@ public sealed partial class Game
     public (float dist, float z)? RocketLanding()
     {
         var p = P;
+        if (p.CurWeapon.Grenade) return GrenadeLanding();
         float a = RocketAim();
         if (a >= 0) return null;
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle), flat = MathF.Cos(a), down = MathF.Sin(a);
@@ -162,11 +163,14 @@ public sealed partial class Game
         return null;
     }
 
-    /// <summary>How far down you can look: further with the rocket launcher in hand, easing back when you put it away.</summary>
+    /// <summary>How far you can look up and down: further with the launchers in hand, easing back when you put one away.</summary>
     void PitchLimit(Player p, float dt)
     {
-        float low = p.CurWeapon.Rocket && p.PendingWeapon < 0 && !Level.Flight ? -Rockets.LookDown : -Rockets.NormalPitch;
+        bool ready = p.PendingWeapon < 0 && !Level.Flight;
+        float low = p.CurWeapon.LooksDown && ready ? -Rockets.LookDown : -Rockets.NormalPitch;
+        float high = p.CurWeapon.Grenade && ready ? Rockets.LookDown : Rockets.NormalPitch;
         if (p.Pitch < low) p.Pitch = MathF.Min(low, p.Pitch + dt * 300f);
+        if (p.Pitch > high) p.Pitch = MathF.Max(high, p.Pitch - dt * 300f);
     }
 
     /// <summary>A rocket's smoke: a puff left behind every so often as it flies.</summary>

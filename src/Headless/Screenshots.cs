@@ -376,6 +376,19 @@ public static partial class Headless
             for (int k = 0; k < 35 * 7 + 18; k++) Tick(default);
             Shot("136_rocket_course_demo");
             g.EndDemo();
+
+            // the grenade course: the yard and the low wall; a lob in the air over it; a grenade jump up the first ledge
+            g.StartPractice(PClass.Cleric, GrenadeCourse.Course);
+            g.P.X = 6.5f; g.P.Y = 6.5f; g.P.Angle = -0.12f; g.P.Pitch = 10f;
+            Tick(default);
+            Shot("138_grenade_course");
+            g.StartDemo();
+            for (int k = 0; k < 35 * 60 && g.Demo && !g.Level.Things.Any(t => t is Projectile { Kind: ProjKind.Grenade, VZ: < 0 }); k++) Tick(default);
+            for (int k = 0; k < 6; k++) Tick(default);
+            Shot("139_grenade_lob");
+            for (int k = 0; k < 35 * 60 && g.Demo && !(g.P.Z > 1.2f); k++) Tick(default);
+            Shot("140_grenade_jump");
+            g.EndDemo();
             g.GoToTitle();
         }
 
@@ -887,6 +900,8 @@ public static partial class Headless
         Shot("132_practice_range");
         g.Menu.Cursor = Array.IndexOf(Courses.All, RocketCourse.Course);
         Shot("137_practice_rocketjump");
+        g.Menu.Cursor = Array.IndexOf(Courses.All, GrenadeCourse.Course);
+        Shot("141_practice_grenades");
         g.Menu.Close();
         foreach (var (course, name, cam) in new[]
         {

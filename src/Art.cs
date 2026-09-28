@@ -38,7 +38,7 @@ public static class Art
     public static Tex SkyDusk, SkyIce, SkyNight;
     // Sprites
     public static readonly Dictionary<string, Tex[]> Monsters = new();
-    public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt, Seeker, Rocket;
+    public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt, Seeker, Rocket, Grenade;
     /// <summary>A rocket's smoke trail puff.</summary>
     public static Tex Smoke;
     public static Tex[] Torch, Relics;
@@ -48,8 +48,8 @@ public static class Art
     // HUD
     public static Tex HudBack;
     // First-person weapons, indexed [class*3 + slot][frame], then the rocket launcher (9)
-    public static Tex[][] Weapons = new Tex[11][];
-    public const int RocketLauncherArt = 9, RailgunArt = 10;
+    public static Tex[][] Weapons = new Tex[12][];
+    public const int RocketLauncherArt = 9, RailgunArt = 10, GrenadeLauncherArt = 11;
     /// <summary>The railgun's beam: its white core and the blue spiral round it.</summary>
     public static Tex RailCore, RailSpiral;
 
@@ -842,6 +842,7 @@ public static class Art
         Smoke = Orb(Col.Rgb(110, 108, 104), Col.Rgb(190, 186, 180), 2);
         RailCore = Orb(Col.Rgb(200, 255, 230), Col.Rgb(255, 255, 255), 0);
         RailSpiral = Orb(Col.Rgb(60, 140, 255), Col.Rgb(160, 210, 255), 0);
+        Grenade = new[] { Orb(Col.Rgb(70, 86, 60), Col.Rgb(140, 160, 110), 0), Orb(Col.Rgb(70, 86, 60), Col.Rgb(255, 80, 60), 0) };
         Rocket = new[] { Orb(Col.Rgb(150, 150, 140), Col.Rgb(255, 210, 120), 0), Orb(Col.Rgb(255, 120, 30), Col.Rgb(255, 240, 150), 1) };
         Torch = new[] { TorchTex(0), TorchTex(1), TorchTex(2) };
         Ghost = new[] { GhostTex(0), GhostTex(1) };
@@ -1357,6 +1358,31 @@ public static class Art
             rg[f] = c.T;
         }
         Weapons[RailgunArt] = rg;
+        var gl = new Tex[2];
+        for (int f = 0; f < 2; f++)
+        {
+            var c = new Canvas(WW, WH);
+            DrawGrenadeLauncher(c, f == 1);
+            c.Noise(new Rng((uint)(97 + f)), 8);
+            c.Outline(Dark);
+            gl[f] = c.T;
+        }
+        Weapons[GrenadeLauncherArt] = gl;
+    }
+
+    /// <summary>The grenade launcher: a stubby wide barrel over a round drum, held low in the middle.</summary>
+    static void DrawGrenadeLauncher(Canvas c, bool fire)
+    {
+        int kick = fire ? 7 : 0;
+        uint body = Col.Rgb(78, 90, 66), dark = Col.Rgb(34, 38, 30), band = Col.Rgb(170, 150, 70);
+        c.Rect(52, 30 + kick, 26, 34, body);                         // the barrel
+        c.Rect(52, 30 + kick, 4, 34, Col.Shade(body, 160));          // its lit edge
+        c.Ellipse(65, 31 + kick, 11, 4, dark);                      // the muzzle
+        c.Circle(64, 66 + kick, 20, Col.Rgb(64, 74, 56));           // the drum
+        for (int k = 0; k < 6; k++) { float a = k * MathF.Tau / 6; c.Circle(64 + MathF.Cos(a) * 12, 66 + kick + MathF.Sin(a) * 12, 4, dark); }
+        c.Rect(52, 44 + kick, 26, 3, band);
+        if (fire) { c.Glow(65, 28 + kick, 16, Col.Rgb(255, 170, 70)); c.Glow(65, 26 + kick, 10, Col.Rgb(200, 200, 190)); }
+        Arm(c, 116, 80, 90, 70, Col.Rgb(90, 90, 100), Col.Rgb(200, 150, 110));
     }
 
     /// <summary>The railgun: a long slim barrel held low on the right, its coils glowing green (white-hot as it fires).</summary>

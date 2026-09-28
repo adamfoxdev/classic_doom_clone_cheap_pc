@@ -197,7 +197,7 @@ public sealed class Monster : Thing
 
 // ---------------------------------------------------------------- projectiles
 
-public enum ProjKind { Fireball, CentaurBolt, BossBall, Seeker, Bolt, Shard, Serpent, Flame, Lightning, Hammer, Rocket }
+public enum ProjKind { Fireball, CentaurBolt, BossBall, Seeker, Bolt, Shard, Serpent, Flame, Lightning, Hammer, Rocket, Grenade }
 
 public sealed class Projectile : Thing
 {
@@ -233,6 +233,7 @@ public sealed class Projectile : Thing
         ProjKind.Flame => Art.Flame,
         ProjKind.Lightning => Art.Lightning,
         ProjKind.Rocket => Art.Rocket,
+        ProjKind.Grenade => Art.Grenade,
         _ => Art.Hammer,
     };
 

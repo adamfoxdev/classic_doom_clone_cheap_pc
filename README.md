@@ -165,12 +165,12 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   and terraces you could never jump to. A gauge in the corner of the view shows the fuel; it burns faster while
   climbing, and recharges whenever you're on the ground. Run dry in mid-air and you'll drop, and it won't
   relight until you let go of `Q` and press it again.
-- **Strafe-jumping practice** (**Practice** on the title menu): four timed courses (the Velocity Hangar, Descent,
-  the Circuit and Rocket Jump), each with a leaderboard, medals, a ghost of your best run and a demo run to watch;
+- **Strafe-jumping practice** (**Practice** on the title menu): five timed courses (the Velocity Hangar, Descent,
+  the Circuit, Rocket Jump and Grenades), each with a leaderboard, medals, a ghost of your best run and a demo run to watch;
   Endless, a seeded run of gaps that gets harder until you fall; the Shooting Range, every weapon in the game plus a
-  Quake rocket launcher and railgun; and Free Roam, an empty field to move around in. See
-  [Quake movement](#quake-movement), [The rocket-jump course](#the-rocket-jump-course) and
-  [The shooting range](#the-shooting-range).
+  Quake rocket launcher, railgun and grenade launcher; and Free Roam, an empty field to move around in. See
+  [Quake movement](#quake-movement), [The rocket-jump course](#the-rocket-jump-course),
+  [The grenade course](#the-grenade-course) and [The shooting range](#the-shooting-range).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
 - **Save and continue:** the campaign saves itself, and **Continue** on the title menu picks it up where you left
@@ -281,8 +281,9 @@ Switch to the old direct movement with **Options → Movement** or `quakemove 0`
 | **Descent** | Platforms dropping away (6 units up to 1) over gaps of 3 to 7 cells: each fall buys the hang time for a wider gap. As the Marine the last needs about 195%, as the Psion 225%. |
 | **Circuit** | One clockwise lap of an 8-wide loop round a walled island, through a checkpoint on each side and back over the finish line behind the start. Strafe into the corners to carry your speed round them. |
 | **Rocket Jump** | Six platforms, each too high or too far to jump to, crossed with the rocket launcher, your only weapon there. See [The rocket-jump course](#the-rocket-jump-course). |
+| **Grenades** | Three targets to knock down with the grenade launcher, one behind a wall and two up on ledges, then grenade jumps up to the exit. See [The grenade course](#the-grenade-course). |
 | **Endless** | 50 platforms over gaps, built from a seed, that get harder as you go. There's no clock to beat: you score the platforms you reach before you fall. See [The endless course](#the-endless-course). |
-| **Shooting Range** | Every weapon on a rack, with a Quake rocket launcher and railgun, target dummies, and ledges to rocket jump onto. Use starts a one-minute drill with its own board. See [The shooting range](#the-shooting-range). |
+| **Shooting Range** | Every weapon on a rack, with a Quake rocket launcher, railgun and grenade launcher, target dummies, and ledges to rocket jump onto. Use starts a one-minute drill with its own board. See [The shooting range](#the-shooting-range). |
 | **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
 
 On the timed courses:
@@ -427,9 +428,9 @@ Race a friend's ghost without being online together: send them your run as a cod
 **Practice → Shooting Range** is a walled yard for trying out weapons. You start by the rack with your class's first
 weapon.
 
-- **The rack:** all eleven weapons, whatever your class: each class's three, then the rocket launcher and the
-  railgun. Walk over one to take it. Keys `1` to `9` pick them in rack order, class by class; `0` picks the rocket
-  launcher and `-` the railgun. The rack never empties.
+- **The rack:** all twelve weapons, whatever your class: each class's three, then the rocket launcher, the railgun
+  and the grenade launcher. Walk over one to take it. Keys `1` to `9` pick them in rack order, class by class; `0`
+  picks the rocket launcher, `-` the railgun and `=` the grenade launcher. The rack never empties.
 - **On the range:**
   - Mana never runs out.
   - Your health comes back, 60 a second, a second and a half after you're last hurt.
@@ -497,6 +498,51 @@ The railgun is Quake III's:
   what you carry. It isn't kept in a save.
 
 ![A railgun slug through the range](docs/railgun.png)
+
+#### The grenade launcher
+
+The grenade launcher is Quake's:
+
+- **The throw:** a grenade flies along your view, with a kick upward: Quake's 600 units a second plus 200 up, in
+  cells. It falls under Quake's gravity, so it arcs.
+- **Bouncing:** it bounces off walls, floors, ceilings and the faces of ledges, losing speed each time, then rolls
+  to a stop.
+- **The bang:** it goes off after two and a half seconds, or at once when it touches a monster. Its blast is the
+  rocket's: up to 120, falling off to nothing at 3 cells, half to yourself and the full push.
+- **Looking up and down:** with it in hand you can look 160 pixels of tilt both ways, up to lob and down to drop one
+  at your feet. Looking right down, it aims steeper than the view, like the rocket launcher. An orange ring shows
+  where it will first come down.
+- **Grenade jumping:** drop a grenade at your feet, stand just past it (on the side you want to go), and jump the
+  moment it goes off.
+- **It fires** every 0.6 seconds and uses green mana, 2 a grenade.
+- **Where:** on the range's rack (key `=`) and the grenade course. In the campaign, `give grenadelauncher` in the
+  console adds it on the key after what you carry. It isn't kept in a save.
+
+#### The grenade course
+
+**Practice → Grenades** is a timed course with the grenade launcher as your only weapon.
+
+- **The targets:** three of them. The exit only opens once they're all down.
+  - The first stands behind a wall across the yard. The wall is too high to jump or to see over, so lob a grenade
+    over it. There's a way round at the north end.
+  - The second stands at the lip of a ledge 2 cells up, and the third at the lip of the high ledge, 2 more. Lob one
+    up onto each.
+- **The ledges** are too high to jump, so grenade jump up them, then on to the exit at the far end.
+- **Each checkpoint** tells you how many targets are still standing.
+- **As on the rocket course:**
+  - Your grenades can't kill you.
+  - Your health comes back.
+  - Mana never runs out.
+  - The clock, medals, a board (after Rocket Jump), ghosts and a demo.
+- **The demo** does it in about 18 seconds as the Marine, for a silver. Its technique:
+  - It walks to where a lob can reach each target.
+  - It picks the arc that clears what's in the way.
+  - It drops a grenade a few steps short of each ledge and waits for it to stop.
+  - It stands just past the grenade and jumps as it goes off.
+
+![The grenade course: the yard and the wall](docs/grenade_course.png)
+![A lob over the wall](docs/grenade_lob.png)
+![A grenade jump up onto the first ledge](docs/grenade_jump.png)
 
 #### The rocket-jump course
 
@@ -1121,7 +1167,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `set <var> <value>` (or just `<var> <value>`) | change a setting, e.g. `speed 1.5`, `fov 90`, `gravity 6` |
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
-| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack\|rocketlauncher\|railgun` | give yourself things (`rocketlauncher`, `railgun`: the Quake weapons, on the next key) |
+| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack\|rocketlauncher\|railgun\|grenadelauncher` | give yourself things (`rocketlauncher`, `railgun`, `grenadelauncher`: the Quake weapons, on the next key) |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|wyrm\|dreadnought\|flask\|...>` | spawn something in front of you (warden to dreadnought are the mini-bosses) |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
@@ -1296,6 +1342,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Endless.cs` | The endless practice course: its seeded platforms, falling, and its board |
 | `src/Range.cs` | The shooting range: its map, the weapon rack, target dummies, the drill and its board |
 | `src/RocketCourse.cs` | The rocket-jump practice course: its platforms, hints and demo pilot |
+| `src/Grenades.cs` | The Quake grenade launcher (its arc, bounces and fuse), the grenade course and its demo pilot |
 | `src/Railgun.cs` | The Quake III railgun: its instant slug through everything in line, and its spiral trail |
 | `src/Rockets.cs` | The Quake rocket launcher: its blast, self-damage, knockback, rocket jumps and steep aim |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |

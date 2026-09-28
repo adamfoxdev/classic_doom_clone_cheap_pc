@@ -115,8 +115,8 @@ public static partial class Headless
         g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Main), "Practice");
         check(g.Menu.Cursor == 1, "Practice sits under New game on the title menu");
         g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
-        check(g.Menu.Page == MenuPage.Courses && g.Menu.Items(MenuPage.Courses).SequenceEqual(new[] { "Velocity Hangar", "Descent", "Circuit", "Rocket Jump", "Endless", "Shooting Range", "Free Roam", "Back" }),
-              "it lists the courses: Velocity Hangar, Descent, Circuit, Rocket Jump, Endless, Shooting Range and Free Roam");
+        check(g.Menu.Page == MenuPage.Courses && g.Menu.Items(MenuPage.Courses).SequenceEqual(new[] { "Velocity Hangar", "Descent", "Circuit", "Rocket Jump", "Grenades", "Endless", "Shooting Range", "Free Roam", "Back" }),
+              "it lists the courses: Velocity Hangar, Descent, Circuit, Rocket Jump, Grenades, Endless, Shooting Range and Free Roam");
         g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
         check(g.Mode == GameMode.ClassSelect, "picking one asks for a class, since each runs at its own speed");
         Tick(new Input { Confirm = true });
@@ -508,8 +508,8 @@ public static partial class Headless
         g.Menu.Show(MenuPage.Leaderboard);
         check(g.Menu.BoardCourse == Courses.Circuit, "on a course, the leaderboard opens on it");
         var seen = new List<string>();
-        for (int k = 0; k < 9; k++) { g.Menu.Update(new Input { Down = true }, 1f / 35f); seen.Add(g.Menu.BoardDaily ? "daily" : g.Menu.BoardArena ? "arena" : g.Menu.BoardEndless ? "endless" : g.Menu.BoardRange ? "range" : g.Menu.BoardRematch ? "rematch" : g.Menu.BoardCourse.Id); }
-        check(seen.SequenceEqual(new[] { "rocketjump", "endless", "range", "rematch", "arena", "daily", "hangar", "descent", "circuit" }), "Up/Down step through the timed courses, the endless course, the shooting range, the rematches, the arena and the daily challenge (Free Roam has no board)");
+        for (int k = 0; k < 10; k++) { g.Menu.Update(new Input { Down = true }, 1f / 35f); seen.Add(g.Menu.BoardDaily ? "daily" : g.Menu.BoardArena ? "arena" : g.Menu.BoardEndless ? "endless" : g.Menu.BoardRange ? "range" : g.Menu.BoardRematch ? "rematch" : g.Menu.BoardCourse.Id); }
+        check(seen.SequenceEqual(new[] { "rocketjump", "grenades", "endless", "range", "rematch", "arena", "daily", "hangar", "descent", "circuit" }), "Up/Down step through the timed courses, the endless course, the shooting range, the rematches, the arena and the daily challenge (Free Roam has no board)");
         g.Menu.Close(); g.Paused = false;
 
         // picking Free Roam from the menus
