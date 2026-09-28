@@ -8,7 +8,7 @@ public struct Input
 {
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
-    public bool Fire, Walk, JumpHeld, SlideHeld, JetHeld; // held
+    public bool Fire, Walk, JumpHeld, SlideHeld, JetHeld, ZoomHeld; // held
     public bool Use, UseItem, Place, Journal, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character, CycleHud; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
@@ -1031,6 +1031,7 @@ public sealed partial class Game
         RematchTick(step);
         EliteTick(step);
         RangeTick(step);
+        TrickTick(dt);
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
@@ -1180,6 +1181,8 @@ public sealed partial class Game
 
         // look
         float angle0 = p.Angle;
+        ZoomTick(inp, dt);
+        inp.LookX *= ZoomSens; inp.LookY *= ZoomSens; // zoomed in, the mouse slows to match
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
         // looking up and down stops at the limit (further down with the rocket and grenade launchers, and further up
         // with the grenade launcher, to lob); past it, having just put one away, you can't go further, and PitchLimit
@@ -1278,9 +1281,9 @@ public sealed partial class Game
             for (int i = 0; i < steps; i++)
             {
                 if (sx != 0 && !Blocked(p.X + sx, p.Y, p.Radius, null, p.SlideTime > 0)) p.X += sx;
-                else if (sx != 0) { sx = 0; p.VX = 0; }
+                else if (sx != 0) { sx = 0; WallSlide(p, ref p.VX, ref p.VY); }
                 if (sy != 0 && !Blocked(p.X, p.Y + sy, p.Radius, null, p.SlideTime > 0)) p.Y += sy;
-                else if (sy != 0) { sy = 0; p.VY = 0; }
+                else if (sy != 0) { sy = 0; WallSlide(p, ref p.VY, ref p.VX); }
             }
         }
 
@@ -1553,7 +1556,7 @@ public sealed partial class Game
         }
         if (p.Z > 0.6f || MathF.Abs(p.Pitch) > 25f)
         {
-            float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f);
+            float proj = 160f / MathF.Tan(ViewFov * MathF.PI / 360f);
             return speed * p.Pitch / proj;
         }
         return null;
@@ -2235,7 +2238,7 @@ public sealed partial class Game
         p.Cooldown = 0.22f;
         p.FireAnim = 0.12f;
         PlaySound(Sfx.Shoot, 0.7f);
-        float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f), speed = 22f + p.ShipSpeed;
+        float proj = 160f / MathF.Tan(ViewFov * MathF.PI / 360f), speed = 22f + p.ShipSpeed;
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle), z = p.Z + ShipHalfHeight;
         foreach (float wing in new[] { -0.22f, 0.22f })
             Level.Things.Add(new Projectile
@@ -2566,6 +2569,7 @@ public sealed partial class Game
             if (Level.BlocksPoint(pr.X, pr.Y) || pr.Z < Level.FloorAt(pr.X, pr.Y) - 0.02f || pr.Z > Level.HeightAt(pr.X, pr.Y))
             {
                 int hx = (int)MathF.Floor(pr.X), hy = (int)MathF.Floor(pr.Y);
+                pr.HitWall = Level.BlocksPoint(pr.X, pr.Y) || (pr.Z < Level.FloorAt(pr.X, pr.Y) - 0.02f && pr.Z > Level.FloorAt(pr.X - sx, pr.Y - sy) + 0.05f);
                 var face = Level.Cell(hx, hy) == Level.Rubble ? Level.Face.Wall : pr.Z < Level.FloorAt(pr.X, pr.Y) ? Level.Face.Floor : Level.Face.Ceiling;
                 pr.X -= sx; pr.Y -= sy;
                 (int, Level.Face)? direct = null;

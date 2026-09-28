@@ -19,7 +19,7 @@ public static class Railgun
 public sealed partial class Game
 {
     /// <summary>The slug's climb angle: along the view (or at a monster above or below, when you're looking near level).</summary>
-    public float RailAim() => MathF.Atan(P.Pitch / (160f / MathF.Tan(Vars.Fov * MathF.PI / 360f)));
+    public float RailAim() => MathF.Atan(P.Pitch / (160f / MathF.Tan(ViewFov * MathF.PI / 360f)));
 
     /// <summary>Railgun hits this game (monsters struck, counting each one a slug goes through).</summary>
     public int RailHits;

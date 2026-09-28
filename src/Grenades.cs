@@ -39,7 +39,7 @@ public static class Grenades
 public sealed partial class Game
 {
     /// <summary>A grenade's launch angle: along your view, and like a rocket, steeper at the bottom of the tilt (to drop one at your feet).</summary>
-    public float GrenadeAim() => Rockets.AimAngle(P.Pitch, 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f));
+    public float GrenadeAim() => Rockets.AimAngle(P.Pitch, 160f / MathF.Tan(ViewFov * MathF.PI / 360f));
 
     /// <summary>Lobs a grenade along your view, with Quake's kick upward, on a two and a half second fuse.</summary>
     void FireGrenade(WeaponDef w, float launchZ)
@@ -339,7 +339,7 @@ static class GrenadePilot
     /// </summary>
     static float? LobPitch(Game g, float px, float py, float pz, float dist, float floor, Monster t)
     {
-        float proj = 160f / MathF.Tan(g.Vars.Fov * MathF.PI / 360f);
+        float proj = 160f / MathF.Tan(g.ViewFov * MathF.PI / 360f);
         float ca = MathF.Cos(MathF.Atan2(t.Y - py, t.X - px)), sa = MathF.Sin(MathF.Atan2(t.Y - py, t.X - px));
         for (float pitch = -20; pitch <= Rockets.LookDown; pitch += 0.5f)
         {

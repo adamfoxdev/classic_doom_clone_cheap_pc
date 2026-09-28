@@ -217,6 +217,8 @@ public sealed class Projectile : Thing
     public int Pierce;
     /// <summary>The charge behind the shot (1 for an ordinary one), for the charged mod combos.</summary>
     public float Power = 1;
+    /// <summary>It struck a wall (or the face of a ledge) rather than a floor or ceiling: a wall kick, if it pushes you.</summary>
+    public bool HitWall;
     public HashSet<Monster> Pierced;
     public Thing Owner;
 

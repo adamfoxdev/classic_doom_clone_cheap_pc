@@ -797,7 +797,7 @@ public sealed class Renderer
         var (shakeYaw, shakePitch) = g.ShakeOffset();
         _dirX = MathF.Cos(p.Angle + shakeYaw); _dirY = MathF.Sin(p.Angle + shakeYaw);
         float zoom = g.Intro != null && g.Vars.BossIntros ? 1 - 0.08f * g.Intro.Amount : 1;
-        PlaneLen = MathF.Tan(g.Vars.Fov * MathF.PI / 360f) * zoom;
+        PlaneLen = MathF.Tan(g.ViewFov * MathF.PI / 360f) * zoom;
         Proj = (W / 2f) / PlaneLen;
         _fogDist = th.FogDist * g.Vars.Fog;
         _invFog = 1f / _fogDist;
@@ -1767,6 +1767,12 @@ public sealed class Renderer
         if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
         if (g.OnEndless && style != HudStyle.Off) DrawEndlessHud(g);
         if (g.OnRange && style != HudStyle.Off) DrawRangeHud(g);
+        if (g.LastTrick != Trick.None && g.TrickAge < Tricks.CalloutTime && style != HudStyle.Off)
+        {
+            // a trick's name across the view, fading as it goes
+            int fade = (int)(255 * MathF.Min(1, (Tricks.CalloutTime - g.TrickAge) * 3));
+            CenterText(Tricks.Name(g.LastTrick), ViewH / 2 - 44 - (int)(g.TrickAge * 6), Col.Shade(Col.Rgb(255, 200, 70), fade), 2);
+        }
         if (g.Rematch != null && style != HudStyle.Off) DrawRematchClock(g);
         if (g.Practicing) DrawDemoBanner(g);
         switch (style)
