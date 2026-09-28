@@ -317,6 +317,36 @@ public static partial class Headless
             g.Menu.Close();
             g.Profile.EndlessRuns.Clear();
             g.GoToTitle();
+
+            // the shooting range: the rack and the field, rocket launcher in hand; a rocket jump; a drill; its board
+            g.StartPractice(PClass.Mage, ShootingRange.Course);
+            foreach (var pk in g.Level.Things.OfType<Pickup>().Where(k => k.Kind == PickupKind.Arms).ToList()) { g.P.X = pk.X; g.P.Y = pk.Y; Tick(default); }
+            g.P.X = 16.5f; g.P.Y = 27f; g.P.Angle = -MathF.PI / 2 + 0.25f; g.P.Pitch = -8f;
+            Tick(new Input { Slot = 10 }); Tick(default, 25);
+            g.Messages.Clear(); g.Say("The shooting range: every weapon on the rack is yours. Press Use for a drill.");
+            Shot("128_range");
+            g.P.X = 30.5f; g.P.Y = 13.5f; g.P.Angle = MathF.PI; g.P.Pitch = -70f; g.P.Cooldown = 0;
+            Tick(new Input { Jump = true, Fire = true });
+            Tick(default, 12);
+            g.P.Angle = MathF.PI + 0.35f; g.P.Pitch = -35f; // looking back down over the field from the top of the jump
+            Tick(default);
+            Shot("129_rocket_jump");
+            g.P.X = 20.5f; g.P.Y = 22.5f; g.P.Z = 0; g.P.VX = g.P.VY = g.P.VZ = 0; g.P.FloorZ = 0; g.P.Angle = -MathF.PI / 2 - 0.1f; g.P.Pitch = -4f;
+            Tick(default, 70);
+            Tick(new Input { Use = true });
+            foreach (var m in g.Level.Things.OfType<Monster>().Where(m => m.Target?.Kind == ShootingRange.Kind.Still).Take(2).ToList()) g.DamageMonster(m, 1000, 9);
+            g.P.Cooldown = 0; g.P.Angle = -MathF.PI / 2 + 0.05f;
+            Tick(new Input { Fire = true });
+            Tick(default, 9);
+            g.DrillLeft = 41.3f;
+            Shot("130_range_drill");
+            foreach (var (n, sc, k, sh) in new[] { (g.RunnerName, 3150, 21, 34), ("ACE-1", 2900, 19, 25), (g.RunnerName, 2400, 16, 30), ("NOVA", 1650, 11, 22) })
+                g.Profile.AddRangeRun(new RangeRun { Name = n, Class = "Mage", Score = sc, Kills = k, Shots = sh, When = new DateTime(2026, 9, 20 + k % 7) });
+            g.Paused = true; g.Menu.Show(MenuPage.Leaderboard);
+            Shot("131_range_board");
+            g.Menu.Close(); g.Paused = false;
+            g.Profile.RangeRuns.Clear();
+            g.GoToTitle();
         }
 
         // a chest, closed then opened
@@ -823,6 +853,8 @@ public static partial class Headless
         Shot("90_practice_courses");
         g.Menu.Cursor = Array.IndexOf(Courses.All, Endless.Pick);
         Shot("117_practice_endless");
+        g.Menu.Cursor = Array.IndexOf(Courses.All, ShootingRange.Course);
+        Shot("132_practice_range");
         g.Menu.Close();
         foreach (var (course, name, cam) in new[]
         {

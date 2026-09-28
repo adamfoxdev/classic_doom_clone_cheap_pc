@@ -27,6 +27,8 @@ public sealed class MenuSystem
     public bool BoardDaily;
     /// <summary>The Leaderboard page shows the endless course's board.</summary>
     public bool BoardEndless;
+    /// <summary>The Leaderboard page shows the shooting range's drill board.</summary>
+    public bool BoardRange;
     /// <summary>The Leaderboard page shows a mini-boss's rematch board: which one (in MiniBosses.All).</summary>
     public bool BoardRematch;
     public int BoardBoss;
@@ -47,6 +49,7 @@ public sealed class MenuSystem
             BoardArena = _g.ArenaMode && !_g.DailyMode;
             BoardDaily = _g.DailyMode;
             BoardEndless = _g.OnEndless;
+            BoardRange = _g.OnRange;
             BoardRematch = _g.Rematch != null;
             BoardBoss = _g.Rematch != null ? Array.IndexOf(MiniBosses.All, _g.Rematch) : 0;
             BoardDay = 0;
@@ -80,9 +83,9 @@ public sealed class MenuSystem
         MenuPage.Main => (_g.CheckSave() != null ? new[] { "Continue" } : Array.Empty<string>())
             .Concat(new[] { "New game" }).Concat(_g.Profile.NgUnlocked > 0 ? new[] { "New Game+" } : Array.Empty<string>())
             .Concat(new[] { "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
-        MenuPage.Pause => _g.Practicing
+        MenuPage.Pause => _g.Practicing && !_g.OnRange
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
-            : _g.ArenaMode
+            : _g.ArenaMode || _g.OnRange
             ? new[] { "Resume", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Leaderboard => new[] { "Back" },
@@ -222,15 +225,17 @@ public sealed class MenuSystem
             }
             if (inp.Up || inp.Down)
             {
-                // the timed courses, then the endless course, the arena and the daily challenge, round and round
+                // the timed courses, then the endless course, the range, rematches, the arena and the daily challenge, round and round
                 var timed = Courses.Timed;
-                int n = timed.Length + 4;
-                int i = BoardEndless ? timed.Length : BoardRematch ? timed.Length + 1 : BoardArena ? timed.Length + 2 : BoardDaily ? timed.Length + 3 : Array.IndexOf(timed, BoardCourse);
+                int n = timed.Length + 5;
+                int i = BoardEndless ? timed.Length : BoardRange ? timed.Length + 1 : BoardRematch ? timed.Length + 2 : BoardArena ? timed.Length + 3
+                    : BoardDaily ? timed.Length + 4 : Array.IndexOf(timed, BoardCourse);
                 i = (i + (inp.Up ? n - 1 : 1)) % n;
                 BoardEndless = i == timed.Length;
-                BoardRematch = i == timed.Length + 1;
-                BoardArena = i == timed.Length + 2;
-                BoardDaily = i == timed.Length + 3;
+                BoardRange = i == timed.Length + 1;
+                BoardRematch = i == timed.Length + 2;
+                BoardArena = i == timed.Length + 3;
+                BoardDaily = i == timed.Length + 4;
                 if (i < timed.Length) BoardCourse = timed[i];
                 BoardDay = 0;
                 _g.PlaySound(Sfx.Swing, 0.5f);

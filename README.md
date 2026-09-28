@@ -167,8 +167,9 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   relight until you let go of `Q` and press it again.
 - **Strafe-jumping practice** (**Practice** on the title menu): three timed courses (the Velocity Hangar, Descent
   and the Circuit), each with a leaderboard, medals, a ghost of your best run and a demo run to watch; Endless, a seeded
-  run of gaps that gets harder until you fall; and Free Roam, an empty field to move
-  around in. See [Quake movement](#quake-movement).
+  run of gaps that gets harder until you fall; the Shooting Range, every weapon in the game plus a Quake rocket
+  launcher; and Free Roam, an empty field to move around in. See [Quake movement](#quake-movement) and
+  [The shooting range](#the-shooting-range).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
 - **Save and continue:** the campaign saves itself, and **Continue** on the title menu picks it up where you left
@@ -279,6 +280,7 @@ Switch to the old direct movement with **Options → Movement** or `quakemove 0`
 | **Descent** | Platforms dropping away (6 units up to 1) over gaps of 3 to 7 cells: each fall buys the hang time for a wider gap. As the Marine the last needs about 195%, as the Psion 225%. |
 | **Circuit** | One clockwise lap of an 8-wide loop round a walled island, through a checkpoint on each side and back over the finish line behind the start. Strafe into the corners to carry your speed round them. |
 | **Endless** | 50 platforms over gaps, built from a seed, that get harder as you go. There's no clock to beat: you score the platforms you reach before you fall. See [The endless course](#the-endless-course). |
+| **Shooting Range** | Every weapon on a rack and a Quake rocket launcher, target dummies, and ledges to rocket jump onto. Use starts a one-minute drill with its own board. See [The shooting range](#the-shooting-range). |
 | **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
 
 On the timed courses:
@@ -417,6 +419,59 @@ Race a friend's ghost without being online together: send them your run as a cod
 
 ![The endless course, five platforms in](docs/endless.png)
 ![The endless board](docs/endless_board.png)
+
+#### The shooting range
+
+**Practice → Shooting Range** is a walled yard for trying out weapons. You start by the rack with your class's first
+weapon.
+
+- **The rack:** all ten weapons, whatever your class: each class's three, then the rocket launcher. Walk over one to
+  take it. Keys `1` to `9` pick them in rack order, class by class, and `0` picks the rocket launcher. The
+  rack never empties.
+- **On the range:**
+  - Mana never runs out.
+  - Your health comes back a second and a half after you're last hurt.
+  - Your own rockets can't take you below 1 health.
+  - `1`, `2` and `3` pick weapons, not the game speed as on the other courses.
+- **Targets:**
+  - Four dummies stand still in the middle of the field.
+  - Two slide back and forth on tracks.
+  - Three wait up on ledges: 2 cells up on the east side and in the north-west corner, and 3.5 cells up in the
+    north-east corner. A jump won't get you onto any of them; a rocket jump will.
+  - A dummy you knock down stands back up at its spot after a second and a half.
+- **The drill:** press Use for a one-minute drill. Every dummy you knock down scores 100 points, 150 for a moving one
+  and 200 for one up on a ledge. The top-right corner shows the time left, the score, the dummies down and your
+  shots. When the minute's up, the drill goes on your class's board: **Leaderboard** has a Shooting Range page,
+  after Endless. Drills at 50% or 25% speed aren't recorded. Press Use again to start over.
+
+![The shooting range, rocket launcher in hand](docs/shooting_range.png)
+![A drill under way](docs/range_drill.png)
+![Looking back down from the top of a rocket jump](docs/rocket_jump.png)
+![The shooting range board](docs/range_board.png)
+
+#### The rocket launcher
+
+The rocket launcher follows Quake's rules:
+
+- **The rocket:** it flies straight wherever you aim, at 12.5 cells a second, about three times your run speed.
+- **Damage:**
+  - A direct hit does 100 to 120.
+  - The blast does up to 120 more to everything around it. The blast damage falls off with distance in 3D, to
+    nothing at 3 cells, and a wall between you and the blast stops it.
+  - A direct hit gets only the direct damage, not the blast as well.
+- **Your own rockets:** they hurt you for half the blast's damage, but push you with all of it.
+- **The push** is Quake's knockback: 8 units a second for each point of blast damage, which works out to 0.09 cells a
+  second here. It points along the line from the blast to the middle of your body, so a rocket at your feet throws
+  you up and away. Monsters are pushed across the floor too, for less.
+- **Rocket jumping:** look down, jump, and fire. Jumping first adds the jump to the push, for about twice the height.
+  - Face away from where you want to go: the rocket lands just in front of you and throws you backwards.
+  - To go further rather than higher, aim a little less steeply.
+  - The push lifts your speed cap for the flight, so a rocket jump carries you faster than you can run.
+- **Aiming down:** the view only tilts so far (about 18 degrees). Past two-thirds of the tilt, the launcher aims
+  steeper than the view, reaching 85 degrees at the end, so you can put a rocket at your feet. Near level, it aims at
+  a monster above or below you, like every other weapon.
+- **Elsewhere:** it's the range's; in the campaign, `give rocketlauncher` in the console adds it on `4`. It uses
+  green mana, 2 a shot, and it isn't kept in a save.
 
 ### Chaos Arena
 
@@ -1010,7 +1065,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `set <var> <value>` (or just `<var> <value>`) | change a setting, e.g. `speed 1.5`, `fov 90`, `gravity 6` |
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
-| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
+| `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack\|rocketlauncher` | give yourself things (`rocketlauncher`: the Quake rocket launcher, on `4`) |
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|wyrm\|dreadnought\|flask\|...>` | spawn something in front of you (warden to dreadnought are the mini-bosses) |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
@@ -1183,6 +1238,8 @@ in both looks (`76_…`, `77_…`).
 | `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
 | `src/Practice.cs` | The practice courses: Velocity Hangar, Descent, Circuit and Free Roam |
 | `src/Endless.cs` | The endless practice course: its seeded platforms, falling, and its board |
+| `src/Range.cs` | The shooting range: its map, the weapon rack, target dummies, the drill and its board |
+| `src/Rockets.cs` | The Quake rocket launcher: its blast, self-damage, knockback, rocket jumps and steep aim |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
 | `src/Bindings.cs` | Rebindable actions, key names, turning key state into game input |

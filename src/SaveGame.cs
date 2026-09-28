@@ -155,8 +155,8 @@ public static class Saves
                 Class = p.Class.ToString(), X = p.X, Y = p.Y, Angle = p.Angle, Pitch = p.Pitch, FloorZ = p.FloorZ, Fuel = p.Fuel,
                 Health = p.Health, Armor = p.Armor, BlueMana = p.BlueMana, GreenMana = p.GreenMana, Flasks = p.Flasks, Urns = p.Urns,
                 Kills = p.Kills, ChestsOpened = p.ChestsOpened, Relics = p.Relics, LoreRead = p.LoreRead, Secrets = p.Secrets,
-                Blocks = p.Blocks, Weapon = p.PendingWeapon >= 0 ? p.PendingWeapon : p.Weapon, Ore = (int[])p.Ore.Clone(),
-                HasWeapon = (bool[])p.HasWeapon.Clone(), Mods = p.Mods.Select(m => (int)m).ToArray(), Mods2 = p.Mods2.Select(m => (int)m).ToArray(),
+                Blocks = p.Blocks, Weapon = Math.Min(p.PendingWeapon >= 0 ? p.PendingWeapon : p.Weapon, 2) is var sw && p.Weapons[sw] == p.Def.Weapons[sw] ? sw : 0, Ore = (int[])p.Ore.Clone(),
+                HasWeapon = p.HasWeapon.Take(3).ToArray(), Mods = p.Mods.Select(m => (int)m).ToArray(), Mods2 = p.Mods2.Select(m => (int)m).ToArray(),
                 ModRanks = (int[])p.ModRanks.Clone(), ModRanks2 = (int[])p.ModRanks2.Clone(), SteelKey = p.SteelKey, FireKey = p.FireKey, HasJetpack = p.HasJetpack,
             },
         };

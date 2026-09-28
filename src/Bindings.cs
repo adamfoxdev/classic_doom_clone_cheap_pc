@@ -5,6 +5,7 @@ public enum Act
 {
     Forward, Back, StrafeLeft, StrafeRight, TurnLeft, TurnRight, Attack, Use, Jump, Jetpack, Slide, Walk, UseItem, Place,
     Weapon1, Weapon2, Weapon3, NextWeapon, PrevWeapon, Automap, Console, Screenshot, Character, CycleHud, Journal,
+    Weapon4, Weapon5, Weapon6, Weapon7, Weapon8, Weapon9, Weapon10,
 }
 
 /// <summary>Where key state comes from (Raylib in the real game, a fake in tests).</summary>
@@ -99,6 +100,14 @@ public sealed class Bindings
         new(Act.Character, "character", "Character / skills", Keys.Letter('K'), Keys.None),
         new(Act.CycleHud, "cyclehud", "Cycle HUD style", Keys.Letter('H'), Keys.None),
         new(Act.Journal, "journal", "Case journal", Keys.Letter('J'), Keys.None),
+        // the shooting range's loadout: every weapon in the game, on 1 to 9 and 0
+        new(Act.Weapon4, "weapon4", "Weapon 4 (range)", Keys.Digit(4), Keys.None),
+        new(Act.Weapon5, "weapon5", "Weapon 5 (range)", Keys.Digit(5), Keys.None),
+        new(Act.Weapon6, "weapon6", "Weapon 6 (range)", Keys.Digit(6), Keys.None),
+        new(Act.Weapon7, "weapon7", "Weapon 7 (range)", Keys.Digit(7), Keys.None),
+        new(Act.Weapon8, "weapon8", "Weapon 8 (range)", Keys.Digit(8), Keys.None),
+        new(Act.Weapon9, "weapon9", "Weapon 9 (range)", Keys.Digit(9), Keys.None),
+        new(Act.Weapon10, "weapon10", "Rocket launcher (range)", Keys.Digit(0), Keys.None),
     };
 
     readonly int[,] _keys = new int[Count, Slots];
@@ -166,6 +175,7 @@ public sealed class Bindings
         if (Pressed(k, Act.Weapon1)) i.Slot = 1;
         if (Pressed(k, Act.Weapon2)) i.Slot = 2;
         if (Pressed(k, Act.Weapon3)) i.Slot = 3;
+        for (int n = 4; n <= 10; n++) if (Pressed(k, Act.Weapon4 + (n - 4))) i.Slot = n;
         if (Pressed(k, Act.NextWeapon)) i.Cycle = 1;
         if (Pressed(k, Act.PrevWeapon)) i.Cycle = -1;
 

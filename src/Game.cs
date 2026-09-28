@@ -31,6 +31,9 @@ public sealed class WeaponDef
     public int Count = 1;
     public float Spread, Speed = 10f, Splash;
     public Sfx Sound;
+    /// <summary>Its art in Art.Weapons (class * 3 + slot for the classes' own), and whether it's the rocket launcher.</summary>
+    public int ArtIndex;
+    public bool Rocket;
 }
 
 public sealed class ClassDef
@@ -40,6 +43,12 @@ public sealed class ClassDef
     public string Blurb { get => Words.T(_blurb); init => _blurb = value; }
     public float Speed, ArmorSave;
     public WeaponDef[] Weapons;
+
+    static ClassDef()
+    {
+        for (int c = 0; c < All.Length; c++)
+            for (int s = 0; s < All[c].Weapons.Length; s++) All[c].Weapons[s].ArtIndex = c * 3 + s;
+    }
 
     public static readonly ClassDef[] All =
     {
@@ -86,6 +95,7 @@ public sealed class Player
     {
         var p = (Player)MemberwiseClone();
         p.HasWeapon = (bool[])HasWeapon.Clone();
+        p.Loadout = (WeaponDef[])Loadout?.Clone();
         p.Mods = (WeaponMod[])Mods.Clone(); p.Mods2 = (WeaponMod[])Mods2.Clone();
         p.ModRanks = (int[])ModRanks.Clone(); p.ModRanks2 = (int[])ModRanks2.Clone();
         return p;
@@ -143,7 +153,12 @@ public sealed class Player
     public bool OnGround => Z <= 0f;
     /// <summary>Camera height: eye level, raised by jumps and lowered while sliding.</summary>
     public float ViewZ => EyeZ + Z - SlideLow * 0.25f + StepLag;
-    public WeaponDef CurWeapon => Def.Weapons[Weapon];
+    /// <summary>The shooting range's loadout (every weapon in the game), in place of your class's three; null elsewhere.</summary>
+    public WeaponDef[] Loadout;
+    public WeaponDef[] Weapons => Loadout ?? Def.Weapons;
+    public WeaponDef CurWeapon => Weapons[Weapon];
+    /// <summary>A blast's push lifts the speed cap to this for a while (a rocket jump carries you faster than running).</summary>
+    public float Boost;
 }
 
 /// <summary>
@@ -247,6 +262,7 @@ public sealed partial class Game
         Course = course ?? Courses.Hangar;
         Rematch = null;
         if (Course.Endless && Course.Seed <= 0) Course = Endless.For(Endless.NewSeed()); // picked from the menu: a fresh seed
+        if (Course.Range) Style = GameStyle.Classic; // weapons out: it's a range
         var c = Course;
         HubSource = () => new[] { c.Map().Build() };
         TestingMap = true;
@@ -388,7 +404,7 @@ public sealed partial class Game
     /// </summary>
     bool PracticeControls(ref Input inp, ref float dt)
     {
-        if (inp.Slot is >= 1 and <= 3)
+        if (inp.Slot is >= 1 and <= 3 && !Course.Range) // on the range, 1 to 0 are the weapons
         {
             PracticeSpeed = inp.Slot == 1 ? 1f : inp.Slot == 2 ? 0.5f : 0.25f;
             Say(Demo ? $"Demo at {PracticeSpeed * 100:0}% speed." : $"Game speed {PracticeSpeed * 100:0}%" + (PracticeSpeed < 1 ? ": practise slowly (slow runs don't go on the leaderboard)." : "."));
@@ -433,6 +449,7 @@ public sealed partial class Game
     {
         P.Angle = Course.StartAngle;
         if (Course.Jetpack) { P.HasJetpack = true; P.Fuel = P.MaxFuel; }
+        if (Course.Range) SetUpRange();
         ResetRun();
     }
 
@@ -994,6 +1011,7 @@ public sealed partial class Game
         UpdateWorld(step);
         RematchTick(step);
         EliteTick(step);
+        RangeTick(step);
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
@@ -1116,7 +1134,8 @@ public sealed partial class Game
             }
         }
 
-        float max = runSpeed * Vars.MaxHop, now = p.HSpeed;
+        float max = MathF.Max(runSpeed * Vars.MaxHop, p.Boost), now = p.HSpeed;
+        p.Boost = MathF.Max(0, p.Boost - dt * (p.OnGround ? 20f : 1.5f));
         if (now > max) { p.VX *= max / now; p.VY *= max / now; }
         return (p.VX * dt, p.VY * dt);
     }
@@ -1156,7 +1175,14 @@ public sealed partial class Game
         bool jump = (inp.Jump || (Vars.QuakeMove && p.JumpBuffer > 0)) && p.OnGround && p.SlideTime <= 0 && Vars.JumpPower > 0;
         float dx, dy;
         if (Vars.QuakeMove) (dx, dy) = QuakeMove(p, inp.Move, inp.Strafe, angle0, MathF.Min(1, len) * speed, RunSpeed, jump, dt);
-        else { dx = mx * speed * dt; dy = my * speed * dt; }
+        else
+        {
+            // classic movement goes where your keys say, plus what's left of a blast's push
+            dx = (mx * speed + p.VX) * dt; dy = (my * speed + p.VY) * dt;
+            float keep = MathF.Exp(-(p.OnGround ? 6f : 0.5f) * dt);
+            p.VX *= keep; p.VY *= keep;
+            if (p.HSpeed < 0.05f) p.VX = p.VY = 0;
+        }
 
         // jumping (Space): simple ballistic hop, Hexen-style
         if (jump)
@@ -1330,16 +1356,18 @@ public sealed partial class Game
                 TryPickup(pk);
 
         // actions
-        if (inp.Use) UseLine(pull: inp.Walk);
+        if (inp.Use && OnRange) StartDrill();
+        else if (inp.Use) UseLine(pull: inp.Walk);
         if (inp.UseItem) UseItem();
         if (inp.Place) PlaceBlock();
 
         // weapons
-        if (inp.Slot >= 1 && inp.Slot <= 3) SelectWeapon(inp.Slot - 1);
+        int nw = p.HasWeapon.Length;
+        if (inp.Slot >= 1 && inp.Slot <= nw) SelectWeapon(inp.Slot - 1);
         if (inp.Cycle != 0)
-            for (int k = 1; k <= 3; k++)
+            for (int k = 1; k <= nw; k++)
             {
-                int w = ((p.Weapon + inp.Cycle * k) % 3 + 3) % 3;
+                int w = ((p.Weapon + inp.Cycle * k) % nw + nw) % nw;
                 if (p.HasWeapon[w]) { SelectWeapon(w); break; }
             }
         if (p.PendingWeapon >= 0)
@@ -1361,9 +1389,9 @@ public sealed partial class Game
             if (P.HasWeapon[w]) Say("Melee only!");
             return;
         }
-        if (!P.HasWeapon[w] || (w == P.Weapon && P.PendingWeapon < 0)) return;
+        if (w >= P.HasWeapon.Length || !P.HasWeapon[w] || (w == P.Weapon && P.PendingWeapon < 0)) return;
         P.PendingWeapon = w;
-        Say(P.Def.Weapons[w].Name);
+        Say(P.Weapons[w].Name);
     }
 
     int ManaCost(WeaponDef w) => Vars.InfiniteMana ? 0 : (int)MathF.Ceiling(w.Cost * Vars.ManaCost * Profile.ManaMult);
@@ -1380,11 +1408,12 @@ public sealed partial class Game
         if (!powered && !w.ManaOptional)
         {
             // out of mana: fall back to the best weapon that still works
-            for (int i = 2; i >= 0; i--)
-                if (p.HasWeapon[i] && HasMana(p.Def.Weapons[i])) { SelectWeapon(i); break; }
+            for (int i = p.HasWeapon.Length - 1; i >= 0; i--)
+                if (p.HasWeapon[i] && HasMana(p.Weapons[i])) { SelectWeapon(i); break; }
             p.Cooldown = 0.3f;
             return;
         }
+        if (Drilling) DrillShots++;
         if (powered && w.Mana == 1) p.BlueMana -= ManaCost(w);
         if (powered && w.Mana == 2) p.GreenMana -= ManaCost(w);
         int tier = ArsenalTier;
@@ -1433,6 +1462,7 @@ public sealed partial class Game
         }
 
         float launchZ = p.FloorZ + p.Z + 0.32f;
+        if (w.Rocket) { FireRocket(w, launchZ, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
         float? vz = VerticalAim(launchZ, w.Speed);
         float mult = PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power;
         // upgrades add shots to the volley, fanned out either side of your aim
@@ -1900,7 +1930,16 @@ public sealed partial class Game
         if (p.HasJetpack && p.MaxFuel > oldFuel) p.Fuel += p.MaxFuel - oldFuel;
     }
 
-    internal float PlayerDamageMult(int slot) => Profile.DamageMult * Profile.WeaponMult(P.Class, slot) * (1 + 0.2f * PerkRank(Perk.Might));
+    internal float PlayerDamageMult(int slot) => Profile.DamageMult * LoadoutWeaponMult(slot) * (1 + 0.2f * PerkRank(Perk.Might));
+
+    /// <summary>A weapon's level bonus: your class's own by slot, or in the range's loadout the one it belongs to (the rocket launcher has none).</summary>
+    float LoadoutWeaponMult(int slot)
+    {
+        if (P.Loadout == null) return Profile.WeaponMult(P.Class, slot);
+        var w = slot >= 0 && slot < P.Loadout.Length ? P.Loadout[slot] : null;
+        if (w == null || w.Rocket || w.ArtIndex >= 9) return 1f;
+        return Profile.WeaponMult((PClass)(w.ArtIndex / 3), w.ArtIndex % 3);
+    }
     /// <summary>Your arsenal upgrades, which only count in the arena they were won in.</summary>
     public int ArsenalTier => Level?.Arena != null ? P.ArenaTier : 0;
 
@@ -1930,7 +1969,7 @@ public sealed partial class Game
         int xp = (int)(Xp.Kill(m.Def) * NgPlus.Xp(NgTier) * (m.Affix != Affix.None ? Elites.XpMult : 1));
         Profile.TotalKills++;
         GainXp(xp);
-        if (Profile.AddWeaponXp(P.Class, slot, xp))
+        if (slot is >= 0 and < 3 && P.Weapons[slot].ArtIndex == (int)P.Class * 3 + slot && Profile.AddWeaponXp(P.Class, slot, xp))
         {
             var w = P.Def.Weapons[slot];
             Say($"{w.Name} is now level {Profile.Weapon(P.Class, slot).Level}!");
@@ -1993,6 +2032,9 @@ public sealed partial class Game
                 p.PickupFlash = 1;
                 PlaySound(Sfx.Relic, 1);
                 Say(msg);
+                return;
+            case PickupKind.Arms:
+                TakeFromRack(pk);
                 return;
             case PickupKind.Mod:
                 if (!FitMod((WeaponMod)pk.Variant, out msg)) return;
@@ -2266,6 +2308,8 @@ public sealed partial class Game
     {
         m.StateTime += dt;
         m.SlowTime = MathF.Max(0, m.SlowTime - dt);
+        if (m.Alive) KnockTick(m, dt);
+        if (m.Target != null) { DummyTick(m, dt); return; }
         if (m.FrozenTime > 0 && m.Alive) { m.FrozenTime -= dt; return; } // frozen solid (Deep Freeze): not a twitch
         float dist = Dist(m.X, m.Y, P.X, P.Y);
         bool playerAlive = Mode != GameMode.Dead;
@@ -2449,6 +2493,7 @@ public sealed partial class Game
     {
         pr.Life -= dt;
         if (pr.Life <= 0) { pr.Removed = true; return; }
+        RocketTrail(pr, dt);
         // aim player shots gently toward eye-level as they fly
         if (pr.Aimed) pr.Z += pr.VZ * dt;
         else if (pr.FromPlayer) pr.Z += (Level.FloorAt(pr.X, pr.Y) + 0.4f - pr.Z) * MathF.Min(1, dt * 2);
@@ -2535,16 +2580,19 @@ public sealed partial class Game
         SpawnPuff(pr.Frames[1], pr.X, pr.Y, pr.Z, pr.Splash > 0 ? 0.7f : 0.35f);
         Sound(pr.Splash > 0 ? Sfx.Explode : Sfx.Hit, pr.X, pr.Y);
         if (pr.Splash <= 0) return;
-        foreach (var t in Level.Things.ToList())
-            if (t is Monster m && m != direct && m.Alive)
-            {
-                float d = Dist(m.X, m.Y, pr.X, pr.Y);
-                if (d < pr.Splash) DamageMonster(m, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), pr.FromPlayer ? pr.Slot : -1);
-            }
+        float splash = pr.Splash;
+        if (pr.Kind == ProjKind.Rocket) { RocketBlast(pr, direct); splash = 1.2f; } // Quake's blast; it only chips the rubble close by
+        else
+            foreach (var t in Level.Things.ToList())
+                if (t is Monster m && m != direct && m.Alive)
+                {
+                    float d = Dist(m.X, m.Y, pr.X, pr.Y);
+                    if (d < pr.Splash) DamageMonster(m, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), pr.FromPlayer ? pr.Slot : -1);
+                }
         if (!pr.FromPlayer) return;
         // a blast chips the rubble around it, and on a dig map the rock above and below too
         // (measured to the nearest point of each block)
-        int r = (int)MathF.Ceiling(pr.Splash);
+        int r = (int)MathF.Ceiling(splash);
         for (int cy = (int)pr.Y - r; cy <= (int)pr.Y + r; cy++)
             for (int cx = (int)pr.X - r; cx <= (int)pr.X + r; cx++)
             {
@@ -2556,7 +2604,7 @@ public sealed partial class Game
                     if (!Level.CanDig(cx, cy, face) || directBlock == (i, face)) continue;
                     float up = face == Level.Face.Floor ? MathF.Max(0, pr.Z - Level.Floors[i]) : face == Level.Face.Ceiling ? MathF.Max(0, Level.Heights[i] - pr.Z) : 0;
                     float d = MathF.Sqrt(flat * flat + up * up);
-                    if (d < pr.Splash) HitBlock(cx, cy, (int)(pr.DmgMax * 0.6f * (1 - d / pr.Splash)), face, quiet: true, slot: SlotAt(pr.Z));
+                    if (d < splash) HitBlock(cx, cy, (int)(pr.DmgMax * 0.6f * (1 - d / splash)), face, quiet: true, slot: SlotAt(pr.Z));
                 }
             }
     }
@@ -2709,6 +2757,14 @@ public sealed partial class Game
             Arcade.Hit(m.X, m.Y, Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH, dealt, slot, m.Health <= 0, m.Def.Health, m.Def.Boss, !P.OnGround);
         if (slot >= 0) FeelHit(m, dealt, m.Health <= 0);
         if (slot >= 0) ModHit(m, dealt, slot);
+        if (m.Target != null)
+        {
+            // a range dummy: it falls (and stands back up), and scores in a drill
+            if (m.Health <= 0) { SetState(m, AiState.Dying); Sound(Sfx.Death, m.X, m.Y); }
+            else Sound(Sfx.Hit, m.X, m.Y);
+            DummyHit(m, m.Health <= 0);
+            return;
+        }
         if (m.State == AiState.Idle) Wake(m);
         if (m.Health <= 0)
         {
