@@ -270,15 +270,19 @@ public sealed partial class Game
     public int LastArenaPlace;
 
     /// <summary>Starts a run in the Chaos Arena with the given class. Always classic: the waves need a fight.</summary>
-    public void StartArena(PClass cls)
+    public void StartArena(PClass cls) => StartArena(cls, daily: false);
+
+    void StartArena(PClass cls, bool daily)
     {
         HubSource = () => new[] { Maps.ChaosArena.Build() };
         TestingMap = true;
         Practicing = false; Demo = false; PracticeSpeed = 1f;
         ArenaMode = true;
+        DailyMode = daily;
         StoryMode = false;
         Style = GameStyle.Classic;
         NewGame(cls);
+        if (daily) return;
         int best = Profile.ArenaBestWave(cls);
         var (next, at) = ArenaMedals.Next(best);
         Say(best > 0 ? $"Your best as the {P.Def.Name}: {best} wave{(best == 1 ? "" : "s")}." : "Step on the altar when you're ready.");
@@ -311,6 +315,7 @@ public sealed partial class Game
             Say($"Run over: {a.BestWave} waves. Not recorded: the damage settings were changed in the console (set a difficulty in Options).");
             return;
         }
+        if (DailyMode) { EndDailyRun(a, difficulty); return; }
         LastArena = new ArenaRun
         {
             Waves = a.BestWave, Time = a.ClearedAt, Kills = P.Kills, Name = RunnerName, When = DateTime.Now,
@@ -619,8 +624,10 @@ public sealed partial class Game
 
     public void GoToTitle()
     {
+        SaveNow();
         EndArenaRun();
         ArenaMode = false;
+        DailyMode = false;
         StoryMode = false; Story = null;
         SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
@@ -782,7 +789,8 @@ public sealed partial class Game
         Arcade.Reset();
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
-        if (ArenaMode && (ArenaMods & ArenaMod.RandomClass) != 0) cls = (PClass)_loot.Next(3); // a fresh roll every run
+        if (ArenaMode && DailyMode) cls = Daily.For(DailyDate).cls; // the day's class, every attempt
+        else if (ArenaMode && (ArenaMods & ArenaMod.RandomClass) != 0) cls = (PClass)_loot.Next(3); // a fresh roll every run
         ChestsTotal = 0;
         Checkpoint = null;
         _onLift = false;
@@ -816,8 +824,9 @@ public sealed partial class Game
         Level = Hub[0];
         if (ArenaMode && Level.Arena != null)
         {
-            Level.Arena.Mods = ArenaMods;
-            if ((ArenaMods & ArenaMod.NoSupplies) != 0) Level.Things.RemoveAll(t => t is Pickup);
+            Level.Arena.Mods = RunMods;
+            if (DailyMode) Level.Arena.Reseed(Daily.Seed(DailyDate)); // the same waves and perk offers for everyone today
+            if ((RunMods & ArenaMod.NoSupplies) != 0) Level.Things.RemoveAll(t => t is Pickup);
         }
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
         ApplyProfile();
@@ -935,6 +944,7 @@ public sealed partial class Game
         }
 
         PlayTime += dt;
+        AutoSaveTick(dt);
         UpdatePlayer(inp, dt);
         UpdateWorld(dt);
         Arcade.Update(dt);
@@ -1239,6 +1249,7 @@ public sealed partial class Game
             {
                 Mode = GameMode.Victory;
                 PlaySound(Sfx.Teleport, 1);
+                if (!TestingMap) DeleteSave(); // the campaign's over: nothing to continue
                 if (!TestingMap)
                 {
                     Profile.Wins++;
@@ -1450,7 +1461,7 @@ public sealed partial class Game
                     };
                 PlaySound(Sfx.Secret, 0.7f);
                 if (Practicing) Say(CourseHint(zone) + GhostSplit(zone));
-                else Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count}).");
+                else { Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count})."); SaveNow(); }
             }
         }
 
@@ -1977,6 +1988,7 @@ public sealed partial class Game
             PlaySound(Sfx.Teleport, 1);
             Say(lv.EntryMessage);
             if (lv.Flight) EnterFlight();
+            else SaveNow();
             return;
         }
     }

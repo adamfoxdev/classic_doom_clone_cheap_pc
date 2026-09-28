@@ -62,6 +62,8 @@ public static partial class Headless
         StoryChecks(Check);
         Console.WriteLine("Arena mode:");
         ArenaModeChecks(Check);
+        Console.WriteLine("Save and continue:");
+        SaveChecks(Check);
         Console.WriteLine("Achievements:");
         AchievementChecks(Check);
         Console.WriteLine("Music:");
@@ -72,6 +74,8 @@ public static partial class Headless
         GamepadChecks(Check);
         Console.WriteLine("Difficulty:");
         DifficultyChecks(Check);
+        Console.WriteLine("Daily challenge:");
+        DailyChecks(Check);
         Console.WriteLine("Arena perks and modifiers:");
         ArenaPerkChecks(Check);
 

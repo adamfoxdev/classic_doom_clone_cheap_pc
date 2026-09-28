@@ -23,6 +23,9 @@ public sealed class MenuSystem
     public Course BoardCourse = Courses.Hangar;
     /// <summary>The Leaderboard page shows the arena's board (waves) rather than a course's (times).</summary>
     public bool BoardArena;
+    /// <summary>The Leaderboard page shows the daily challenge's board, for the day BoardDay back from today.</summary>
+    public bool BoardDaily;
+    public int BoardDay;
 
     public MenuSystem(Game g) { _g = g; }
 
@@ -36,7 +39,9 @@ public sealed class MenuSystem
         {
             BoardClass = _g.P?.Class ?? PClass.Fighter;
             BoardCourse = _g.Practicing && _g.Course.Timed ? _g.Course : Courses.Hangar;
-            BoardArena = _g.ArenaMode;
+            BoardArena = _g.ArenaMode && !_g.DailyMode;
+            BoardDaily = _g.DailyMode;
+            BoardDay = 0;
         }
     }
 
@@ -63,7 +68,9 @@ public sealed class MenuSystem
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" },
+        // Continue heads the list when there's a saved campaign to pick up
+        MenuPage.Main => (_g.CheckSave() != null ? new[] { "Continue" } : Array.Empty<string>())
+            .Concat(new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
         MenuPage.Pause => _g.Practicing
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : _g.ArenaMode
@@ -71,7 +78,7 @@ public sealed class MenuSystem
             : new[] { "Resume", "Character", "Options", "Restart", "Quit to title", "Quit game" },
         MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Courses => Courses.All.Select(c => c.Name).Append("Back").ToArray(),
-        MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Back").ToArray(),
+        MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Daily challenge").Append("Back").ToArray(),
         MenuPage.Character => Profile.Skills.Select(SkillName).Append("Achievements").Append("Back").ToArray(),
         MenuPage.Achievements => HexenSharp.Achievements.All.Select(a => a.Name).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
@@ -179,17 +186,21 @@ public sealed class MenuSystem
         {
             if (inp.Left || inp.Right)
             {
-                BoardClass = (PClass)(((int)BoardClass + (inp.Left ? 2 : 1)) % 3);
+                // on the daily board, Left goes back a day (Right forward, up to today); elsewhere, the class
+                if (BoardDaily) BoardDay = Math.Max(0, BoardDay + (inp.Left ? 1 : -1));
+                else BoardClass = (PClass)(((int)BoardClass + (inp.Left ? 2 : 1)) % 3);
                 _g.PlaySound(Sfx.Swing, 0.5f);
             }
             if (inp.Up || inp.Down)
             {
-                // the timed courses, then the arena, round and round
+                // the timed courses, then the arena, then the daily challenge, round and round
                 var timed = Courses.Timed;
-                int n = timed.Length + 1, i = BoardArena ? timed.Length : Array.IndexOf(timed, BoardCourse);
+                int n = timed.Length + 2, i = BoardDaily ? timed.Length + 1 : BoardArena ? timed.Length : Array.IndexOf(timed, BoardCourse);
                 i = (i + (inp.Up ? n - 1 : 1)) % n;
                 BoardArena = i == timed.Length;
-                if (!BoardArena) BoardCourse = timed[i];
+                BoardDaily = i == timed.Length + 1;
+                if (i < timed.Length) BoardCourse = timed[i];
+                BoardDay = 0;
                 _g.PlaySound(Sfx.Swing, 0.5f);
             }
             Cursor = 0;
@@ -270,12 +281,21 @@ public sealed class MenuSystem
             }
             if (!inp.Confirm) return;
             _g.PlaySound(Sfx.Item, 0.8f);
-            if (Cursor == n)
+            var items2 = Items(MenuPage.ArenaSetup);
+            if (items2[Cursor] == "Start")
             {
                 _g.Style = GameStyle.Classic; _g.PendingPractice = false;
                 Close();
                 if ((_g.ArenaMods & ArenaMod.RandomClass) != 0) { _g.PendingArena = false; _g.StartArena(PClass.Fighter); _g.PlaySound(Sfx.Teleport, 1); }
                 else { _g.PendingArena = true; _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; }
+            }
+            else if (items2[Cursor] == "Daily challenge")
+            {
+                // the day sets the class and the modifiers: straight in
+                _g.PendingPractice = _g.PendingArena = false;
+                Close();
+                _g.StartDaily();
+                _g.PlaySound(Sfx.Teleport, 1);
             }
             else Back();
             return;
@@ -287,6 +307,10 @@ public sealed class MenuSystem
         {
             switch (items[Cursor])
             {
+                case "Continue":
+                    Close();
+                    if (_g.Continue()) _g.PlaySound(Sfx.Teleport, 1);
+                    break;
                 case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
                 case "Story": Close(); _g.StartStory(0); break;
                 case "Practice": Show(MenuPage.Courses); break;

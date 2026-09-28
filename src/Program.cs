@@ -53,6 +53,7 @@ public static class Program
         };
         game.MapsDir = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "maps");
         game.ProfilePath = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "profile.json");
+        game.SavePath = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "save.json");
         game.LoadSettings();
         game.LoadProfile();
         var keys = new RaylibKeys();
@@ -138,6 +139,7 @@ public static class Program
 
         game.SaveSettings();
         game.EndArenaRun(); // closing the window mid-run still records it
+        game.SaveNow();     // and mid-campaign it saves where you are
         game.SaveProfile();
         Raylib.UnloadTexture(tex);
         audio?.Dispose();

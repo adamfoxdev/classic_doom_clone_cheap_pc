@@ -167,6 +167,8 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   around in. See [Quake movement](#quake-movement).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
+- **Save and continue:** the campaign saves itself, and **Continue** on the title menu picks it up where you left
+  off. See [Saving](#saving).
 - **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
 - **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
   invert mouse, field of view and FPS display. Settings are saved between sessions.
@@ -417,6 +419,47 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
 ![Picking a perk after a boss wave](docs/arena_perks.png)
 ![The arena's setup page, with two modifiers on](docs/arena_setup.png)
 
+#### Daily challenge
+
+**Daily challenge** on the Arena's setup page is an arena run set by the date (UTC), the same for everyone that day.
+- **What the date sets:** your class and one or two modifiers (never random class). It also seeds the arena's dice:
+  which monsters each wave brings, where they appear, and the perks on offer. So every attempt that day faces the
+  same waves.
+- **Scoring:** your first finished run of the day is your score for it (one per name, as set with `name`), scored
+  like any arena run. Later runs that day are practice. It goes on its own board, not the arena's, and your own
+  modifier picks aren't touched.
+- **The board:** the leaderboard's **Daily** page (`Up`/`Down` from the arena's) ranks the day's names, with yours
+  picked out. It shows the day's class and modifiers, your streak of days in a row and your best day. `Left`/`Right`
+  step back through earlier days.
+- **Old days:** `daily <yyyy-mm-dd>` in the console replays an old day's challenge, as practice only.
+- **Regular:** finishing it on seven different days is the Regular achievement.
+
+![The daily challenge on the Arena's setup page](docs/arena_daily.png)
+![The daily board](docs/daily_board.png)
+
+## Saving
+
+The campaign saves itself to `save.json`, next to your profile. **Continue** heads the title menu whenever there's a
+saved game, with your class, map and play time under it.
+
+![Continue on the title menu](docs/title_continue.png)
+
+- **When it saves:** as you arrive in each map, at every checkpoint, every two minutes of play, when you quit to the
+  title, and when you close the game.
+- **What's kept:** the whole hub as you left it.
+  - **Maps:** opened doors, pulled levers, broken rubble, moved blocks, dug floors and ceilings, found secrets, lit
+    checkpoints and the automap.
+  - **Things:** every monster (alive, hurt or dead), pickup, chest and lore stone, and the ship's repairs.
+  - **You:** health, armor, mana, items, weapons, keys, ore, the jetpack, your checkpoint and play time.
+- **What isn't saved:**
+  - practice, the arena, Story mode and play-tested maps;
+  - the moment you're dead;
+  - flying through the Void Crossing. Quit mid-flight and you go back to your last save, on the Barren World.
+- **Ending a campaign:** winning deletes the save, so there's nothing left to continue. Starting a **New game**
+  replaces it; the style screen warns you when there's one.
+- **Damaged saves:** a damaged save is ignored. So is one made before the maps changed shape, and it isn't
+  overwritten either.
+
 ## Walkthrough (spoilers)
 
 Names here are the fantasy ones. In the sci-fi style: Winnowing Hall = Hab Ring, Frozen Keep = Cryo Labs,
@@ -627,7 +670,7 @@ points with `Enter`. Every skill has 10 ranks:
 harder per level. The game announces each level-up, and the character screen shows every weapon's level and
 progress.
 
-**Achievements:** there are 21, listed under **Character → Achievements**. Each pays experience once, when it
+**Achievements:** there are 22, listed under **Character → Achievements**. Each pays experience once, when it
 unlocks, with a banner and a message; this works anywhere, practice and the arena included. The list shows which
 you've got and when, and how far along you are with the ones that build up.
 
@@ -654,6 +697,7 @@ you've got and when, and how far along you are with the ones that build up.
 | Master of Arms | Raise a weapon to level 10 | 250 |
 | Case Closed | Solve every case in Story mode | 300 |
 | Big Game Hunter | Defeat every mini-boss on the optional maps | 500 |
+| Regular | Finish the daily challenge on seven different days | 300 |
 
 - **Hub game only:** the one-game ones (secrets, lore) count only in a game through the hub, not on practice
   courses, in the arena or on custom maps.
@@ -747,6 +791,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
+| `daily [yyyy-mm-dd]` | play the daily challenge (an old day's is practice only) |
 | `renderthreads [1-8]` | how many threads draw the 3D view (all your cores by default, up to 8) |
 | `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `-` none |
 | `chests` | list this map's chests and how many you've opened |
@@ -878,6 +923,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
+| `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |
 | `src/Achievements.cs` | The achievements: what each takes, its experience, and the checks that unlock them |
 | `src/Gamepad.cs` | Gamepad layout: sticks, triggers and buttons turned into game input |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |

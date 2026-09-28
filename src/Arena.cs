@@ -55,7 +55,10 @@ public sealed class ArenaState
     readonly (float x, float y) _altar;
     readonly Queue<MonsterDef> _pending = new();
     readonly List<Monster> _live = new();
-    readonly Random _rng = new(4242);
+    Random _rng = new(4242);
+
+    /// <summary>Sets the arena's dice (the daily challenge seeds them from the date).</summary>
+    public void Reseed(int seed) => _rng = new Random(seed);
     float _spawnTimer;
     bool _quietShown;
 

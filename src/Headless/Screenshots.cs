@@ -247,7 +247,20 @@ public static partial class Headless
             g.ArenaMods = ArenaMod.DoubleSpeed | ArenaMod.MeleeOnly;
             g.Menu.Show(MenuPage.ArenaSetup); g.Menu.Cursor = 1;
             Shot("99_arena_setup");
+            // the daily challenge, on the setup page and on its board
+            g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.ArenaSetup), "Daily challenge");
+            Shot("109_arena_daily");
             g.ArenaMods = ArenaMod.None;
+            g.GoToTitle();
+            var today = Daily.Today;
+            string k0 = today.ToString("yyyy-MM-dd");
+            foreach (var (n, sc, w, t) in new[] { ("ACE-1", 2250, 9, 402.5f), ("NOVA", 1800, 8, 377.0f), (g.RunnerName, 1650, 7, 290.4f), ("RAIL", 900, 4, 150.1f) })
+                g.Profile.DailyRuns.Add(new DailyRun { Date = k0, Name = n, Score = sc, Waves = w, Time = t });
+            foreach (int d in new[] { 1, 2, 3 }) g.Profile.DailyRuns.Add(new DailyRun { Date = today.AddDays(-d).ToString("yyyy-MM-dd"), Name = g.RunnerName, Score = 800 + d * 150, Waves = 5 });
+            g.Menu.Show(MenuPage.Leaderboard);
+            g.Menu.BoardDaily = true; g.Menu.BoardArena = false;
+            Shot("110_daily_board");
+            g.Menu.Close();
             g.GoToTitle();
         }
 
@@ -306,6 +319,21 @@ public static partial class Headless
         g.Binds.Reset();
         g.GoToTitle();
         Shot("23_title_menu");
+        // with a campaign saved: Continue heads the menu, and says where you'll pick up
+        {
+            string savePath = Path.Combine(Path.GetTempPath(), $"hexensharp-shot-save-{Environment.ProcessId}.json");
+            g.NewGame(PClass.Cleric);
+            g.Warp(2);
+            g.PlayTime = 2 * 3600 + 17 * 60 + 5;
+            g.SavePath = savePath;
+            g.SaveNow();
+            g.GoToTitle();
+            g.Menu.Cursor = 0;
+            Shot("108_title_continue");
+            g.DeleteSave();
+            g.SavePath = null;
+            g.Menu.Show(MenuPage.Main);
+        }
 
         // relaxed mode: HUD, a lore stone, reading it, and a secret nook
         g.Style = GameStyle.Relaxed;
