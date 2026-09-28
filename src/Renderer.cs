@@ -55,6 +55,7 @@ public sealed class Renderer
         DrawMessages(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
+        DrawAchievementBanner(g);
         if (g.Story != null) DrawStory(g);
         if (g.Vars.Arcade && !g.ShowMap) DrawArcade(g);
 
@@ -89,7 +90,7 @@ public sealed class Renderer
         var m = g.Menu;
         var page = m.Page.Value;
         var items = m.Items(page);
-        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard ? 246 : 230);
+        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard or MenuPage.Achievements ? 246 : 230);
 
         switch (page)
         {
@@ -138,6 +139,10 @@ public sealed class Renderer
                 DrawCharacter(g);
                 break;
 
+            case MenuPage.Achievements:
+                DrawAchievements(g);
+                break;
+
             case MenuPage.Leaderboard:
                 DrawLeaderboard(g);
                 break;
@@ -159,7 +164,7 @@ public sealed class Renderer
                 break;
         }
 
-        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.ArenaSetup))
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.ArenaSetup or MenuPage.Achievements))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
     }
 
@@ -337,12 +342,18 @@ public sealed class Renderer
 
         for (int i = 0; i < items.Length; i++)
         {
-            int y = 46 + i * 13;
+            int y = 44 + i * 12;
             bool sel = i == m.Cursor;
-            if (i == Profile.Skills.Length) { MenuItem(items[i], y + 2, sel); break; }
+            if (i >= Profile.Skills.Length)
+            {
+                // Achievements (with how many you've got) and Back
+                string label = items[i] == "Achievements" ? $"ACHIEVEMENTS  {pr.Achievements.Count}/{Achievements.All.Length}" : items[i];
+                MenuItem(label, y + 2, sel);
+                continue;
+            }
             var s = Profile.Skills[i];
             int rank = pr.Rank(s);
-            if (sel) Rect(14, y - 3, 292, 12, Col.Rgb(70, 40, 20));
+            if (sel) Rect(14, y - 2, 292, 11, Col.Rgb(70, 40, 20));
             Text(20, y, items[i].ToUpperInvariant(), sel ? MenuSel : MenuText);
             for (int k = 0; k < Profile.MaxRank; k++)
                 Rect(96 + k * 8, y, 6, 6, k < rank ? (sel ? MenuSel : gold) : Col.Rgb(60, 52, 44));
@@ -351,11 +362,11 @@ public sealed class Renderer
 
         var cls = g.P?.Class ?? PClass.Fighter;
         var def = ClassDef.All[(int)cls];
-        Text(20, 128, $"WEAPONS ({def.Name.ToUpperInvariant()})", MenuDim);
+        Text(20, 130, $"WEAPONS ({def.Name.ToUpperInvariant()})", MenuDim);
         for (int slot = 0; slot < 3; slot++)
         {
             var w = pr.Weapon(cls, slot);
-            int y = 139 + slot * 10;
+            int y = 141 + slot * 10;
             string name = def.Weapons[slot].Name.ToUpperInvariant();
             Text(20, y, name.Length > 22 ? name[..22] : name, MenuText);
             Text(160, y, $"LV {w.Level}", w.Level >= Profile.MaxWeaponLevel ? Col.Rgb(120, 255, 140) : blue);
@@ -365,6 +376,55 @@ public sealed class Renderer
         if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), 174, Col.Rgb(120, 255, 140));
         else CenterText("ENTER: SPEND A POINT    ESC: BACK", 174, MenuDim);
         CenterText($"KILLS {pr.TotalKills}    WINS {pr.Wins}    TOTAL XP {pr.TotalXp}", 186, MenuDim);
+    }
+
+    /// <summary>The achievements: each one's name and experience, ticked when earned, with the highlighted one's details below.</summary>
+    void DrawAchievements(Game g)
+    {
+        var m = g.Menu;
+        var pr = g.Profile;
+        var all = Achievements.All;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), done = Col.Rgb(120, 255, 140);
+        CenterText("ACHIEVEMENTS", 6, gold, 2);
+        int earned = all.Where(a => pr.Achievements.ContainsKey(a.Id)).Sum(a => a.Xp);
+        CenterText($"UNLOCKED {pr.Achievements.Count}/{all.Length}    XP {earned}/{all.Sum(a => a.Xp)}", 26, blue);
+        for (int r = 0; r < MenuSystem.AchievementRows && m.Scroll + r < all.Length; r++)
+        {
+            int i = m.Scroll + r, y = 40 + r * 11;
+            var a = all[i];
+            bool got = pr.Achievements.ContainsKey(a.Id), sel = i == m.Cursor;
+            if (sel) Rect(12, y - 2, 296, 11, Col.Rgb(70, 40, 20));
+            Rect(16, y, 7, 7, Col.Rgb(20, 18, 16));
+            if (got) Rect(17, y + 1, 5, 5, done);
+            Text(30, y, a.Name.ToUpperInvariant(), sel ? MenuSel : got ? gold : MenuText);
+            string xp = $"+{a.Xp} XP";
+            Text(302 - Font.Width(xp), y, xp, got ? done : MenuDim);
+        }
+        if (m.Scroll > 0) Text(302, 32, "^", MenuDim);
+        if (m.Scroll + MenuSystem.AchievementRows < all.Length) Text(302, 160, "V", MenuDim);
+        if (m.Cursor < all.Length)
+        {
+            var a = all[m.Cursor];
+            CenterText(a.About.ToUpperInvariant(), 164, blue);
+            string status = pr.Achievements.TryGetValue(a.Id, out var when) ? $"UNLOCKED {when:yyyy-MM-dd}"
+                : a.Progress?.Invoke(g) is var (have, need) ? $"{Math.Min(have, need)} / {need}" : "NOT YET";
+            CenterText(status, 174, pr.Achievements.ContainsKey(a.Id) ? done : MenuDim);
+        }
+        else MenuItem("Back", 168, true);
+        CenterText("UP/DOWN: BROWSE    ESC: BACK", 188, MenuDim);
+    }
+
+    /// <summary>A freshly unlocked achievement, for a few seconds under the top of the view.</summary>
+    void DrawAchievementBanner(Game g)
+    {
+        if (g.AchievementTime <= 0 || g.AchievementBanner is not { } a) return;
+        string name = a.Name.ToUpperInvariant(), xp = $"+{a.Xp} XP";
+        int w = Math.Max(Font.Width("ACHIEVEMENT UNLOCKED"), Font.Width(name)) + 24, x = (W - w) / 2, y = 56;
+        Darken(x, y, w, 30, 210);
+        Rect(x, y, w, 1, Col.Rgb(230, 190, 80)); Rect(x, y + 29, w, 1, Col.Rgb(230, 190, 80));
+        CenterText("ACHIEVEMENT UNLOCKED", y + 4, Col.Rgb(230, 190, 80));
+        CenterText(name, y + 13, Col.Rgb(250, 245, 230));
+        CenterText(xp, y + 22 - 1, Col.Rgb(120, 255, 140));
     }
 
     void Bar(int x, int y, int w, int h, float fill, uint color)

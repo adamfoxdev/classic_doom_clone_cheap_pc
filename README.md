@@ -583,6 +583,46 @@ points with `Enter`. Every skill has 10 ranks:
 harder per level. The game announces each level-up, and the character screen shows every weapon's level and
 progress.
 
+**Achievements:** there are 20, listed under **Character → Achievements**. Each pays experience once, when it
+unlocks, with a banner and a message; this works anywhere, practice and the arena included. The list shows which
+you've got and when, and how far along you are with the ones that build up.
+
+| Achievement | What it takes | XP |
+|---|---|---|
+| First Blood | Kill a monster | 25 |
+| Slayer | Kill 500 monsters | 250 |
+| Treasure Hunter | Open 50 treasure chests | 150 |
+| Secret Keeper | Find every secret in one game | 200 |
+| Loremaster | Read every lore stone in one game | 200 |
+| Heresiarch Slain | Win the game in the classic style | 300 |
+| Untouchable | Win in the classic style without dying once | 500 |
+| Nightmare Walker | Win on Nightmare, start to finish | 750 |
+| Pilgrim | Win in the relaxed style: find every relic | 300 |
+| Jack of All Trades | Win as all three classes | 500 |
+| On the Podium | Earn a medal on a practice course | 50 |
+| Gold Standard | Earn gold on every timed practice course | 500 |
+| Speed Demon | Reach 250% of your run speed | 150 |
+| Gladiator | Clear wave 5 in the arena | 100 |
+| Champion of Chaos | Clear wave 20 in the arena | 750 |
+| Glutton for Punishment | Clear wave 5 in the arena with three or more modifiers | 300 |
+| Overcharged | Take an arena perk to rank III | 100 |
+| Veteran | Reach level 10 | 150 |
+| Master of Arms | Raise a weapon to level 10 | 250 |
+| Case Closed | Solve every case in Story mode | 300 |
+
+- **Hub game only:** the one-game ones (secrets, lore) count only in a game through the hub, not on practice
+  courses, in the arena or on custom maps.
+- **Earned early:** ones your profile has already earned, such as kills, levels, medals and arena records, unlock
+  the first time the game checks.
+- **No cheating:** achievements don't unlock in a game where you've cheated. That covers god mode, noclip,
+  notarget, infinite mana or fuel, console commands such as `give`, `kill`, `summon`, `map`, `tp`, `xp`, `reveal`
+  and `visitN`, gameplay settings changed with `set` (speed, fire rate, gravity and so on) and custom difficulty.
+  Starting a new game clears it.
+- **Saving:** they're kept in your profile.
+
+![Achievements](docs/achievements.png)
+![An achievement unlocking](docs/achievement_banner.png)
+
 ## Options and key bindings
 
 Open **Options** from the title menu, or press `Esc` in game and pick Options.
@@ -773,6 +813,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
+| `src/Achievements.cs` | The achievements: what each takes, its experience, and the checks that unlock them |
 | `src/Gamepad.cs` | Gamepad layout: sticks, triggers and buttons turned into game input |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |
 | `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |

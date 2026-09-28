@@ -513,6 +513,11 @@ public sealed class DevConsole
 
     int _quiet;
 
+    /// <summary>Commands that make achievements too easy: using one marks the game as cheated.</summary>
+    static readonly HashSet<string> CheatCommands = new() { "give", "summon", "kill", "map", "tp", "xp", "reveal", "god", "noclip", "notarget" };
+    /// <summary>Settings that change how the game plays (not just how it looks or feels): changing one is a cheat too.</summary>
+    static readonly HashSet<string> CheatVars = new() { "speed", "firerate", "manacost", "gravity", "jump", "slidespeed", "accel", "airaccel", "friction", "maxhop", "freeze", "chests", "infinitemana", "infinitefuel" };
+
     /// <summary>Runs a command. Quiet mode (used when loading settings) prints nothing.</summary>
     public void Execute(string line, bool quiet)
     {
@@ -532,10 +537,16 @@ public sealed class DevConsole
 
         var cheat = Cheats.FirstOrDefault(c => c.code == name);
         if (cheat.code != null) { Execute(cheat.cmd); return; }
-        if (name.StartsWith("visit") && name.Length > 5) { Map(name[5..]); return; }
+        if (name.StartsWith("visit") && name.Length > 5) { _g.Cheated = true; Map(name[5..]); return; }
 
         var cmd = _commands.FirstOrDefault(c => c.Name == name);
-        if (cmd != null) { cmd.Run(args); return; }
+        if (cmd != null)
+        {
+            if (_quiet == 0 && (CheatCommands.Contains(name) || (name == "set" && args.Length > 2 && CheatVars.Contains(args[1].ToLowerInvariant()))))
+                _g.Cheated = true; // no achievements this game
+            cmd.Run(args);
+            return;
+        }
 
         // "speed 2" works as shorthand for "set speed 2"; "speed" alone prints it
         var v = GameVars.Find(name);

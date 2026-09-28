@@ -714,7 +714,14 @@ public sealed class Game
     /// <summary>The culprit's confessed and you've closed the dialogue: on to the next job, or the end of the story.</summary>
     public void CaseSolved()
     {
-        if (StoryCase + 1 >= HexenSharp.Story.Cases.Length) { Mode = GameMode.Victory; PlaySound(Sfx.Relic, 1); return; }
+        if (StoryCase + 1 >= HexenSharp.Story.Cases.Length)
+        {
+            Mode = GameMode.Victory; PlaySound(Sfx.Relic, 1);
+            Profile.StoryWins++;
+            Achievements.Check(this);
+            SaveProfile();
+            return;
+        }
         StartStory(StoryCase + 1);
         Say("A new job comes in over the wire.");
     }
@@ -816,6 +823,8 @@ public sealed class Game
         ApplyProfile();
         P.Health = P.MaxHealth;
         RunXp = 0; XpPopup = 0;
+        Cheated = false; RunDeaths = 0;
+        _nightmareThroughout = Difficulties.Of(Vars) == Difficulty.Nightmare;
         P.FloorZ = Level.FloorUnder(P.X, P.Y, P.Radius);
         Messages.Clear();
         Mode = GameMode.Playing;
@@ -846,6 +855,9 @@ public sealed class Game
         if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
         dt = MathF.Min(dt, 0.05f);
         Time += dt;
+        AchievementTime -= dt;
+        if (Difficulties.Of(Vars) != Difficulty.Nightmare) _nightmareThroughout = false;
+        if ((_achieveCheck -= dt) <= 0) { _achieveCheck = 0.25f; Achievements.Check(this); }
 
         // the developer console (~) pauses the game while it is open
         if (inp.ConsoleToggle) Con.Open = !Con.Open;
@@ -1227,7 +1239,20 @@ public sealed class Game
             {
                 Mode = GameMode.Victory;
                 PlaySound(Sfx.Teleport, 1);
-                if (!TestingMap) { Profile.Wins++; GainXp(Xp.Victory); }
+                if (!TestingMap)
+                {
+                    Profile.Wins++;
+                    if (Relaxed) Profile.RelaxedWins++;
+                    else
+                    {
+                        Profile.ClassicWins++;
+                        if (RunDeaths == 0) Profile.FlawlessWins++;
+                        if (_nightmareThroughout && Difficulties.Of(Vars) == Difficulty.Nightmare) Profile.NightmareWins++;
+                        if (!Profile.ClassWins.Contains(P.Class.ToString())) Profile.ClassWins.Add(P.Class.ToString());
+                    }
+                    GainXp(Xp.Victory);
+                    Achievements.Check(this);
+                }
                 SaveProfile();
                 return;
             }
@@ -1628,6 +1653,7 @@ public sealed class Game
     {
         c.Opened = true;
         P.ChestsOpened++;
+        Profile.ChestsOpened++;
         GainXp(Xp.Chest);
         PlaySound(Sfx.Chest, 1);
 
@@ -1754,6 +1780,27 @@ public sealed class Game
     public string ProfilePath;
     /// <summary>Experience earned this game, and the "+XP" pop-up by the level bar.</summary>
     public int RunXp, XpPopup;
+
+    /// <summary>A cheat's been used this game (console give, kill, god mode...): no achievements until a new one.</summary>
+    public bool Cheated;
+    /// <summary>Deaths this game, and whether it's been on Nightmare all along, for the achievements.</summary>
+    public int RunDeaths;
+    bool _nightmareThroughout;
+    float _achieveCheck;
+    /// <summary>The last achievement unlocked, shown as a banner for a few seconds.</summary>
+    public AchievementDef AchievementBanner;
+    public float AchievementTime;
+
+    /// <summary>An achievement's just unlocked: say so, show the banner, and pay its experience (anywhere, practice included).</summary>
+    public void AchievementUnlocked(AchievementDef a)
+    {
+        Say($"Achievement unlocked: {a.Name}! +{a.Xp} XP");
+        AchievementBanner = a;
+        AchievementTime = 4f;
+        PlaySound(Sfx.Secret, 1);
+        GainXp(a.Xp, always: true);
+        SaveProfile();
+    }
     public float XpPopupTime;
 
     /// <summary>Experience for everything you do.</summary>
@@ -1788,9 +1835,9 @@ public sealed class Game
     bool NoXp => TestingMap && !ArenaMode;
 
     /// <summary>Adds experience, announcing level-ups.</summary>
-    public void GainXp(int amount)
+    public void GainXp(int amount, bool always = false)
     {
-        if (amount <= 0 || NoXp) return;
+        if (amount <= 0 || (NoXp && !always)) return;
         RunXp += amount;
         XpPopup = XpPopupTime > 0 ? XpPopup + amount : amount;
         XpPopupTime = 1.6f;
@@ -2617,6 +2664,7 @@ public sealed class Game
         {
             p.Health = 0;
             p.Dead = true;
+            RunDeaths++;
             p.Z = 0; p.VZ = 0; p.VX = p.VY = 0; p.SlideTime = 0; p.SlideLow = 0;
             Mode = GameMode.Dead;
             SaveProfile();

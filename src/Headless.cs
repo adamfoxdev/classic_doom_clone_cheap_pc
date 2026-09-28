@@ -62,6 +62,8 @@ public static class Headless
         StoryChecks(Check);
         Console.WriteLine("Arena mode:");
         ArenaModeChecks(Check);
+        Console.WriteLine("Achievements:");
+        AchievementChecks(Check);
         Console.WriteLine("Music:");
         MusicChecks(Check);
         Console.WriteLine("Gamepad:");
@@ -1936,7 +1938,7 @@ public static class Headless
         check(ui.Binds.Get(Act.Character, 0) == Keys.Letter('K'), "K is the character key");
         ui.Update(new Input { Character = true }, 1f / 35f);
         check(ui.Paused && ui.Menu.Page == MenuPage.Character, "K opens the character screen and pauses");
-        check(ui.Menu.Items(MenuPage.Character).SequenceEqual(new[] { "Vitality", "Power", "Agility", "Focus", "Thrusters", "Back" }), "it lists the five skills");
+        check(ui.Menu.Items(MenuPage.Character).SequenceEqual(new[] { "Vitality", "Power", "Agility", "Focus", "Thrusters", "Achievements", "Back" }), "it lists the five skills, then Achievements");
         ui.Update(new Input { Confirm = true }, 1f / 35f);
         check(ui.Profile.Rank(Skill.Vitality) == 1 && ui.P.MaxHealth == 110 && ui.Profile.Points == 0, "Enter spends a point on the selected skill");
         ui.Update(new Input { Confirm = true }, 1f / 35f);
@@ -1959,7 +1961,8 @@ public static class Headless
         var exit = win.Level.FindMark('E').Value;
         win.P.X = exit.x; win.P.Y = exit.y;
         win.Update(default, 1f / 35f);
-        check(win.Mode == GameMode.Victory && win.Profile.Wins == 1 && win.Profile.TotalXp == Game.Xp.Victory, $"winning adds a win and {Game.Xp.Victory} XP");
+        int achieved = win.Profile.Achievements.Keys.Sum(id => Achievements.Find(id).Xp); // the first win unlocks a few
+        check(win.Mode == GameMode.Victory && win.Profile.Wins == 1 && win.Profile.TotalXp - achieved == Game.Xp.Victory, $"winning adds a win and {Game.Xp.Victory} XP");
 
         // console
         var c = new Game { FixedSeed = 1, Profile = new Profile() };
@@ -2498,6 +2501,134 @@ public static class Headless
         check(g.Level == g.Hub[3], "typing 'visit4' warps to the fourth map");
         foreach (char c in "mapsco") Tick(new Input { Typed = c.ToString() });
         check(g.Level.Seen.All(s => s), "typing 'mapsco' reveals the map");
+    }
+
+    static void AchievementChecks(Action<bool, string> check)
+    {
+        var all = Achievements.All;
+        check(all.Length >= 20 && all.Select(a => a.Id).Distinct().Count() == all.Length && all.All(a => a.Xp > 0 && a.Name.Length <= 26),
+              $"{all.Length} achievements, each with its own id and some experience");
+
+        // the first kill with a weapon: First Blood, its experience, a message and a banner, once
+        var g = new Game { FixedSeed = 1 };
+        g.Update(default, 1f / 35f);
+        check(g.Profile.Achievements.Count == 0, "a new profile has none");
+        g.NewGame(PClass.Fighter);
+        var p = g.P;
+        g.Level.Things.RemoveAll(t => t is Monster);
+        var ettin = new Monster(Monster.Ettin) { X = p.X + 0.9f, Y = p.Y, Level = g.Level, Health = 1 };
+        g.Level.Things.Add(ettin);
+        p.Angle = 0;
+        int xp0 = g.Profile.TotalXp;
+        for (int f = 0; f < 35 && ettin.Alive; f++) g.Update(new Input { Fire = true }, 1f / 35f);
+        for (int f = 0; f < 10; f++) g.Update(default, 1f / 35f);
+        check(!ettin.Alive && g.Profile.Achievements.ContainsKey("first_blood") && g.AchievementBanner?.Id == "first_blood"
+              && g.Messages.Any(m => m.text == "Achievement unlocked: First Blood! +25 XP"), "a first kill unlocks First Blood, with a message and a banner");
+        check(g.Profile.TotalXp - xp0 == Game.Xp.Kill(Monster.Ettin) + 25, "and pays its 25 XP on top of the kill's");
+        var r = new Renderer();
+        r.Render(g);
+        check(r.Fb.Count(px => px == Col.Rgb(230, 190, 80)) > 150, "the banner shows over the view");
+        int xp1 = g.Profile.TotalXp;
+        Achievements.Check(g);
+        check(g.Profile.TotalXp == xp1, "each one pays once");
+
+        // cheats: nothing unlocks for the rest of that game
+        p.VX = 2.6f * g.RunSpeed; p.VY = 0;
+        g.Con.Execute("god"); g.Con.Execute("god");
+        Achievements.Check(g);
+        check(g.Cheated && !g.Profile.Achievements.ContainsKey("speed"), "using a cheat (even switched off again) blocks achievements that game");
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        g.Con.Execute("set fov 90");
+        g.Con.Execute("sens 2");
+        check(!g.Cheated, "a new game clears it; looks and feel settings aren't cheats");
+        g.Con.Execute("set gravity 4");
+        check(g.Cheated, "but gameplay ones are");
+        g.Con.Execute("set gravity 12");
+        g.NewGame(PClass.Fighter);
+        g.Level.Things.RemoveAll(t => t is Monster);
+
+        // speed, secrets and lore in the game you're playing
+        g.P.VX = 2.6f * g.RunSpeed; g.P.VY = 0;
+        Achievements.Check(g);
+        check(g.Profile.Achievements.ContainsKey("speed"), "Speed Demon: 250% of your run speed");
+        var sec = Achievements.Find("secrets");
+        check(sec.Progress(g) == (0, g.SecretsTotal), $"progress shows how far along you are (0 of {g.SecretsTotal} secrets)");
+        g.P.Secrets = g.SecretsTotal; g.P.LoreRead = g.LoreTotal;
+        Achievements.Check(g);
+        check(g.Profile.Achievements.ContainsKey("secrets") && g.Profile.Achievements.ContainsKey("lore"), "every secret, every lore stone in one game");
+        var pr = new Game { FixedSeed = 1 };
+        pr.StartPractice(PClass.Fighter, Courses.Hangar);
+        pr.P.Secrets = 99; pr.P.LoreRead = 99;
+        Achievements.Check(pr);
+        check(!pr.Profile.Achievements.ContainsKey("secrets"), "which a practice course's own counts don't satisfy");
+
+        // ones your profile has already earned unlock at the title
+        var old = new Game { FixedSeed = 1, Profile = new Profile { TotalKills = 612, Level = 12 } };
+        old.Update(default, 1f / 35f);
+        check(new[] { "first_blood", "slayer", "veteran" }.All(old.Profile.Achievements.ContainsKey), "a profile that already has 600 kills and level 12 gets theirs straight away");
+
+        // winning: classic, flawless, nightmare, relaxed, every class
+        Game Win(PClass cls, GameStyle style = GameStyle.Classic, bool die = false, string difficulty = "normal")
+        {
+            var w = new Game { FixedSeed = 1, Profile = new Profile() };
+            w.Con.Execute("difficulty " + difficulty, quiet: true);
+            w.Style = style;
+            w.NewGame(cls);
+            w.Level.Things.RemoveAll(t => t is Monster);
+            if (die) { w.Checkpoint = new Checkpoint { Level = w.Level, X = w.P.X, Y = w.P.Y, Health = 100 }; w.DamagePlayer(100000); w.Update(new Input { Confirm = true }, 1f / 35f); for (int f = 0; f < 200 && w.Mode == GameMode.Dead; f++) w.Update(new Input { Confirm = f % 2 == 0 }, 1f / 35f); }
+            if (style == GameStyle.Relaxed) w.P.Relics = w.RelicsTotal;
+            w.Level = w.Hub[0];
+            w.Level.BossDead = true;
+            var ex = w.Level.FindMark('E').Value;
+            w.P.X = ex.x; w.P.Y = ex.y;
+            w.Update(default, 1f / 35f);
+            return w;
+        }
+        var w1 = Win(PClass.Fighter);
+        check(w1.Mode == GameMode.Victory && w1.Profile.Achievements.ContainsKey("heresiarch") && w1.Profile.Achievements.ContainsKey("flawless")
+              && !w1.Profile.Achievements.ContainsKey("nightmare"), "a classic win without dying: Heresiarch Slain and Untouchable");
+        var w2 = Win(PClass.Fighter, die: true);
+        check(w2.Profile.ClassicWins == 1 && w2.RunDeaths == 1 && !w2.Profile.Achievements.ContainsKey("flawless"), "a win after dying isn't Untouchable");
+        var w3 = Win(PClass.Mage, difficulty: "nightmare");
+        check(w3.Profile.Achievements.ContainsKey("nightmare"), "a win on Nightmare is Nightmare Walker");
+        var w4 = Win(PClass.Cleric, GameStyle.Relaxed);
+        check(w4.Profile.Achievements.ContainsKey("pilgrim") && !w4.Profile.Achievements.ContainsKey("heresiarch"), "a relaxed win is Pilgrim");
+        var prof = new Profile { ClassWins = new() { "Fighter", "Cleric" } };
+        var three = new Game { FixedSeed = 1, Profile = prof };
+        check(Achievements.Find("all_classes").Progress(three) == (2, 3), "Jack of All Trades counts the classes you've won as");
+        prof.ClassWins.Add("Mage");
+        Achievements.Check(three);
+        check(prof.Achievements.ContainsKey("all_classes"), "and unlocks with the third");
+
+        // practice medals and the arena
+        var med = new Game { FixedSeed = 1 };
+        med.Profile.AddCourseRun(Courses.Hangar.Key(PClass.Fighter), 18f, "A", DateTime.Now);
+        Achievements.Check(med);
+        check(med.Profile.Achievements.ContainsKey("podium") && !med.Profile.Achievements.ContainsKey("gold_all"), "a bronze is On the Podium");
+        foreach (var c in Courses.Timed) med.Profile.AddCourseRun(c.Key(PClass.Fighter), c.MedalTimes(PClass.Fighter).gold - 0.1f, "A", DateTime.Now);
+        Achievements.Check(med);
+        check(med.Profile.Achievements.ContainsKey("gold_all"), "gold on every timed course is Gold Standard");
+        var ar = new Game { FixedSeed = 1 };
+        ar.ArenaMods = ArenaMod.DoubleSpeed | ArenaMod.NoSupplies | ArenaMod.MeleeOnly;
+        ar.StartArena(PClass.Fighter);
+        ar.Level.Arena.Started = true; ar.Level.Arena.BestWave = 5;
+        Achievements.Check(ar);
+        check(ar.Profile.Achievements.ContainsKey("arena_5") && ar.Profile.Achievements.ContainsKey("arena_mods") && !ar.Profile.Achievements.ContainsKey("arena_20"),
+              "clearing wave 5 with three modifiers: Gladiator and Glutton for Punishment");
+
+        // kept with the profile, and listed on the Character screen
+        var back = System.Text.Json.JsonSerializer.Deserialize<Profile>(ar.Profile.ToJson());
+        check(back.Achievements.ContainsKey("arena_mods"), "saved with your profile");
+        ar.Paused = true; ar.Menu.Show(MenuPage.Character);
+        ar.Menu.Cursor = Array.IndexOf(ar.Menu.Items(MenuPage.Character), "Achievements");
+        ar.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(ar.Menu.Page == MenuPage.Achievements, "Character > Achievements opens the list");
+        for (int k = 0; k < all.Length; k++) ar.Menu.Update(new Input { Down = true }, 1f / 35f);
+        check(ar.Menu.Cursor == all.Length && ar.Menu.Scroll == all.Length - MenuSystem.AchievementRows, "it scrolls to the end");
+        r.Render(ar);
+        ar.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+        check(ar.Menu.Page == MenuPage.Character, "and Back returns to the Character screen");
     }
 
     static void MusicChecks(Action<bool, string> check)
@@ -4433,7 +4564,22 @@ public static class Headless
             g.Update(new Input { Character = true }, 1f / 35f);
             g.Menu.Cursor = 1;
             Shot("59_character_screen");
+            // the achievements: a few earned, the highlighted one showing its progress
+            var achDay = new DateTime(2026, 9, 21);
+            foreach (var (id, d) in new[] { ("first_blood", 0), ("treasure", 2), ("podium", 3), ("speed", 3), ("arena_5", 5), ("veteran", 6), ("secrets", 7) })
+                g.Profile.Achievements[id] = achDay.AddDays(d);
+            g.Profile.TotalKills = 212;
+            g.Menu.Cursor = Array.IndexOf(g.Menu.Items(MenuPage.Character), "Achievements");
+            g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
+            g.Menu.Cursor = 1;
+            Shot("100_achievements");
             g.Menu.Close(); g.Paused = false;
+            // the banner as one unlocks
+            g.Messages.Clear();
+            g.AchievementUnlocked(Achievements.Find("lore"));
+            g.Messages.Clear();
+            Shot("101_achievement_banner");
+            g.AchievementTime = 0;
             g.Profile = saved;
         }
         g.SetArtStyle(ArtStyle.Fantasy);

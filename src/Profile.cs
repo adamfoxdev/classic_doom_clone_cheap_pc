@@ -32,6 +32,16 @@ public sealed class Profile
     public int TotalXp { get; set; }
     public int TotalKills { get; set; }
     public int Wins { get; set; }
+    /// <summary>Wins by kind, and the classes you've won as, for the achievements.</summary>
+    public int ClassicWins { get; set; }
+    public int RelaxedWins { get; set; }
+    public int FlawlessWins { get; set; }
+    public int NightmareWins { get; set; }
+    public int StoryWins { get; set; }
+    public List<string> ClassWins { get; set; } = new();
+    public int ChestsOpened { get; set; }
+    /// <summary>Unlocked achievements, by id, with when.</summary>
+    public Dictionary<string, DateTime> Achievements { get; set; } = new();
     /// <summary>Best practice course times by class, from before the leaderboard; folded into CourseRuns when read.</summary>
     public Dictionary<string, float> CourseBest { get; set; } = new();
     /// <summary>The practice course leaderboard: the fastest runs by class, quickest first.</summary>
@@ -192,6 +202,8 @@ public sealed class Profile
             p.Ranks ??= new();
             p.Weapons ??= new();
             p.ArenaRuns ??= new();
+            p.ClassWins ??= new();
+            p.Achievements ??= new();
             // runs saved before scores: 100 a wave, as a run with no modifiers scores
             foreach (var board in p.ArenaRuns.Values)
             {
