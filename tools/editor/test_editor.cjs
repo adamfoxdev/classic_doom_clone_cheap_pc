@@ -131,8 +131,25 @@ function gameChecks(text) {
   check((await page.textContent("#playCmd")).includes("--play path/to/test_grotto.hxm"), "the play-test command names the file");
   await page.fill("#fW", "24"); await page.fill("#fH", "18"); await page.click("#bResize");
   check((await E(() => [hexenEditor.state.doc.w, hexenEditor.state.doc.h])).join() === "24,18" && await cell(2, 2) === "@", "resizing keeps the map in the top-left corner");
+  // mini-bosses, weapon mods, a hazard and elites: saved, read back, and read the same by the game
+  await page.selectOption("#fHazard", "flood");
+  await page.selectOption("#fElites", "0.3");
+  await page.click("#map", { position: { x: 1, y: 1 }, button: "middle" }).catch(() => {});
+  await page.keyboard.press("1"); // back to the tiles layer, with the brush
+  await page.click('#tools [data-tool="brush"]');
+  await brush("G");
+  await clickCell(5, 5);
+  await brush("m");
+  await clickCell(6, 5);
+  const featured = await text();
+  check(featured.includes("hazard: flood\nelites: 0.3\n") && featured.split("---")[1].includes("Gm"), "a map can have mini-bosses, weapon mods, a hazard and elites");
+  check(await E(t => hexenEditor.serialize(hexenEditor.parse(t)), featured) === featured, "and they load back identically");
+  const cs = execFileSync("dotnet", [dll, "--check-map", (() => { const f = path.join(os.tmpdir(), `hexen_feat_${process.pid}.hxm`); fs.writeFileSync(f, featured); return f; })()], { encoding: "utf8" }).trim();
+  check(!cs.startsWith("!") && JSON.stringify(await E(t => hexenEditor.validateCore(hexenEditor.parse(t)), featured)) === JSON.stringify(gameChecks(featured)), "the game reads them and agrees with the editor's checks");
+  check((await page.textContent("#stats")).includes("Mini-bosses"), "the contents count the mini-bosses");
   await page.selectOption("#builtin", builtins[0].file);
   check(await E(() => hexenEditor.state.doc.name) === builtins[0].name, "the built-in map menu opens a template");
+  check(await E(() => [hexenEditor.state.doc.hazard, hexenEditor.state.doc.elites].join()) === "none,0", "which starts with no hazard or elites");
   await page.reload();
   check(await E(() => hexenEditor.state.doc.name) === builtins[0].name, "the draft survives a reload");
   check(errors.length === 0, `no script errors (${errors.join("; ")})`);

@@ -315,6 +315,13 @@ public static class ThingFactory
             'c' => new Monster(Monster.Centaur),
             'C' => new Monster(Monster.Slaughtaur),
             'H' => new Monster(Monster.Heresiarch),
+            // the mini-bosses, for custom maps (the hub places its own; see MiniBosses.Places)
+            'G' => MiniBosses.Create(MiniBosses.Warden),
+            'R' => MiniBosses.Create(MiniBosses.Stalker),
+            'Y' => MiniBosses.Create(MiniBosses.Thornmother),
+            'o' => MiniBosses.Create(MiniBosses.Keeper),
+            'y' => MiniBosses.Create(MiniBosses.Wyrm),
+            'm' => new Pickup(PickupKind.Mod, 0.42f), // a weapon mod, which one rolled when the game starts
             'd' => new Monster(Monster.Bishop),
             'h' => new Pickup(PickupKind.Vial, 0.35f),
             'q' => new Pickup(PickupKind.Flask, 0.4f),

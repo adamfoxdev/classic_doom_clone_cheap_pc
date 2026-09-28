@@ -844,6 +844,13 @@ public sealed partial class Game
             }
         }
         ApplyNgPlus();
+        foreach (var lv in Hub)
+        {
+            // a custom map's own elites and random weapon mods
+            if (lv.EliteChance > 0 && NgTier == 0) RollElites(lv, lv.EliteChance);
+            foreach (var pk in lv.Things.OfType<Pickup>().Where(p => p.Kind == PickupKind.Mod && p.Variant == 0).ToList())
+                lv.Things[lv.Things.IndexOf(pk)] = Place(MakeMod(RandomMod(), 0, 0), pk, lv);
+        }
         RelicsTotal = Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Relic }));
         LoreTotal = Hub.Sum(l => l.Things.Count(t => t is LoreStone));
         SecretsTotal = Hub.Sum(l => l.SecretCount);

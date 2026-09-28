@@ -787,6 +787,16 @@ editor saves, and its checks give exactly the same messages.
   highlight the cells involved. The **Reach** overlay shades everything you can't get to from the start or the
   arrival portal.
 - **Editing:** undo/redo, zoom and pan, resize, and a **Built-in maps** menu to start from any hub map.
+- **Mini-bosses and mods:**
+  - **Mini-bosses:** the palette's **Mini-bosses** group places the Quarry Warden (`G`), Dust Stalker (`R`),
+    Thornmother (`Y`), Drowned Keeper (`o`) and Rock Wyrm (`y`). Set the Wyrm in rubble: it swims through rock. The
+    Storm Leviathan needs a flight lane, which a custom map can't be.
+  - **Weapon mods:** `m` places one, rolled from the four each time the map starts.
+- **Hazard and elites:** two map settings in the right-hand panel. They apply every time the map is played, where
+  the hub only has its hazards and elites in New Game+.
+  - **Hazard:** none, wind gusts or floods, as on the Windspire and in the Cisterns.
+  - **Elites:** the chance each ordinary monster is an elite, up to 50%.
+  - **In the file:** `hazard:` and `elites:` header lines, written only when set.
 - **Files:** Save writes the file directly in Chrome and Edge (other browsers download it). You can also drag a
   file onto the page, or view/paste the map as text. Your draft is kept in the browser between visits.
 
@@ -1232,3 +1242,4 @@ Maps are ASCII grids in `src/Level.cs`:
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |
 | `+` | checkpoint pad (its whole ledge counts; respawn here) | `=` | lift pad (back to your highest checkpoint) |
 | `w` `x` | weapon piece for slot 2 / slot 3 | `t` `p` `T` | torch, pillar, tree |
+| `G` `R` `Y` `o` `y` | mini-bosses: Quarry Warden, Dust Stalker, Thornmother, Drowned Keeper, Rock Wyrm (custom maps) | `m` | weapon mod (one of the four, rolled at the start) |

@@ -86,12 +86,20 @@ public static class MiniBosses
         ("Void Crossing", Dreadnought, 88.5f, 6.5f),    // lying in wait near the end of the lane
     };
 
+    /// <summary>A mini-boss, ready to place (the Rock Wyrm starts inside the rock).</summary>
+    public static Monster Create(MonsterDef def) =>
+        new(def) { NextBlinkHp = (int)(def.Health * 0.8f), Burrowed = def.Special == Special.Burrower, Solid = def.Special != Special.Burrower };
+
     /// <summary>Puts a map's mini-boss in, if it has one.</summary>
     public static void Place(Level lv)
     {
         foreach (var (map, def, x, y) in Places)
             if (lv.RawName == map)
-                lv.Things.Add(new Monster(def) { X = x, Y = y, Level = lv, NextBlinkHp = (int)(def.Health * 0.8f), Burrowed = def.Special == Special.Burrower, Solid = def.Special != Special.Burrower });
+            {
+                var m = Create(def);
+                m.X = x; m.Y = y; m.Level = lv;
+                lv.Things.Add(m);
+            }
     }
 
     /// <summary>Each one's look: the monster it's built from and the colour it's washed with.</summary>
