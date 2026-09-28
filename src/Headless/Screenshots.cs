@@ -459,6 +459,12 @@ public static partial class Headless
                 g.Con.Execute("roomlook matrix", quiet: true);
                 Tick(default, 20);
                 Shot("156_roomlook_matrix");
+                g.Con.Execute("roomlook vaporwave", quiet: true);
+                // from the east end, looking back down the pitch and up, so the sunset shows over the far wall
+                ball.X = Soccer.LineE - 9; ball.Y = Soccer.SpotY; ball.Z = 0;
+                g.P.X = Soccer.LineE - 3; g.P.Y = Soccer.SpotY + 0.5f; g.P.Angle = MathF.PI + 0.6f; g.P.Pitch = 50;
+                Tick(default, 2);
+                Shot("157_roomlook_vaporwave");
                 g.Con.Execute("roomlook off", quiet: true);
             }
             foreach (var (n, goals, shots) in new[] { (g.RunnerName, 9, 41), ("ACE-1", 7, 30), (g.RunnerName, 7, 52), ("NOVA", 4, 38) })

@@ -122,11 +122,13 @@ public sealed partial class Game
 /// Whole looks for a room, from the console ('roomlook tron' / 'roomlook matrix'), made for Rocket Soccer's pitch but
 /// good on any map. Tron: black, with glowing cyan lines round every floor cell, wall panel and step, a glowing
 /// horizon, and orange goals (any ice walls). Matrix: black, with green code raining down the walls and the sky,
-/// a faint green grid underfoot, and the goals (ice walls) in denser, paler rain. 'roomlook off' puts the map's own back.
+/// a faint green grid underfoot, and the goals (ice walls) in denser, paler rain. Vaporwave: a hot-pink grid on deep
+/// purple underfoot, walls fading from pink to violet behind thin blinds, a striped sun setting in a pink and orange
+/// sky, and teal goals. 'roomlook off' puts the map's own back.
 /// </summary>
 public static class RoomLooks
 {
-    public static readonly string[] Names = { "tron", "matrix" };
+    public static readonly string[] Names = { "tron", "matrix", "vaporwave" };
     const int S = Art.TS;
 
     static uint Glow(int r, int g, int b, float k) => Col.Rgb(Math.Min(255, (int)(r * k)), Math.Min(255, (int)(g * k)), Math.Min(255, (int)(b * k)));
@@ -161,6 +163,61 @@ public static class RoomLooks
         // faint lines across the glow, like a far-off grid
         for (int y = 96; y < 120; y += 6)
             for (int x = 0; x < 256; x++) t.Px[y * 256 + x] = Col.Lerp(t.Px[y * 256 + x], Glow(glow.r, glow.g, glow.b, 0.8f), 90);
+        return t;
+    }
+
+    /// <summary>A vaporwave wall: pink at the top fading to deep violet, crossed by thin dark blinds, with glowing edges.</summary>
+    public static Tex Blinds((int r, int g, int b) top, (int r, int g, int b) bottom, (int r, int g, int b) edge)
+    {
+        var t = new Tex(S, S);
+        for (int y = 0; y < S; y++)
+        {
+            float f = y / (S - 1f);
+            uint c = Col.Rgb((int)(top.r + (bottom.r - top.r) * f), (int)(top.g + (bottom.g - top.g) * f), (int)(top.b + (bottom.b - top.b) * f));
+            bool blind = y % 8 == 7;
+            for (int x = 0; x < S; x++)
+            {
+                int d = Math.Min(Math.Min(x, S - 1 - x), Math.Min(y, S - 1 - y));
+                uint px = blind ? Col.Lerp(c, Col.Rgb(20, 0, 40), 150) : c;
+                if (d <= 1) px = Col.Lerp(px, Col.Rgb(edge.r, edge.g, edge.b), d == 0 ? 230 : 110);
+                t.Px[y * S + x] = px;
+            }
+        }
+        return t;
+    }
+
+    /// <summary>A vaporwave sky: violet overhead through pink to orange low down, with a big sun, striped across its lower half, sinking into it.</summary>
+    public static Tex Sunset()
+    {
+        const int w = 256, h = 128;
+        var t = new Tex(w, h);
+        // (the warm colours sit high, so they show over the walls of a tall room)
+        (float at, (int r, int g, int b) c)[] stops = { (0f, (24, 6, 52)), (0.3f, (90, 20, 120)), (0.55f, (230, 60, 160)), (0.8f, (255, 140, 90)), (1f, (255, 170, 110)) };
+        for (int y = 0; y < h; y++)
+        {
+            float f = y / (h - 1f);
+            int i = 0;
+            while (i < stops.Length - 2 && f > stops[i + 1].at) i++;
+            float k = Math.Clamp((f - stops[i].at) / (stops[i + 1].at - stops[i].at), 0, 1);
+            var (a, b) = (stops[i].c, stops[i + 1].c);
+            uint c = Col.Rgb((int)(a.r + (b.r - a.r) * k), (int)(a.g + (b.g - a.g) * k), (int)(a.b + (b.b - a.b) * k));
+            for (int x = 0; x < w; x++) t.Px[y * w + x] = c;
+        }
+        // the sun: yellow at its top to hot pink, its lower half cut by widening bands
+        float cx = w / 2f, cy = 50, rad = 30;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+                if (dx * dx + dy * dy > rad * rad) continue;
+                float down = (y - (cy - rad)) / (2 * rad);
+                if (y > cy - rad * 0.35f)
+                {
+                    int band = (int)((y - (cy - rad * 0.35f)) / 5);
+                    if ((y - (cy - rad * 0.35f)) % 5 < 1 + band * 0.7f) continue; // the stripes, wider as they go down
+                }
+                t.Px[y * w + x] = Col.Rgb(255, (int)(230 - 170 * down), (int)(90 + 80 * down));
+            }
         return t;
     }
 
@@ -275,6 +332,21 @@ public sealed partial class Game
                 th.Riser = RoomLooks.Panel(Col.Rgb(0, 8, 3), green, vertical: false);
                 th.Sky = sky.Tex;
                 th.FogColor = Col.Rgb(0, 10, 4);
+                th.Light = 256;
+                break;
+            }
+            case "vaporwave":
+            {
+                var pink = (255, 60, 200);
+                th.FloorIn = RoomLooks.Panel(Col.Rgb(26, 4, 48), pink, bright: 1.1f);
+                th.FloorOut = th.FloorIn;
+                th.CeilIn = RoomLooks.Panel(Col.Rgb(20, 4, 40), (90, 220, 255), bright: 0.5f);
+                var wall = RoomLooks.Blinds((255, 130, 210), (70, 20, 130), (90, 230, 255));
+                foreach (var g in own.Walls.Keys.ToList()) th.Walls[g] = wall;
+                th.Walls['I'] = RoomLooks.Blinds((120, 255, 230), (20, 110, 140), (255, 255, 255)); // the goals: teal
+                th.Riser = RoomLooks.Panel(Col.Rgb(40, 8, 70), pink, vertical: false);
+                th.Sky = RoomLooks.Sunset();
+                th.FogColor = Col.Rgb(70, 20, 90);
                 th.Light = 256;
                 break;
             }
