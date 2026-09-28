@@ -227,7 +227,7 @@ public sealed class DemoPilot
     {
         if (_sim == null)
         {
-            _sim = new Game { FixedSeed = 1 };
+            _sim = new Game { FixedSeed = 1, Replaying = true }; // a private copy: it records and saves nothing
             _sim.Vars.Ghost = false; _sim.Vars.StrafeHelp = 0; _sim.Vars.QuakeMove = g.Vars.QuakeMove;
             _sim.StartPractice(g.P.Class, g.Course);
         }

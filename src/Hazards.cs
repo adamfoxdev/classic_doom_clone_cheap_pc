@@ -18,7 +18,13 @@ public sealed partial class Game
 
     public enum HazardKind { None, Crumble, Wind, Flood }
 
-    public static HazardKind HazardOf(Level lv) => lv?.RawName switch
+    public static HazardKind HazardOf(Level lv) => lv?.Hazard is { } own ? own switch
+    {
+        "crumble" => HazardKind.Crumble,
+        "wind" => HazardKind.Wind,
+        "flood" => HazardKind.Flood,
+        _ => HazardKind.None,
+    } : lv?.RawName switch
     {
         "Bedrock Depths" => HazardKind.Crumble,
         "Windspire" => HazardKind.Wind,
@@ -26,7 +32,8 @@ public sealed partial class Game
         _ => HazardKind.None,
     };
 
-    public bool HazardsOn => NgTier > 0 && Mode == GameMode.Playing && !Relaxed && Rematch == null && Level != null && !Level.Flight;
+    /// <summary>Hazards are New Game+'s, except on a custom map that sets its own (which it has every time).</summary>
+    public bool HazardsOn => (NgTier > 0 || Level?.Hazard != null) && Mode == GameMode.Playing && !Relaxed && Rematch == null && Level != null && !Level.Flight;
 
     /// <summary>A gust is blowing (at GustAngle), the Cisterns are flooding, and you're standing in the coolant.</summary>
     public bool Gusting, Flooding, InCoolant;

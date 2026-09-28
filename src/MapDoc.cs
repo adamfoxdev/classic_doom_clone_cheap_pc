@@ -15,6 +15,10 @@ public sealed class MapDoc
     public float DefaultHeight = 1f;
     /// <summary>Floor height per cell: '1'..'9' (0.25..2.25), or '.' for ground level.</summary>
     public char[] Floors;
+    /// <summary>The map's hazard ("none", "wind" or "flood") and its chance of elites (0 to 0.5), every time it's played.</summary>
+    public string Hazard = "none";
+    public float Elites;
+    public static readonly string[] Hazards = { "none", "wind", "flood" };
 
     public MapDoc(int w, int h)
     {
@@ -38,13 +42,15 @@ public sealed class MapDoc
     public bool HasHeights => Heights.Any(h => h != '.');
     public string[] FloorRows() => Enumerable.Range(0, H).Select(y => new string(Floors, y * W, W)).ToArray();
     public bool HasFloors => Floors.Any(f => f != '.');
-    public MapDef ToDef() => new(Name, Name, ThemeId, Rows(), HasHeights ? HeightRows() : null, DefaultHeight, HasFloors ? FloorRows() : null);
+    public MapDef ToDef() => new(Name, Name, ThemeId, Rows(), HasHeights ? HeightRows() : null, DefaultHeight, HasFloors ? FloorRows() : null,
+        Hazard: Hazard == "none" ? null : Hazard, Elites: Elites);
 
     public static bool IsHeightGlyph(char c) => Level.IsHeightGlyph(c);
 
     public static MapDoc FromDef(MapDef d)
     {
-        var doc = new MapDoc(d.Rows.Max(r => r.Length), d.Rows.Length) { Name = d.Name, ThemeId = d.ThemeId, DefaultHeight = d.Height };
+        var doc = new MapDoc(d.Rows.Max(r => r.Length), d.Rows.Length) { Name = d.Name, ThemeId = d.ThemeId, DefaultHeight = d.Height,
+            Hazard = Hazards.Contains(d.Hazard) ? d.Hazard : "none", Elites = Math.Clamp(d.Elites, 0, 0.5f) };
         for (int y = 0; y < doc.H; y++)
             for (int x = 0; x < doc.W; x++)
             {
@@ -61,15 +67,18 @@ public sealed class MapDoc
     // ---- file format: "name:" and "theme:" header lines, a "---" line, then the rows
 
     public string Serialize() =>
-        $"# Hexen Sharp map\nname: {Name}\ntheme: {ThemeId}\nheight: {DefaultHeight.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}\n---\n"
+        $"# Hexen Sharp map\nname: {Name}\ntheme: {ThemeId}\nheight: {DefaultHeight.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}\n"
+        + (Hazard != "none" ? $"hazard: {Hazard}\n" : "")
+        + (Elites > 0 ? $"elites: {Elites.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}\n" : "")
+        + "---\n"
         + string.Join("\n", Rows()) + "\n"
         + (HasHeights || HasFloors ? "---\n" + string.Join("\n", HeightRows()) + "\n" : "")
         + (HasFloors ? "---\n" + string.Join("\n", FloorRows()) + "\n" : "");
 
     public static MapDoc Parse(string text)
     {
-        string name = "Untitled", theme = "hall";
-        float height = 1f;
+        string name = "Untitled", theme = "hall", hazard = "none";
+        float height = 1f, elites = 0;
         var rows = new List<string>();
         var heights = new List<string>();
         var floors = new List<string>();
@@ -85,15 +94,18 @@ public sealed class MapDoc
             else if (line.StartsWith("theme:")) theme = line[6..].Trim();
             else if (line.StartsWith("height:") && float.TryParse(line[7..].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float h))
                 height = Math.Clamp(MathF.Round(h * 2) / 2, Level.MinHeight, Level.MaxHeight);
+            else if (line.StartsWith("hazard:")) hazard = line[7..].Trim().ToLowerInvariant();
+            else if (line.StartsWith("elites:") && float.TryParse(line[7..].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float e))
+                elites = Math.Clamp(MathF.Round(e * 100) / 100, 0, 0.5f);
         }
         if (rows.Count == 0) throw new InvalidDataException("map has no rows");
         if (!Maps.ThemeIds.Contains(theme)) theme = "hall";
         return FromDef(new MapDef(name, name, theme, rows.ToArray(), heights.Count > 0 ? heights.ToArray() : null, height,
-            floors.Count > 0 ? floors.ToArray() : null));
+            floors.Count > 0 ? floors.ToArray() : null, Hazard: hazard, Elites: elites));
     }
 
     /// <summary>Every glyph a map can use (the map legend in the README). Anything else loads as floor.</summary>
-    public const string KnownGlyphs = "#BWMIO.,DSFPLZX^KNQU@E123456789*!+=eacCdHhqubgrkfwx$%&JVAtpT";
+    public const string KnownGlyphs = "#BWMIO.,DSFPLZX^KNQU@E123456789*!+=eacCdHGRYoyhqubgrkfwxm$%&JVAtpT";
 
     public static bool IsKnownGlyph(char c) => KnownGlyphs.IndexOf(c) >= 0;
 

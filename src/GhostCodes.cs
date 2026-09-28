@@ -10,6 +10,9 @@ namespace HexenSharp;
 /// </summary>
 public sealed record GhostCode(string Course, int Seed, string Class, string Name, float Time, GhostTrack Track)
 {
+    /// <summary>Built from a replay, so its time is the game's own (see Game.GhostFromReplay).</summary>
+    public bool Verified { get; init; }
+
     public const string Prefix = "HXG1.";
 
     /// <summary>The code: "HXG1." then the run, deflated and in URL-safe base64.</summary>
@@ -79,6 +82,30 @@ public sealed record GhostCode(string Course, int Seed, string Class, string Nam
 
 public sealed partial class Game
 {
+    /// <summary>Called with each run finished at full speed (a timed course's lap, or an endless run's fall): its time and path.</summary>
+    public Action<float, GhostTrack> LapFinished;
+
+    /// <summary>
+    /// An exact ghost from a replay of a course or endless run: the replay is played through, and the best run in it
+    /// (the quickest lap of a timed course, the longest endless run) becomes the ghost. Its time is the one the game
+    /// itself measured, so it can't be made up. Null, with why, if the replay has no finished run to take.
+    /// </summary>
+    public static GhostCode GhostFromReplay(Replay r, out string why)
+    {
+        why = null;
+        if (r.Start.Kind is not ("practice" or "endless")) { why = "that replay isn't of a practice course or the endless course"; return null; }
+        var g = r.Begin();
+        (float time, GhostTrack track)? best = null;
+        bool endless = r.Start.Kind == "endless";
+        g.LapFinished = (t, track) =>
+        {
+            if (best == null || (endless ? t > best.Value.time : t < best.Value.time)) best = (t, track);
+        };
+        foreach (var (dt, inp) in r.Frames) g.Update(inp, dt);
+        if (best is not { } b || b.track.Points.Count < 2) { why = "there's no finished run in that replay"; return null; }
+        return new GhostCode(g.Course.Id, endless ? g.Course.Seed : 0, r.Start.Class, r.Start.Name, b.time, b.track) { Verified = true };
+    }
+
     /// <summary>A friend's ghost you've loaded, raced instead of your own on its course (or endless seed).</summary>
     public GhostCode Rival;
     /// <summary>The path of your last endless run, for its ghost code.</summary>
@@ -130,7 +157,7 @@ public sealed partial class Game
             Rival = code; // starting a course keeps it
         }
         else ShowGhost();
-        Say($"Racing {code.Name}'s ghost ({code.Time:0.00}s" + (course.Endless ? $", seed {code.Seed})." : ")."));
+        Say($"Racing {code.Name}'s ghost ({code.Time:0.00}s" + (course.Endless ? $", seed {code.Seed}" : "") + (code.Verified ? ", verified from a replay)." : ")."));
         return true;
     }
 

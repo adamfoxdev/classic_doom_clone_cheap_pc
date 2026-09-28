@@ -238,7 +238,17 @@ public sealed class Profile
         try
         {
             if (path == null || !File.Exists(path)) return new Profile();
-            var p = JsonSerializer.Deserialize<Profile>(File.ReadAllText(path)) ?? new Profile();
+            return FromJson(File.ReadAllText(path));
+        }
+        catch (Exception) { return new Profile(); }
+    }
+
+    /// <summary>A profile from its JSON (as ToJson writes it), tidied up; a fresh one if it won't read.</summary>
+    public static Profile FromJson(string json)
+    {
+        try
+        {
+            var p = JsonSerializer.Deserialize<Profile>(json) ?? new Profile();
             p.Level = Math.Clamp(p.Level, 1, MaxLevel);
             p.Xp = Math.Max(0, p.Xp);
             p.Points = Math.Max(0, p.Points);

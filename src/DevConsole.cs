@@ -334,6 +334,40 @@ public sealed class DevConsole
             Print($"endless course, seed {_g.Course.Seed}");
             Open = false;
         });
+        Add("replaysave", "[name]", "save the run you're in (or the last one) as a replay file in your replays folder", a =>
+        {
+            var r = _g.RecentReplay;
+            if (r == null || r.Frames.Count == 0) { Print("replaysave: no run to save yet (a replay starts with New game, a course, the arena...)"); return; }
+            string name = a.Length > 1 ? string.Join("-", a[1..]) : $"{r.Start.Kind}-{r.Start.Class.ToLowerInvariant()}-{DateTime.Now:yyyyMMdd-HHmmss}";
+            name = new string(name.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
+            try
+            {
+                Directory.CreateDirectory(_g.ReplayDir);
+                string path = Path.Combine(_g.ReplayDir, name + ".hxreplay");
+                string code = r.Encode();
+                File.WriteAllText(path, code + Environment.NewLine);
+                _g.CopyText?.Invoke(code);
+                Print($"saved {r.Frames.Count} frames ({r.Duration:0.0}s) to {path}" + (_g.CopyText != null ? ", and copied it" : ""));
+            }
+            catch (IOException e) { Print("replaysave: " + e.Message); }
+        });
+        Add("replayplay", "[file]", "watch a replay: the run you're in or the last one, or a file (in your replays folder or a path); Esc stops", a =>
+        {
+            Replay r;
+            if (a.Length < 2) r = _g.RecentReplay;
+            else
+            {
+                string arg = string.Join(" ", a[1..]);
+                string file = File.Exists(arg) ? arg : Path.Combine(_g.ReplayDir, arg.EndsWith(".hxreplay") ? arg : arg + ".hxreplay");
+                if (!File.Exists(file)) { Print("replayplay: no such replay"); return; }
+                r = Replay.Decode(File.ReadAllText(file));
+                if (r == null) { Print("replayplay: that replay is damaged"); return; }
+            }
+            if (r == null || r.Frames.Count == 0) { Print("replayplay: no run to watch yet"); return; }
+            _g.WatchReplay(r);
+            Print($"watching {r.Start.Kind} as the {r.Start.Class}: {r.Duration:0.0}s");
+            Open = false;
+        });
         Add("ghostcode", "", "share a run: your best on this timed course (as this class), or your last endless run; prints a code, saves it to a file and copies it", a =>
         {
             var code = _g.ShareableGhost(out string why);
@@ -354,13 +388,22 @@ public sealed class DevConsole
                 text = _g.PasteText?.Invoke();
                 if (string.IsNullOrWhiteSpace(text)) { Print("ghostload: copy a ghost code first, or give the name of a .hxghost file"); return; }
             }
-            else if (!arg.StartsWith(GhostCode.Prefix))
+            else if (!arg.StartsWith(GhostCode.Prefix) && !arg.StartsWith(Replay.Prefix))
             {
-                string file = File.Exists(arg) ? arg : Path.Combine(_g.GhostDir, arg);
+                string file = File.Exists(arg) ? arg : File.Exists(Path.Combine(_g.GhostDir, arg)) ? Path.Combine(_g.GhostDir, arg) : Path.Combine(_g.ReplayDir, arg);
                 if (!File.Exists(file)) { Print("ghostload: that isn't a ghost code or a file"); return; }
                 text = File.ReadAllText(file);
             }
-            var code = GhostCode.Decode(text);
+            // a replay makes an exact ghost: it's played through, and its best run taken, at the time the game measured
+            GhostCode code;
+            if (text.TrimStart().StartsWith(Replay.Prefix))
+            {
+                var rep = Replay.Decode(text);
+                if (rep == null) { Print("ghostload: that replay is damaged or incomplete"); return; }
+                code = Game.GhostFromReplay(rep, out string whyNot);
+                if (code == null) { Print("ghostload: " + whyNot); return; }
+            }
+            else code = GhostCode.Decode(text);
             if (code == null) { Print("ghostload: that code is damaged or incomplete"); return; }
             if (!_g.LoadGhost(code, out string why)) { Print("ghostload: " + why); return; }
             Print($"racing {code.Name}'s ghost: {code.Time:0.00}s on {code.Course}{(code.Seed > 0 ? " seed " + code.Seed : "")}");

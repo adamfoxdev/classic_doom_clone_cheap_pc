@@ -116,6 +116,7 @@ public sealed partial class Game
             if (place > 0) SaveProfile();
             LastEndless = run; LastEndlessPlace = place;
             LastEndlessTrack = Recording; // for 'ghostcode'
+            LapFinished?.Invoke(RunTime, Recording);
             PlaySound(place == 1 ? Sfx.Secret : Sfx.Teleport, 1);
             string how = finished ? $"You made it to the end! All {reached} platforms" : $"Fell after platform {reached}";
             Say(place == 1 ? $"{how} - a new best!" : place > 0 ? $"{how} - #{place} on the board (best {best})." : $"{how} (best {best}).");

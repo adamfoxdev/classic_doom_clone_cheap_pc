@@ -64,10 +64,10 @@ public sealed partial class Game
         m.Shield = a == Affix.Shielded ? (int)(m.MaxHealth * Elites.ShieldShare) : 0;
     }
 
-    /// <summary>Rolls elites among a map's ordinary monsters, for the tier.</summary>
-    void RollElites(Level lv)
+    /// <summary>Rolls elites among a map's ordinary monsters: for the New Game+ tier, or a custom map's own chance.</summary>
+    void RollElites(Level lv, float? chanceOverride = null)
     {
-        float chance = Elites.Chance(NgTier);
+        float chance = chanceOverride ?? Elites.Chance(NgTier);
         if (chance <= 0) return;
         foreach (var m in lv.Things.OfType<Monster>())
             if (Elites.Eligible(m) && _eliteRng.NextDouble() < chance) MakeElite(m, Elites.All[_eliteRng.Next(Elites.All.Length)]);

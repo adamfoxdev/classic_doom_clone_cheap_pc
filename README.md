@@ -201,7 +201,11 @@ see [Rendered art pack](#rendered-art-pack-blender)).
 
 ## Running
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download). Windowing, input and audio come from
+**Download:** each [release](https://github.com/adamfoxdev/classic_doom_clone_cheap_pc/releases) has a zip for Windows
+(`win-x64`) and one for Linux (`linux-x64`). Each holds a single self-contained executable (no .NET install needed),
+this README and the map editor (`editor/index.html`). Unzip it and run `HexenSharp.exe` or `./HexenSharp`.
+
+**From source:** requires the [.NET 8 SDK](https://dotnet.microsoft.com/download). Windowing, input and audio come from
 [Raylib-cs](https://github.com/ChrisDill/Raylib-cs), which NuGet fetches with native binaries for
 Windows, Linux and macOS.
 
@@ -783,6 +787,16 @@ editor saves, and its checks give exactly the same messages.
   highlight the cells involved. The **Reach** overlay shades everything you can't get to from the start or the
   arrival portal.
 - **Editing:** undo/redo, zoom and pan, resize, and a **Built-in maps** menu to start from any hub map.
+- **Mini-bosses and mods:**
+  - **Mini-bosses:** the palette's **Mini-bosses** group places the Quarry Warden (`G`), Dust Stalker (`R`),
+    Thornmother (`Y`), Drowned Keeper (`o`) and Rock Wyrm (`y`). Set the Wyrm in rubble: it swims through rock. The
+    Storm Leviathan needs a flight lane, which a custom map can't be.
+  - **Weapon mods:** `m` places one, rolled from the four each time the map starts.
+- **Hazard and elites:** two map settings in the right-hand panel. They apply every time the map is played, where
+  the hub only has its hazards and elites in New Game+.
+  - **Hazard:** none, wind gusts or floods, as on the Windspire and in the Cisterns.
+  - **Elites:** the chance each ordinary monster is an elite, up to 50%.
+  - **In the file:** `hazard:` and `elites:` header lines, written only when set.
 - **Files:** Save writes the file directly in Chrome and Edge (other browsers download it). You can also drag a
   file onto the page, or view/paste the map as text. Your draft is kept in the browser between visits.
 
@@ -1014,6 +1028,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `profile [reset]` | show your level, skills and totals, or start your progress over |
 | `name [name]` | show or set the name your practice course times go on the leaderboard under |
 | `demo` | on a practice course, start the demo run from the beginning |
+| `replaysave [name]` | save the run you're in (or the last one) as a replay file, and copy its code |
+| `replayplay [file]` | watch a replay: the current or last run, or a file; `Esc` stops it |
 | `ghostcode` | share your best on this timed course (or your last endless run) as a code: printed, copied and saved to a file |
 | `ghostload [file]` | race a friend's ghost from the code on the clipboard, or a `.hxghost` file; `ghostclear` goes back to your own |
 | `endless [seed]` | play the endless practice course on a new seed, or on the one you name |
@@ -1034,6 +1050,10 @@ dotnet run -c Release -- --selftest       # validates maps (reachability) and ru
 dotnet run -c Release -- --shots shots    # renders scripted screenshots headlessly into ./shots
 dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styles, as WAV files into ./sounds
 dotnet run -c Release -- --bench [frames] # times the renderer on fixed views, from rooms to the tall open maps
+dotnet run -c Release -- --bench-compare 1.25 base.txt -- head.txt   # fails if head's --bench is >25% slower
+dotnet run -c Release -- --version        # prints the version (a release build's tag, else "dev")
+dotnet run -c Release -- --replay file.hxreplay   # plays a replay headlessly and prints where it ended
+dotnet run -c Release -- --update-replays # rewrites tests/replays' expected endings after a meant gameplay change
 dotnet run -c Release -- --play map.hxm   # play-tests a map file, reloading it whenever it's saved
 dotnet run -c Release -- --check-map map.hxm   # prints the editor's checks for a map (exit code 1 if unplayable)
 dotnet run -c Release -- --export-maps maps    # writes every built-in hub map as a .hxm file
@@ -1062,6 +1082,46 @@ Cisterns, a few hundred times each, on one thread and then on all of them. It pr
 **CI:** `.github/workflows/tests.yml` runs on every pull request and every push to `main`. It builds, runs the
 self-test and the editor test (installing Playwright and Chromium), then renders the screenshot tour and uploads it as
 a `screenshots` artifact, so each PR's screenshots can be looked through. Any failed check fails the run.
+
+**Replays:** every run is recorded as you play it, as its start and every frame's input and frame time. The start is
+the run's seed, the mode, your class, every setting and a copy of your profile. The game is deterministic, so a replay
+plays out exactly as the run did, on any machine.
+- **Commands:**
+  - `replaysave [name]` saves the run you're in, or the last one, as a `.hxreplay` file in the `replays` folder next
+    to your profile, and copies its code.
+  - `replayplay [file]` watches it, the run you're in or a file, in place of your game. `Esc` stops it.
+  - `--replay file` plays one headlessly and prints where it ended.
+- **What gets recorded:** each new game, course, arena run, daily, rematch or Story case, starting over at each
+  Restart. A continued save or a play-tested map file isn't recorded, since a replay can't start from those.
+- **Exact ghosts:** `ghostload` also takes a replay (a code on the clipboard, or a `.hxreplay` file) of a course or
+  endless run. It plays the replay through and races its best run: the quickest lap, or the longest endless run. The
+  time is the one the game measured, so the ghost is marked *verified*.
+- **Regression tests:** `tests/replays` holds five recorded runs:
+  - a bot through the hub, the arena and New Game+ 2;
+  - the demo pilot on Descent and on the endless course.
+
+  The self-test plays each and checks it ends exactly where it did when recorded. That covers position, health,
+  kills, the monsters left and the time.
+  - **After a change that's meant to alter how they play:** `--update-replays` keeps the inputs and rewrites the
+    expected endings.
+  - **To record them afresh:** `--make-replays`.
+
+**Releases:** `.github/workflows/release.yml` runs when a tag like `v1.2.0` is pushed.
+- **What it does:** it runs the self-test, then publishes self-contained single-file builds for Windows and Linux,
+  compressed, about 31 MB zipped. It stamps the version from the tag (`--version` prints it) and zips each with the
+  README and the editor.
+- **Where they go:** they're attached to a GitHub release for the tag, with generated release notes.
+- **By hand:** running the workflow manually (Actions → Release → Run workflow) builds the same zips as an artifact,
+  without making a release.
+
+**Performance check:** on a pull request a second job, `perf`, benchmarks the branch against the base it's merging
+into.
+- **How:** it builds both on the same runner, so the runner's speed cancels out. It then runs each side's
+  single-thread `--bench 200` three times, alternating, and takes each view's best.
+- **When it fails:** if the branch is more than 25% slower on average, or 50% slower on any one view (single views
+  are noisier, and changes under 0.05 ms don't count).
+- **The report:** a per-view table in the job's summary.
+- **Locally:** `--bench-compare 1.25 base-*.txt -- head-*.txt` runs the same comparison on saved `--bench` output.
 
 ## Rendered art pack (Blender)
 
@@ -1137,6 +1197,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
 | `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
+| `src/Replay.cs` | Deterministic replays: recording a run, playing one back, watching, and the file format |
 | `src/GhostCodes.cs` | Ghost codes: packing a run into a line of text, and racing a friend's |
 | `src/Elites.cs` | New Game+ elites: their gifts, outlines, and what each does |
 | `src/Director.cs` | The New Game+ director: ambushes when you backtrack through places you've been |
@@ -1154,7 +1215,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches, hazards, the director, ghost codes, elites |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches, hazards, the director, ghost codes, elites, replays and the regression replays |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |
@@ -1181,3 +1242,4 @@ Maps are ASCII grids in `src/Level.cs`:
 | `*` | arena spawn rune | `!` | arena altar (starts the waves) |
 | `+` | checkpoint pad (its whole ledge counts; respawn here) | `=` | lift pad (back to your highest checkpoint) |
 | `w` `x` | weapon piece for slot 2 / slot 3 | `t` `p` `T` | torch, pillar, tree |
+| `G` `R` `Y` `o` `y` | mini-bosses: Quarry Warden, Dust Stalker, Thornmother, Drowned Keeper, Rock Wyrm (custom maps) | `m` | weapon mod (one of the four, rolled at the start) |

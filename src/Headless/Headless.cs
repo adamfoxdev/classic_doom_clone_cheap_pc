@@ -65,6 +65,12 @@ public static partial class Headless
         ArenaModeChecks(Check);
         Console.WriteLine("Save and continue:");
         SaveChecks(Check);
+        Console.WriteLine("Custom map features:");
+        MapFeatureChecks(Check);
+        Console.WriteLine("Replays:");
+        ReplayChecks(Check);
+        Console.WriteLine("Benchmark comparison:");
+        BenchChecks(Check);
         Console.WriteLine("Elites:");
         EliteChecks(Check);
         Console.WriteLine("Ghost codes:");
