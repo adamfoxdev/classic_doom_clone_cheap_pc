@@ -542,7 +542,7 @@ Rare attachments that change how a weapon behaves. There are four, each a glowin
 | **Frost Rune** / **Cryo Emitter** (pale blue) | A hit slows the monster to half speed for 2.5 seconds. |
 
 - **Where they come from:** chests, rarely (about one in 25 in a first campaign), and more often in New Game+
-  (about one in 12 at tier 1 and one in 6 at tier 2). In New Game+ every mini-boss drops one too.
+  (about one in 10 at tier 1 and one in 6 at tier 2). In New Game+ every mini-boss drops one too.
 - **Fitting one:** walk over it and it fits the weapon in your hand, replacing that weapon's mod if it had one. Each
   weapon carries one mod at most, so switch to the weapon you want it on before you pick it up. One your weapon
   already has stays on the floor.
