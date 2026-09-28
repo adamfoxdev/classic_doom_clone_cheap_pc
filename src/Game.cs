@@ -1116,9 +1116,9 @@ public sealed class Game
             float sx = dx / steps, sy = dy / steps;
             for (int i = 0; i < steps; i++)
             {
-                if (sx != 0 && !Blocked(p.X + sx, p.Y, p.Radius, null)) p.X += sx;
+                if (sx != 0 && !Blocked(p.X + sx, p.Y, p.Radius, null, p.SlideTime > 0)) p.X += sx;
                 else if (sx != 0) { sx = 0; p.VX = 0; }
-                if (sy != 0 && !Blocked(p.X, p.Y + sy, p.Radius, null)) p.Y += sy;
+                if (sy != 0 && !Blocked(p.X, p.Y + sy, p.Radius, null, p.SlideTime > 0)) p.Y += sy;
                 else if (sy != 0) { sy = 0; p.VY = 0; }
             }
         }
@@ -2037,7 +2037,7 @@ public sealed class Game
     }
 
     /// <summary>Would a circle at (x,y) hit a wall or a solid thing (other than `self`)?</summary>
-    bool Blocked(float x, float y, float r, Thing self)
+    bool Blocked(float x, float y, float r, Thing self, bool phaseMonsters = false)
     {
         if (Level.BlocksCircle(x, y, r)) return true;
         // steps: you can walk up MaxStep; jumping (or flying) lifts you higher
@@ -2050,6 +2050,7 @@ public sealed class Game
         {
             if (t == self || !t.Solid || t.Removed) continue;
             if (t is Monster m && !m.Alive) continue;
+            if (phaseMonsters && t is Monster) continue;
             float rr = r + t.Radius;
             float dx = t.X - x, dy = t.Y - y;
             if (dx * dx + dy * dy < rr * rr)

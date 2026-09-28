@@ -2432,6 +2432,21 @@ public static class Headless
         float slid = g.P.X - x0;
         check(slid > walked * 1.3f, $"slide covers more ground ({slid:0.00} vs {walked:0.00})");
         check(g.P.Health == 100, "sliding ducks under a fireball");
+
+        // Walking still collides with an enemy, but a slide can carry the player through it.
+        g.Vars.Freeze = true;
+        var enemy = new Monster(Monster.Ettin) { X = 3.2f, Y = 2.5f, Level = g.Level };
+        g.Level.Things.Add(enemy);
+        g.P.X = 2.5f; g.P.Y = 2.5f; g.P.Angle = 0; g.P.SlideTime = 0;
+        Tick(new Input { Move = 1 }, 12);
+        check(g.P.X < enemy.X - g.P.Radius, "walking remains blocked by enemies");
+        g.P.X = 2.5f; g.P.SlideCd = 0;
+        Tick(new Input { Move = 1, Slide = true }); Tick(new Input { Move = 1 }, 15);
+        check(g.P.X > enemy.X + enemy.Radius, "sliding passes through enemies");
+        g.Level.Things.Remove(enemy);
+        g.P.X = 6.5f; g.P.Y = 2.5f; g.P.SlideTime = 0; g.P.SlideCd = 0;
+        Tick(new Input { Move = 1, Slide = true }); Tick(new Input { Move = 1 }, 15);
+        check(g.P.X > 6.5f && g.P.X <= 7f - g.P.Radius, "sliding still stops at walls");
     }
 
     static void ConsoleChecks(Action<bool, string> check)
