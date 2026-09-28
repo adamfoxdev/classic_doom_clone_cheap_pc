@@ -179,6 +179,11 @@ public sealed class Renderer
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.EndlessBest(c)}");
                         CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
                     }
+                    if (course.Tower)
+                    {
+                        var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.TowerBest(c):0.0}");
+                        CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                    }
                     if (course.Range)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.RangeBest(c)}");
@@ -204,6 +209,9 @@ public sealed class Renderer
         if (m.BoardArena) { DrawArenaBoard(g, def); return; }
         if (m.BoardDaily) { DrawDailyBoard(g); return; }
         if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
+        if (m.BoardTower) { DrawTowerBoard(g, def); return; }
+        if (m.BoardRail) { DrawRailBoard(g, def); return; }
+        if (m.BoardInstagib) { DrawInstagibBoard(g, def); return; }
         if (m.BoardRange) { DrawRangeBoard(g, def); return; }
         if (m.BoardRematch) { DrawRematchBoard(g); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
@@ -357,14 +365,14 @@ public sealed class Renderer
         int n = ArenaModInfo.All.Length;
         for (int i = 0; i < items.Length; i++)
         {
-            int y = 41 + i * 11 + (i >= n ? 5 : 0);
+            int y = 40 + i * 9 + (i >= n ? 4 : 0);
             bool sel = i == m.Cursor;
             if (i >= n) { MenuItem(items[i], y, sel); continue; }
             var mod = ArenaModInfo.All[i];
             bool set = (g.ArenaMods & mod) != 0;
-            if (sel) Rect(40, y - 2, 240, 11, Col.Rgb(70, 40, 20));
+            if (sel) Rect(40, y - 1, 240, 9, Col.Rgb(70, 40, 20));
             Text(48, y, items[i].ToUpperInvariant(), sel ? MenuSel : MenuText);
-            string val = set ? $"ON  +{ArenaModInfo.Bonus(mod) * 100:0}%" : "OFF";
+            string val = !set ? "OFF" : ArenaModInfo.Bonus(mod) > 0 ? $"ON  +{ArenaModInfo.Bonus(mod) * 100:0}%" : "ON";
             Text(272 - Font.Width(val), y, val, set ? on : sel ? MenuSel : MenuDim);
         }
         bool daily = m.Cursor < items.Length && items[m.Cursor] == "Daily challenge";
@@ -374,7 +382,7 @@ public sealed class Renderer
             : null;
         if (about != null)
             foreach (var (line, k) in Wrap(about, 50).Select((l, k) => (l, k)))
-                CenterText(line, 136 + k * 10, daily ? on : blue);
+                CenterText(line, 137 + k * 9, daily ? on : blue);
         var diff = Difficulties.Of(g.Vars);
         var mods = daily ? Daily.For(Daily.Today).mods : g.ArenaMods;
         CenterText(diff == Difficulty.Custom ? "CUSTOM DIFFICULTY: RUNS AREN'T RECORDED"
@@ -797,7 +805,7 @@ public sealed class Renderer
         var (shakeYaw, shakePitch) = g.ShakeOffset();
         _dirX = MathF.Cos(p.Angle + shakeYaw); _dirY = MathF.Sin(p.Angle + shakeYaw);
         float zoom = g.Intro != null && g.Vars.BossIntros ? 1 - 0.08f * g.Intro.Amount : 1;
-        PlaneLen = MathF.Tan(g.Vars.Fov * MathF.PI / 360f) * zoom;
+        PlaneLen = MathF.Tan(g.ViewFov * MathF.PI / 360f) * zoom;
         Proj = (W / 2f) / PlaneLen;
         _fogDist = th.FogDist * g.Vars.Fog;
         _invFog = 1f / _fogDist;
@@ -1621,6 +1629,12 @@ public sealed class Renderer
             string line = g.DailyMode ? (g.TodaysRun(g.DailyDate) is { } today ? $"TODAY {today.Score}" : $"DAILY {g.DailyDate:MM-dd}")
                 : best > 0 ? $"BEST {best} WAVE{(best == 1 ? "" : "S")}" : "NO BEST YET";
             Text(W - 4 - Font.Width(line), top + 10, line, Col.Rgb(255, 220, 90));
+            if (g.InstagibOn)
+            {
+                // instagib: the streak of slugs that hit, and the run's best
+                string st = $"STREAK {g.Streak}  BEST {g.BestStreak}";
+                Text(W - 4 - Font.Width(st), top + 30, st, g.Streak >= 5 ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 210, 230));
+            }
             var (next, at) = ArenaMedals.Next(Math.Max(best, a.BestWave));
             if (next != Medal.None)
             {
@@ -1767,6 +1781,13 @@ public sealed class Renderer
         if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
         if (g.OnEndless && style != HudStyle.Off) DrawEndlessHud(g);
         if (g.OnRange && style != HudStyle.Off) DrawRangeHud(g);
+        if (g.OnTower && style != HudStyle.Off) DrawTowerHud(g);
+        if (g.LastTrick != Trick.None && g.TrickAge < Tricks.CalloutTime && style != HudStyle.Off)
+        {
+            // a trick's name across the view, fading as it goes
+            int fade = (int)(255 * MathF.Min(1, (Tricks.CalloutTime - g.TrickAge) * 3));
+            CenterText(Tricks.Name(g.LastTrick), ViewH / 2 - 44 - (int)(g.TrickAge * 6), Col.Shade(Col.Rgb(255, 200, 70), fade), 2);
+        }
         if (g.Rematch != null && style != HudStyle.Off) DrawRematchClock(g);
         if (g.Practicing) DrawDemoBanner(g);
         switch (style)
@@ -1856,7 +1877,14 @@ public sealed class Renderer
         int y = g.Vars.ShowFps ? 12 : 3;
         int best = g.Profile.RangeBest(g.P.Class);
         void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
-        if (g.Drilling)
+        if (g.RailTrial)
+        {
+            int acc = g.TrialShots == 0 ? 100 : (int)MathF.Round(100f * g.TrialHits / g.TrialShots);
+            Right($"RAIL {MathF.Ceiling(g.TrialLeft):0}", 0, g.TrialLeft < 10 ? Col.Rgb(255, 120, 90) : Col.Rgb(240, 236, 220));
+            Right($"SCORE {g.TrialScore}", 10, Col.Rgb(120, 255, 140));
+            Right($"HITS {g.TrialHits}  {acc}%", 20, Col.Rgb(150, 150, 160));
+        }
+        else if (g.Drilling)
         {
             Right($"DRILL {MathF.Ceiling(g.DrillLeft):0}", 0, g.DrillLeft < 10 ? Col.Rgb(255, 120, 90) : Col.Rgb(240, 236, 220));
             Right($"SCORE {g.DrillScore}", 10, Col.Rgb(120, 255, 140));
@@ -1864,11 +1892,91 @@ public sealed class Renderer
         }
         else
         {
-            Right($"{Keys.Name(g.Binds.Get(Act.Use, 0))}: DRILL", 0, Col.Rgb(240, 236, 220));
+            Right($"{Keys.Name(g.Binds.Get(Act.Use, 0))}: {(g.P.CurWeapon.Rail ? "RAIL TRIAL" : "DRILL")}", 0, Col.Rgb(240, 236, 220));
             if (best > 0) Right($"BEST {best}", 10, Col.Rgb(255, 220, 90));
         }
-        if (g.RocketJumps > 0) Right($"ROCKET JUMPS {g.RocketJumps}", g.Drilling ? 30 : best > 0 ? 20 : 10, Col.Rgb(255, 170, 80));
+        if (g.RocketJumps > 0) Right($"ROCKET JUMPS {g.RocketJumps}", g.Drilling || g.RailTrial ? 30 : best > 0 ? 20 : 10, Col.Rgb(255, 170, 80));
     }
+
+    /// <summary>On the tower: how high you've climbed, your best, and the seed.</summary>
+    void DrawTowerHud(Game g)
+    {
+        int y = g.Vars.ShowFps ? 12 : 3;
+        float best = g.Profile.TowerBest(g.P.Class);
+        void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
+        Right($"HEIGHT {g.TowerHeight:0.0}", 0, g.RunStarted ? Col.Rgb(240, 236, 220) : Col.Rgb(150, 150, 160));
+        if (best > 0) Right($"BEST {best:0.0}", 10, Col.Rgb(255, 220, 90));
+        Right($"SEED {g.Course.Seed}", best > 0 ? 20 : 10, Col.Rgb(150, 150, 160));
+    }
+
+    /// <summary>The rocket tower's board for one class: the highest climbs, then the quickest.</summary>
+    void DrawTowerBoard(Game g, ClassDef def)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        CenterText($"ROCKET TOWER   < {def.Name.ToUpperInvariant()} >", 26, blue);
+        CenterText("HEIGHT CLIMBED, IN CELLS", 36, gold);
+        var runs = g.Profile.TowerBoard(m.BoardClass);
+        if (runs.Count == 0)
+        {
+            CenterText("NO CLIMBS YET.", 70, MenuText);
+            CenterText("PICK PRACTICE > ROCKET TOWER ON THE TITLE MENU.", 82, MenuDim);
+        }
+        else
+        {
+            var latest = runs.MaxBy(r => r.When);
+            Text(18, 48, "#", MenuDim); Text(40, 48, "HEIGHT", MenuDim); Text(96, 48, "SEED", MenuDim); Text(142, 48, "TIME", MenuDim);
+            Text(184, 48, "NAME", MenuDim); Text(258, 48, "DATE", MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
+                Text(18, y, $"{i + 1,2}", c);
+                Text(40, y, $"{r.Height:0.0}", c);
+                Text(96, y, $"{r.Seed}", c);
+                Text(142, y, $"{r.Time:0.0}", c);
+                Text(184, y, r.Name, c);
+                Text(258, y, r.When == default ? "-" : r.When.ToString("MM-dd"), c);
+            }
+        }
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>A board of rows for one class: a title, a heading line, the columns, and each run's cells (the newest picked out).</summary>
+    void DrawRunBoard<T>(Game g, string title, string sub, string empty, (string head, int x)[] cols, List<T> runs, Func<T, DateTime> when, Func<T, string[]> cells)
+    {
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        CenterText(title, 26, blue);
+        CenterText(sub, 36, gold);
+        if (runs.Count == 0) { CenterText(empty, 70, MenuText); }
+        else
+        {
+            var latest = runs.MaxBy(when);
+            Text(18, 48, "#", MenuDim);
+            foreach (var (head, x) in cols) Text(x, 48, head, MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                uint c = Equals(r, latest) && when(r) != default ? fresh : i == 0 ? gold : MenuText;
+                Text(18, y, $"{i + 1,2}", c);
+                var row = cells(r);
+                for (int k = 0; k < cols.Length; k++) Text(cols[k].x, y, row[k], c);
+            }
+        }
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    void DrawRailBoard(Game g, ClassDef def) =>
+        DrawRunBoard(g, $"RAIL TRIALS   < {def.Name.ToUpperInvariant()} >", "30 SECONDS OF TARGETS, BY SCORE", "NO TRIALS YET. ON THE RANGE, USE WITH THE RAILGUN.",
+            new[] { ("SCORE", 40), ("HITS", 92), ("ACC", 130), ("TIME", 170), ("NAME", 214) }, g.Profile.RailBoard(g.Menu.BoardClass), r => r.When,
+            r => new[] { $"{r.Score}", $"{r.Hits}", $"{r.Accuracy}%", $"{r.Reaction:0.00}", r.Name });
+
+    void DrawInstagibBoard(Game g, ClassDef def) =>
+        DrawRunBoard(g, $"INSTAGIB   < {def.Name.ToUpperInvariant()} >", "WAVES, THEN THE LONGEST STREAK", "NO RUNS YET. ARENA > INSTAGIB, THEN START.",
+            new[] { ("WAVES", 40), ("STREAK", 92), ("KILLS", 146), ("NAME", 192), ("DATE", 258) }, g.Profile.InstagibBoard(g.Menu.BoardClass), r => r.When,
+            r => new[] { $"{r.Waves}", $"{r.BestStreak}", $"{r.Kills}", r.Name, r.When == default ? "-" : r.When.ToString("MM-dd") });
 
     /// <summary>The shooting range's board for one class: the best drills.</summary>
     void DrawRangeBoard(Game g, ClassDef def)

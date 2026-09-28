@@ -8,7 +8,7 @@ public struct Input
 {
     public float Move, Strafe, Turn;      // -1..1 from keys
     public float LookX, LookY;            // mouse delta in pixels
-    public bool Fire, Walk, JumpHeld, SlideHeld, JetHeld; // held
+    public bool Fire, Walk, JumpHeld, SlideHeld, JetHeld, ZoomHeld; // held
     public bool Use, UseItem, Place, Journal, Map, Pause, Confirm, Up, Down, Left, Right, Screenshot, Character, CycleHud; // pressed
     public int KeyPressed;                // any key/button code pressed this frame (for rebinding)
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
@@ -271,6 +271,7 @@ public sealed partial class Game
         Course = course ?? Courses.Hangar;
         Rematch = null;
         if (Course.Endless && Course.Seed <= 0) Course = Endless.For(Endless.NewSeed()); // picked from the menu: a fresh seed
+        if (Course.Tower && Course.Seed <= 0) Course = Tower.For(Endless.NewSeed());
         if (Course.Range) Style = GameStyle.Classic; // weapons out: it's a range
         var c = Course;
         HubSource = () => new[] { c.Map().Build() };
@@ -330,6 +331,7 @@ public sealed partial class Game
     /// <summary>A wave is cleared in arena mode: a medal when it reaches one, and a new best past your old one.</summary>
     public void ArenaWaveCleared(int wave)
     {
+        QuakeArenaWave();
         if (Vars.Arcade) Say($"Wave bonus: +{Arcade.Bonus(wave * 1000)}");
         int best = Profile.ArenaBestWave(P.Class);
         var medal = ArenaMedals.For(wave);
@@ -354,6 +356,7 @@ public sealed partial class Game
             return;
         }
         if (DailyMode) { EndDailyRun(a, difficulty); return; }
+        if (InstagibOn) { EndInstagibRun(a); return; }
         LastArena = new ArenaRun
         {
             Waves = a.BestWave, Time = a.ClearedAt, Kills = P.Kills, Name = RunnerName, When = DateTime.Now,
@@ -447,6 +450,7 @@ public sealed partial class Game
                 UpdatePlayer(pilot, DemoPilot.Tick);
                 UpdateWorld(DemoPilot.Tick);
                 RangeTick(DemoPilot.Tick); // the demo's health and mana come back as yours do
+                TowerTick(DemoPilot.Tick);
             }
             return false;
         }
@@ -462,6 +466,7 @@ public sealed partial class Game
         if (Course.Range) SetUpRange();
         if (Course.Rockets) SetUpRocketCourse();
         if (Course.Grenades) SetUpGrenadeCourse();
+        if (Course.Tower) SetUpTower();
         ResetRun();
     }
 
@@ -485,6 +490,7 @@ public sealed partial class Game
     {
         var plats = Course.Platforms;
         int reached = Level.CheckpointsReached.Count, total = Level.Checkpoints.Count;
+        if (Course.Tower) return TowerHint(zone);
         if (Course.Grenades)
             return reached <= 1 ? Course.Intro
                 : $"Checkpoint {reached} of {total}." + (CourseTargetsLeft > 0 ? $" {CourseTargetsLeft} target{(CourseTargetsLeft == 1 ? "" : "s")} still standing." : " Every target down: on to the exit.");
@@ -568,6 +574,7 @@ public sealed partial class Game
     {
         RunTime = 0; RunStarted = false; EndlessReached = 0;
         if (Practicing && Course.Grenades) ResetCourseTargets();
+        if (Practicing && Course.Tower) { TowerHeight = 0; TowerPlatform = 0; _towerCarry = -1; }
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         Recording = new GhostTrack();
@@ -901,6 +908,9 @@ public sealed partial class Game
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
         ApplyProfile();
         P.Health = P.MaxHealth;
+        RailTrial = false;
+        if (ArenaMode) SetUpQuakeArena();
+        if (Level.Quake && !Practicing && !ArenaMode) SetUpQuakeMap();
         RunXp = 0; XpPopup = 0;
         Cheated = false; RunDeaths = 0;
         Intro = null; HitStop = 0; Shake = 0;
@@ -1031,6 +1041,10 @@ public sealed partial class Game
         RematchTick(step);
         EliteTick(step);
         RangeTick(step);
+        TrickTick(dt);
+        TowerTick(step);
+        QuakeArenaTick();
+        TargetsTick(step);
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
@@ -1180,6 +1194,8 @@ public sealed partial class Game
 
         // look
         float angle0 = p.Angle;
+        ZoomTick(inp, dt);
+        inp.LookX *= ZoomSens; inp.LookY *= ZoomSens; // zoomed in, the mouse slows to match
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
         // looking up and down stops at the limit (further down with the rocket and grenade launchers, and further up
         // with the grenade launcher, to lob); past it, having just put one away, you can't go further, and PitchLimit
@@ -1278,9 +1294,9 @@ public sealed partial class Game
             for (int i = 0; i < steps; i++)
             {
                 if (sx != 0 && !Blocked(p.X + sx, p.Y, p.Radius, null, p.SlideTime > 0)) p.X += sx;
-                else if (sx != 0) { sx = 0; p.VX = 0; }
+                else if (sx != 0) { sx = 0; WallSlide(p, ref p.VX, ref p.VY); }
                 if (sy != 0 && !Blocked(p.X, p.Y + sy, p.Radius, null, p.SlideTime > 0)) p.Y += sy;
-                else if (sy != 0) { sy = 0; p.VY = 0; }
+                else if (sy != 0) { sy = 0; WallSlide(p, ref p.VY, ref p.VX); }
             }
         }
 
@@ -1388,7 +1404,7 @@ public sealed partial class Game
                 TryPickup(pk);
 
         // actions
-        if (inp.Use && OnRange) StartDrill();
+        if (inp.Use && OnRange) { if (P.CurWeapon.Rail) StartRailTrial(); else StartDrill(); } // the railgun in hand: a rail trial
         else if (inp.Use) UseLine(pull: inp.Walk);
         if (inp.UseItem) UseItem();
         if (inp.Place) PlaceBlock();
@@ -1553,7 +1569,7 @@ public sealed partial class Game
         }
         if (p.Z > 0.6f || MathF.Abs(p.Pitch) > 25f)
         {
-            float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f);
+            float proj = 160f / MathF.Tan(ViewFov * MathF.PI / 360f);
             return speed * p.Pitch / proj;
         }
         return null;
@@ -1587,6 +1603,7 @@ public sealed partial class Game
                     };
                 PlaySound(Sfx.Secret, 0.7f);
                 if (OnEndless) EndlessPlatform(zone);
+                if (OnTower) TowerLanded(zone);
                 if (Practicing) Say(CourseHint(zone) + GhostSplit(zone));
                 else { Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count})."); SaveNow(); }
             }
@@ -1597,6 +1614,7 @@ public sealed partial class Game
         if (onLift && !_onLift)
         {
             if (OnEndless) { EndEndlessRun(false); onLift = false; } // on the endless course a fall ends the run
+            else if (OnTower) { EndTowerRun(false); onLift = false; } // on the tower too
             else if (Checkpoint != null && Checkpoint.Level == lv)
             {
                 MoveTo(Checkpoint.X, Checkpoint.Y, Checkpoint.Angle);
@@ -2235,7 +2253,7 @@ public sealed partial class Game
         p.Cooldown = 0.22f;
         p.FireAnim = 0.12f;
         PlaySound(Sfx.Shoot, 0.7f);
-        float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f), speed = 22f + p.ShipSpeed;
+        float proj = 160f / MathF.Tan(ViewFov * MathF.PI / 360f), speed = 22f + p.ShipSpeed;
         float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle), z = p.Z + ShipHalfHeight;
         foreach (float wing in new[] { -0.22f, 0.22f })
             Level.Things.Add(new Projectile
@@ -2382,16 +2400,19 @@ public sealed partial class Game
                 {
                     m.Anim += dt;
                     m.AttackCd -= dt;
-                    if (!playerAlive || Vars.NoTarget) { ChaseMove(m, dt, wander: true); break; }
-                    if (m.Def.Blurs && m.AttackCd > 0.3f && dist < 12f && RandF() < dt * 0.35f) { StartBlur(m); break; }
-                    bool canMelee = m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius;
+                    // after you, or after another monster that hit it
+                    var tg = TargetOf(m);
+                    float tdist = Dist(m.X, m.Y, tg.x, tg.y);
+                    if (tg.foe == null && (!playerAlive || Vars.NoTarget)) { ChaseMove(m, dt, wander: true); break; }
+                    if (m.Def.Blurs && m.AttackCd > 0.3f && tdist < 12f && RandF() < dt * 0.35f) { StartBlur(m); break; }
+                    bool canMelee = m.Def.MeleeRange > 0 && tdist <= m.Def.MeleeRange + tg.radius;
                     if (canMelee && m.AttackCd <= 0) { SetState(m, AiState.Attack); break; }
-                    if (m.Def.Missile != null && m.AttackCd <= 0 && dist < 18f && RandF() < dt * 2.5f && Level.Sight(m.X, m.Y, P.X, P.Y))
+                    if (m.Def.Missile != null && m.AttackCd <= 0 && tdist < 18f && RandF() < dt * 2.5f && Level.Sight(m.X, m.Y, tg.x, tg.y))
                     {
                         SetState(m, AiState.Attack);
                         break;
                     }
-                    if (!canMelee) ChaseMove(m, dt, wander: false);
+                    if (!canMelee) ChaseMove(m, dt, wander: false, tg.x, tg.y);
                     break;
                 }
 
@@ -2400,10 +2421,17 @@ public sealed partial class Game
                     if (!m.AttackFired && m.StateTime >= m.Def.AttackTime * 0.5f)
                     {
                         m.AttackFired = true;
-                        if (m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius + 0.25f)
+                        var tg = TargetOf(m);
+                        float tdist = Dist(m.X, m.Y, tg.x, tg.y);
+                        if (tg.foe != null && m.Def.MeleeRange > 0 && tdist <= m.Def.MeleeRange + tg.radius + 0.25f) MonsterMelee(m, tg.foe);
+                        else if (tg.foe == null && m.Def.MeleeRange > 0 && dist <= m.Def.MeleeRange + P.Radius + 0.25f)
                         {
                             Sound(Sfx.Swing, m.X, m.Y);
-                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f) EliteHit(m, DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult)));
+                            if (playerAlive && P.Z < 0.3f && MathF.Abs(Level.FloorAt(m.X, m.Y) - P.FloorZ) < 0.8f)
+                            {
+                                EliteHit(m, DamagePlayer((int)(Rand(m.Def.MeleeMin, m.Def.MeleeMax) * m.DamageMult)));
+                                if (m.Def.Shove > 0) ShovePlayer(m);
+                            }
                         }
                         else if (m.Def.Missile != null) FireMissile(m);
                     }
@@ -2425,7 +2453,9 @@ public sealed partial class Game
         }
     }
 
-    void ChaseMove(Monster m, float dt, bool wander)
+    void ChaseMove(Monster m, float dt, bool wander) => ChaseMove(m, dt, wander, P.X, P.Y);
+
+    void ChaseMove(Monster m, float dt, bool wander, float goalX, float goalY)
     {
         float step = m.Def.Speed * m.SpeedMult * Vars.MonsterSpeed * dt * (m.SlowTime > 0 ? m.SlowFactor : 1);
         float dx, dy;
@@ -2436,7 +2466,7 @@ public sealed partial class Game
         }
         else
         {
-            float tx = P.X - m.X, ty = P.Y - m.Y;
+            float tx = goalX - m.X, ty = goalY - m.Y;
             if (wander) { tx = MathF.Cos(m.Anim); ty = MathF.Sin(m.Anim * 0.7f); }
             float l = MathF.Sqrt(tx * tx + ty * ty) + 1e-4f;
             dx = tx / l; dy = ty / l;
@@ -2505,7 +2535,9 @@ public sealed partial class Game
     void FireMissile(Monster m)
     {
         var kind = m.Def.Missile.Value;
-        float baseA = MathF.Atan2(P.Y - m.Y, P.X - m.X);
+        var tg = TargetOf(m);
+        if (kind == ProjKind.Grenade) { FireGrenadeAt(m, tg.x, tg.y, tg.z); return; }
+        float baseA = MathF.Atan2(tg.y - m.Y, tg.x - m.X);
         (int lo, int hi, float speed) = kind switch
         {
             ProjKind.Fireball => (6, 12, 6.5f),
@@ -2515,7 +2547,7 @@ public sealed partial class Game
         };
         // aim up or down at you when you're well above or below (on a ledge, or flying)
         float launchZ = Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH * 0.45f;
-        float chest = P.FloorZ + P.Z + Player.Height * 0.55f, dist = MathF.Max(0.5f, Dist(m.X, m.Y, P.X, P.Y));
+        float chest = tg.z + (tg.foe?.SpriteH ?? Player.Height) * 0.55f, dist = MathF.Max(0.5f, Dist(m.X, m.Y, tg.x, tg.y));
         bool aimed = kind != ProjKind.Seeker && MathF.Abs(chest - launchZ) > 0.6f;
         float vz = aimed ? (chest - launchZ) * speed / dist : 0f;
         for (int i = 0; i < m.Def.MissileCount; i++)
@@ -2566,6 +2598,7 @@ public sealed partial class Game
             if (Level.BlocksPoint(pr.X, pr.Y) || pr.Z < Level.FloorAt(pr.X, pr.Y) - 0.02f || pr.Z > Level.HeightAt(pr.X, pr.Y))
             {
                 int hx = (int)MathF.Floor(pr.X), hy = (int)MathF.Floor(pr.Y);
+                pr.HitWall = Level.BlocksPoint(pr.X, pr.Y) || (pr.Z < Level.FloorAt(pr.X, pr.Y) - 0.02f && pr.Z > Level.FloorAt(pr.X - sx, pr.Y - sy) + 0.05f);
                 var face = Level.Cell(hx, hy) == Level.Rubble ? Level.Face.Wall : pr.Z < Level.FloorAt(pr.X, pr.Y) ? Level.Face.Floor : Level.Face.Ceiling;
                 pr.X -= sx; pr.Y -= sy;
                 (int, Level.Face)? direct = null;
@@ -2602,11 +2635,26 @@ public sealed partial class Game
                         return;
                     }
             }
-            else if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z))
+            else
             {
-                EliteHit(pr.Owner as Monster, DamagePlayer(Rand(pr.DmgMin, pr.DmgMax)));
-                Explode(pr, null);
-                return;
+                // a monster's missile: another kind of monster in the way takes it, and turns on the one that threw it
+                foreach (var t in Level.Things)
+                    if (t is Monster other && other != pr.Owner && other.Alive && !other.Blurring && other.Target == null
+                        && (pr.Owner as Monster)?.Def != other.Def && Dist(other.X, other.Y, pr.X, pr.Y) < other.Radius + pr.Radius)
+                    {
+                        float foot = Level.FloorAt(other.X, other.Y) + other.Z;
+                        if (pr.Z < foot - 0.05f || pr.Z > foot + other.SpriteH) continue;
+                        DamageMonster(other, Rand(pr.DmgMin, pr.DmgMax));
+                        Provoke(other, pr.Owner as Monster);
+                        Explode(pr, other);
+                        return;
+                    }
+                if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z))
+                {
+                    EliteHit(pr.Owner as Monster, DamagePlayer(Rand(pr.DmgMin, pr.DmgMax)));
+                    Explode(pr, null);
+                    return;
+                }
             }
         }
     }
@@ -2795,6 +2843,7 @@ public sealed partial class Game
             if (dmg <= 0) { if (m.State == AiState.Idle) Wake(m); Sound(Sfx.Hit, m.X, m.Y); return; }
         }
         if (m.Def.Special == Special.Charger && m.SpecialPhase == 3) dmg *= 2; // a stunned Stalker is wide open
+        if (InstagibOn && slot >= 0) { m.Shield = 0; dmg = (int)MathF.Ceiling((m.Health + 1) / MathF.Max(0.01f, Vars.Damage)); } // instagib: one slug, one kill
         int dealt = Math.Min(Math.Max(1, (int)MathF.Round(dmg * Vars.Damage)), Math.Max(1, m.Health));
         m.Health -= Math.Max(1, (int)MathF.Round(dmg * Vars.Damage));
         if (slot >= 0)

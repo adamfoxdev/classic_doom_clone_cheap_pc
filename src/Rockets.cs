@@ -65,16 +65,19 @@ public sealed partial class Game
             if (pts <= 0 || !Level.Sight(pr.X, pr.Y, m.X, m.Y)) continue;
             Push(m, dx, dy, d, pts);
             DamageMonster(m, (int)pts, slot);
+            if (!pr.FromPlayer) Provoke(m, pr.Owner as Monster);
         }
         if (direct != null && direct.Alive) Push(direct, direct.X - pr.X, direct.Y - pr.Y, Dist(direct.X, direct.Y, pr.X, pr.Y), Rockets.SplashMax);
         // you: the push in full, the damage halved (and only your own rockets reach you like this; a monster's hits you as a projectile)
-        if (!pr.FromPlayer || Mode != GameMode.Playing) return;
+        if (!pr.FromPlayer) { MonsterBlastHitsPlayer(pr); return; } // a Grenadier's
+        if (Mode != GameMode.Playing) return;
         var p = P;
         float pz = p.FloorZ + p.Z + Player.Height * 0.5f;
         float ex = p.X - pr.X, ey = p.Y - pr.Y, ez = pz - pr.Z, dist = MathF.Sqrt(ex * ex + ey * ey + ez * ez);
         float points = Rockets.Points(dist);
         if (points <= 0 || !Level.Sight(pr.X, pr.Y, p.X, p.Y)) return;
         if (dist < 0.01f) { ex = 0; ey = 0; ez = 1; dist = 1; } // right on top of it: straight up
+        bool airborne = !p.OnGround;
         float k = points * Rockets.Knock / dist;
         p.VX += ex * k; p.VY += ey * k;
         if (ez * k > 0)
@@ -84,8 +87,10 @@ public sealed partial class Game
         }
         p.Boost = MathF.Max(p.Boost, p.HSpeed);
         RocketJumps++;
+        BlastTrick(pr, airborne, pr.HitWall);
         int hurt = (int)(points * Rockets.SelfShare);
         if (SafeRockets) hurt = Math.Min(hurt, p.Health - 1); // practice never kills you: jump all you like
+        if (RocketArenaOn) hurt = 0; // Rocket Arena: your own blasts only push
         if (hurt > 0) DamagePlayer(hurt);
     }
 
@@ -122,7 +127,7 @@ public sealed partial class Game
     void FireRocket(WeaponDef w, float launchZ, float mult)
     {
         var p = P;
-        float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f);
+        float proj = 160f / MathF.Tan(ViewFov * MathF.PI / 360f);
         float climb = Rockets.AimAngle(p.Pitch, proj);
         if (MathF.Abs(p.Pitch) <= Rockets.NormalPitch && VerticalAim(launchZ, w.Speed) is { } vz) climb = MathF.Atan2(vz, w.Speed);
         float flat = MathF.Cos(climb) * w.Speed;
@@ -138,7 +143,7 @@ public sealed partial class Game
     }
 
     /// <summary>The climb angle a rocket fired now would take (ignoring the aim at a monster).</summary>
-    public float RocketAim() => Rockets.AimAngle(P.Pitch, 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f));
+    public float RocketAim() => Rockets.AimAngle(P.Pitch, 160f / MathF.Tan(ViewFov * MathF.PI / 360f));
 
     /// <summary>
     /// Where a rocket fired now would hit the floor, for the marker: its distance ahead of you and the floor's height
@@ -204,5 +209,23 @@ public sealed partial class Game
         p.HasWeapon[i] = true;
         p.Ammo[(int)weapon.Ammo] = QuakeAmmo.Max(weapon.Ammo);
         SelectWeapon(i);
+    }
+}
+
+public sealed partial class Game
+{
+    /// <summary>Zoom (hold its key, the middle mouse button or Z): the view narrows to ZoomFov, easing in and out.</summary>
+    public const float ZoomFov = 30f, ZoomRate = 8f;
+    /// <summary>How far zoomed in (0 not at all, 1 fully).</summary>
+    public float Zoom;
+    /// <summary>The field of view this frame: yours, narrowed by the zoom.</summary>
+    public float ViewFov => Vars.Fov + (MathF.Min(Vars.Fov, ZoomFov) - Vars.Fov) * Zoom;
+    /// <summary>Zoomed in, mouse look slows by as much as the view narrows, so the aim moves the same across the screen.</summary>
+    public float ZoomSens => MathF.Tan(ViewFov * MathF.PI / 360f) / MathF.Tan(Vars.Fov * MathF.PI / 360f);
+
+    void ZoomTick(Input inp, float dt)
+    {
+        bool want = inp.ZoomHeld && Mode == GameMode.Playing && Level != null && !Level.Flight;
+        Zoom = want ? MathF.Min(1, Zoom + dt * ZoomRate) : MathF.Max(0, Zoom - dt * ZoomRate);
     }
 }

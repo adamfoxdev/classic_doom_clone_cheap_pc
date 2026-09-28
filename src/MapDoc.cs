@@ -18,6 +18,8 @@ public sealed class MapDoc
     /// <summary>The map's hazard ("none", "wind" or "flood") and its chance of elites (0 to 0.5), every time it's played.</summary>
     public string Hazard = "none";
     public float Elites;
+    /// <summary>Quake weapons only (see Level.Quake).</summary>
+    public bool Quake;
     public static readonly string[] Hazards = { "none", "wind", "flood" };
 
     public MapDoc(int w, int h)
@@ -43,14 +45,14 @@ public sealed class MapDoc
     public string[] FloorRows() => Enumerable.Range(0, H).Select(y => new string(Floors, y * W, W)).ToArray();
     public bool HasFloors => Floors.Any(f => f != '.');
     public MapDef ToDef() => new(Name, Name, ThemeId, Rows(), HasHeights ? HeightRows() : null, DefaultHeight, HasFloors ? FloorRows() : null,
-        Hazard: Hazard == "none" ? null : Hazard, Elites: Elites);
+        Hazard: Hazard == "none" ? null : Hazard, Elites: Elites, Quake: Quake);
 
     public static bool IsHeightGlyph(char c) => Level.IsHeightGlyph(c);
 
     public static MapDoc FromDef(MapDef d)
     {
         var doc = new MapDoc(d.Rows.Max(r => r.Length), d.Rows.Length) { Name = d.Name, ThemeId = d.ThemeId, DefaultHeight = d.Height,
-            Hazard = Hazards.Contains(d.Hazard) ? d.Hazard : "none", Elites = Math.Clamp(d.Elites, 0, 0.5f) };
+            Hazard = Hazards.Contains(d.Hazard) ? d.Hazard : "none", Elites = Math.Clamp(d.Elites, 0, 0.5f), Quake = d.Quake };
         for (int y = 0; y < doc.H; y++)
             for (int x = 0; x < doc.W; x++)
             {
@@ -70,6 +72,7 @@ public sealed class MapDoc
         $"# Hexen Sharp map\nname: {Name}\ntheme: {ThemeId}\nheight: {DefaultHeight.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}\n"
         + (Hazard != "none" ? $"hazard: {Hazard}\n" : "")
         + (Elites > 0 ? $"elites: {Elites.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}\n" : "")
+        + (Quake ? "quake: yes\n" : "")
         + "---\n"
         + string.Join("\n", Rows()) + "\n"
         + (HasHeights || HasFloors ? "---\n" + string.Join("\n", HeightRows()) + "\n" : "")
@@ -79,6 +82,7 @@ public sealed class MapDoc
     {
         string name = "Untitled", theme = "hall", hazard = "none";
         float height = 1f, elites = 0;
+        bool quake = false;
         var rows = new List<string>();
         var heights = new List<string>();
         var floors = new List<string>();
@@ -97,15 +101,16 @@ public sealed class MapDoc
             else if (line.StartsWith("hazard:")) hazard = line[7..].Trim().ToLowerInvariant();
             else if (line.StartsWith("elites:") && float.TryParse(line[7..].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float e))
                 elites = Math.Clamp(MathF.Round(e * 100) / 100, 0, 0.5f);
+            else if (line.StartsWith("quake:")) quake = line[6..].Trim().ToLowerInvariant() is "yes" or "true" or "1";
         }
         if (rows.Count == 0) throw new InvalidDataException("map has no rows");
         if (!Maps.ThemeIds.Contains(theme)) theme = "hall";
         return FromDef(new MapDef(name, name, theme, rows.ToArray(), heights.Count > 0 ? heights.ToArray() : null, height,
-            floors.Count > 0 ? floors.ToArray() : null, Hazard: hazard, Elites: elites));
+            floors.Count > 0 ? floors.ToArray() : null, Hazard: hazard, Elites: elites, Quake: quake));
     }
 
     /// <summary>Every glyph a map can use (the map legend in the README). Anything else loads as floor.</summary>
-    public const string KnownGlyphs = "#BWMIO.,DSFPLZX^KNQU@E123456789*!+=eacCdHGRYoyhqubgrkfwxm$%&JVAtpT";
+    public const string KnownGlyphs = "#BWMIO.,DSFPLZX^KNQU@E123456789*!+=eacCdHGRYoyhqubgrkfwxm$%&JVAtpTnji";
 
     public static bool IsKnownGlyph(char c) => KnownGlyphs.IndexOf(c) >= 0;
 

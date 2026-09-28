@@ -5,7 +5,7 @@ public enum Act
 {
     Forward, Back, StrafeLeft, StrafeRight, TurnLeft, TurnRight, Attack, Use, Jump, Jetpack, Slide, Walk, UseItem, Place,
     Weapon1, Weapon2, Weapon3, NextWeapon, PrevWeapon, Automap, Console, Screenshot, Character, CycleHud, Journal,
-    Weapon4, Weapon5, Weapon6, Weapon7, Weapon8, Weapon9, Weapon10, Weapon11, Weapon12, Weapon13, Weapon14,
+    Weapon4, Weapon5, Weapon6, Weapon7, Weapon8, Weapon9, Weapon10, Weapon11, Weapon12, Weapon13, Weapon14, Zoom,
 }
 
 /// <summary>Where key state comes from (Raylib in the real game, a fake in tests).</summary>
@@ -112,6 +112,7 @@ public sealed class Bindings
         new(Act.Weapon12, "weapon12", "Grenade launcher (range)", Keys.Equal, Keys.None),
         new(Act.Weapon13, "weapon13", "Super shotgun (range)", Keys.LeftBracket, Keys.None),
         new(Act.Weapon14, "weapon14", "Lightning gun (range)", Keys.RightBracket, Keys.None),
+        new(Act.Zoom, "zoom", "Zoom (hold)", Keys.Mouse3, Keys.Letter('Z')),
     };
 
     readonly int[,] _keys = new int[Count, Slots];
@@ -166,6 +167,7 @@ public sealed class Bindings
         i.Jump = Pressed(k, Act.Jump);
         i.JumpHeld = Down(k, Act.Jump);
         i.JetHeld = Down(k, Act.Jetpack);
+        i.ZoomHeld = Down(k, Act.Zoom);
         i.SlideHeld = Down(k, Act.Slide);
         i.Slide = Pressed(k, Act.Slide);
         i.UseItem = Pressed(k, Act.UseItem);

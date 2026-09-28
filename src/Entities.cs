@@ -102,6 +102,8 @@ public sealed class MonsterDef
     /// <summary>A mini-boss's trick (see MiniBosses), its id for your profile, and how close it wakes without seeing you.</summary>
     public Special Special;
     public string MiniBoss;
+    /// <summary>A melee blow that shoves you this hard (cells a second), up and away (the Juggernaut's).</summary>
+    public float Shove;
     public float WakeRange;
 }
 
@@ -124,6 +126,8 @@ public sealed class Monster : Thing
     public float KnockX, KnockY;
     /// <summary>A shooting range dummy's place and kind (null for every real monster).</summary>
     public RangeTarget Target;
+    /// <summary>Another monster it's fighting (it hit it with a missile or a blow), instead of you; null for you.</summary>
+    public Monster Enemy;
     /// <summary>Out of reach: a Dark Bishop's blur, or the Rock Wyrm inside the rock (unseen as well).</summary>
     public bool Blurring => BlurTime > 0 || Burrowed;
     public bool Burrowed;
@@ -217,6 +221,8 @@ public sealed class Projectile : Thing
     public int Pierce;
     /// <summary>The charge behind the shot (1 for an ordinary one), for the charged mod combos.</summary>
     public float Power = 1;
+    /// <summary>It struck a wall (or the face of a ledge) rather than a floor or ceiling: a wall kick, if it pushes you.</summary>
+    public bool HitWall;
     public HashSet<Monster> Pierced;
     public Thing Owner;
 
@@ -330,6 +336,9 @@ public static class ThingFactory
             'y' => MiniBosses.Create(MiniBosses.Wyrm),
             'm' => new Pickup(PickupKind.Mod, 0.42f), // a weapon mod, which one rolled when the game starts
             'd' => new Monster(Monster.Bishop),
+            'n' => new Monster(Brutes.Grenadier),
+            'j' => new Monster(Brutes.Juggernaut),
+            'i' => ShootingRange.MakeTarget(x, y), // a practice target (custom maps): it stands back up when knocked down
             'h' => new Pickup(PickupKind.Vial, 0.35f),
             'q' => new Pickup(PickupKind.Flask, 0.4f),
             'u' => new Pickup(PickupKind.Urn, 0.45f),

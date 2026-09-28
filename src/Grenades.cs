@@ -39,7 +39,7 @@ public static class Grenades
 public sealed partial class Game
 {
     /// <summary>A grenade's launch angle: along your view, and like a rocket, steeper at the bottom of the tilt (to drop one at your feet).</summary>
-    public float GrenadeAim() => Rockets.AimAngle(P.Pitch, 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f));
+    public float GrenadeAim() => Rockets.AimAngle(P.Pitch, 160f / MathF.Tan(ViewFov * MathF.PI / 360f));
 
     /// <summary>Lobs a grenade along your view, with Quake's kick upward, on a two and a half second fuse.</summary>
     void FireGrenade(WeaponDef w, float launchZ)
@@ -96,9 +96,10 @@ public sealed partial class Game
             }
             float ceiling = Level.HeightAt(pr.X, pr.Y) - 0.1f;
             if (pr.Z > ceiling) { pr.Z = ceiling; if (pr.VZ > 0) pr.VZ = -pr.VZ * Grenades.Bounce; }
-            // a monster it touches sets it off
+            // a monster it touches sets it off (not the one that threw it), and a monster's sets off on you
+            if (!pr.FromPlayer && Mode == GameMode.Playing && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z)) { Explode(pr, null); return; }
             foreach (var t in Level.Things)
-                if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
+                if (t is Monster m && m != pr.Owner && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
                 {
                     float foot = Level.FloorAt(m.X, m.Y) + m.Z;
                     if (pr.Z >= foot - 0.05f && pr.Z <= foot + m.SpriteH) { Explode(pr, null); return; }
@@ -339,7 +340,7 @@ static class GrenadePilot
     /// </summary>
     static float? LobPitch(Game g, float px, float py, float pz, float dist, float floor, Monster t)
     {
-        float proj = 160f / MathF.Tan(g.Vars.Fov * MathF.PI / 360f);
+        float proj = 160f / MathF.Tan(g.ViewFov * MathF.PI / 360f);
         float ca = MathF.Cos(MathF.Atan2(t.Y - py, t.X - px)), sa = MathF.Sin(MathF.Atan2(t.Y - py, t.X - px));
         for (float pitch = -20; pitch <= Rockets.LookDown; pitch += 0.5f)
         {

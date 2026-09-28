@@ -144,6 +144,17 @@ function gameChecks(text) {
   const featured = await text();
   check(featured.includes("hazard: flood\nelites: 0.3\n") && featured.split("---")[1].includes("Gm"), "a map can have mini-bosses, weapon mods, a hazard and elites");
   check(await E(t => hexenEditor.serialize(hexenEditor.parse(t)), featured) === featured, "and they load back identically");
+  // a jump course: Quake weapons only, practice targets and the new monsters, read the same by the game
+  await page.check("#fQuake");
+  await brush("i"); await clickCell(7, 5);
+  await brush("n"); await clickCell(8, 5);
+  await brush("j"); await clickCell(9, 5);
+  const course = await text();
+  check(course.includes("quake: yes\n") && course.split("---")[1].includes("Gminj"), "a map can be for the Quake weapons, with practice targets, Grenadiers and Juggernauts");
+  check(await E(t => hexenEditor.serialize(hexenEditor.parse(t)), course) === course, "and it loads back identically");
+  const cc = execFileSync("dotnet", [dll, "--check-map", (() => { const f = path.join(os.tmpdir(), `hexen_quake_${process.pid}.hxm`); fs.writeFileSync(f, course); return f; })()], { encoding: "utf8" }).trim();
+  check(!cc.startsWith("!") && JSON.stringify(await E(t => hexenEditor.validateCore(hexenEditor.parse(t)), course)) === JSON.stringify(gameChecks(course)), "the game reads it and agrees with the editor's checks");
+  await page.uncheck("#fQuake");
   const cs = execFileSync("dotnet", [dll, "--check-map", (() => { const f = path.join(os.tmpdir(), `hexen_feat_${process.pid}.hxm`); fs.writeFileSync(f, featured); return f; })()], { encoding: "utf8" }).trim();
   check(!cs.startsWith("!") && JSON.stringify(await E(t => hexenEditor.validateCore(hexenEditor.parse(t)), featured)) === JSON.stringify(gameChecks(featured)), "the game reads them and agrees with the editor's checks");
   check((await page.textContent("#stats")).includes("Mini-bosses"), "the contents count the mini-bosses");

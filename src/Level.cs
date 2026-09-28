@@ -178,6 +178,8 @@ public sealed class Level
     /// <summary>A custom map's own hazard ("wind", "flood"; null for the hub's usual) and chance of elites, from its file.</summary>
     public string Hazard;
     public float EliteChance;
+    /// <summary>A custom map made for the Quake weapons (a jump course, say): you have them alone, ammo never runs out, and your own blasts can't kill you.</summary>
+    public bool Quake;
 
     public Level(string name, string entry, string[] rows, Theme theme, string[] heightRows = null, float defaultHeight = 1f, string[] floorRows = null)
     {
@@ -586,9 +588,9 @@ public sealed class Level
 /// <summary>The hub's maps. Legend: see README.</summary>
 /// <summary>A map's source: its name, arrival message, theme and ASCII rows. Map files (.hxm) and the HTML editor use the same format.</summary>
 public sealed record MapDef(string Name, string Entry, string ThemeId, string[] Rows, string[] Heights = null, float Height = 1f, string[] Floors = null, bool Dig = false, bool Flight = false,
-    string Hazard = null, float Elites = 0)
+    string Hazard = null, float Elites = 0, bool Quake = false)
 {
-    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId, Dig = Dig, Flight = Flight, Hazard = Hazard, EliteChance = Elites };
+    public Level Build() => new(Name, Entry, Rows, Maps.ThemeById(ThemeId), Heights, Height, Floors) { ThemeId = ThemeId, Dig = Dig, Flight = Flight, Hazard = Hazard, EliteChance = Elites, Quake = Quake };
 }
 
 /// <summary>The hub's maps and the visual themes they (and custom maps) can use. Legend: see README.</summary>

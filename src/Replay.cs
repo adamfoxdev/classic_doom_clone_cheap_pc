@@ -184,7 +184,7 @@ public sealed class Replay
     static int Bits(Input i)
     {
         bool[] b = { i.Fire, i.Walk, i.JumpHeld, i.SlideHeld, i.JetHeld, i.Use, i.UseItem, i.Place, i.Journal, i.Map, i.Pause, i.Confirm, i.Up, i.Down,
-                     i.Left, i.Right, i.Screenshot, i.Character, i.CycleHud, i.ConsoleToggle, i.Backspace, i.Tab, i.PageUp, i.PageDown, i.Jump, i.Slide };
+                     i.Left, i.Right, i.Screenshot, i.Character, i.CycleHud, i.ConsoleToggle, i.Backspace, i.Tab, i.PageUp, i.PageDown, i.Jump, i.Slide, i.ZoomHeld };
         int bits = 0;
         for (int k = 0; k < b.Length; k++) if (b[k]) bits |= 1 << k;
         return bits;
@@ -197,7 +197,7 @@ public sealed class Replay
         {
             Fire = B(0), Walk = B(1), JumpHeld = B(2), SlideHeld = B(3), JetHeld = B(4), Use = B(5), UseItem = B(6), Place = B(7), Journal = B(8), Map = B(9),
             Pause = B(10), Confirm = B(11), Up = B(12), Down = B(13), Left = B(14), Right = B(15), Screenshot = B(16), Character = B(17), CycleHud = B(18),
-            ConsoleToggle = B(19), Backspace = B(20), Tab = B(21), PageUp = B(22), PageDown = B(23), Jump = B(24), Slide = B(25),
+            ConsoleToggle = B(19), Backspace = B(20), Tab = B(21), PageUp = B(22), PageDown = B(23), Jump = B(24), Slide = B(25), ZoomHeld = B(26),
         };
     }
 }

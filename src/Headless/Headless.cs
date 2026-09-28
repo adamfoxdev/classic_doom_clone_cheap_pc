@@ -89,6 +89,12 @@ public static partial class Headless
         RangeChecks(Check);
         Console.WriteLine("Quake weapons in the campaign:");
         QuakeArmsChecks(Check);
+        Console.WriteLine("Zoom and movement tricks:");
+        TrickChecks(Check);
+        Console.WriteLine("Quake modes:");
+        QuakeModeChecks(Check);
+        Console.WriteLine("Brutes and infighting:");
+        BruteChecks(Check);
         Console.WriteLine("Game feel:");
         FeelChecks(Check);
         Console.WriteLine("Endless course:");

@@ -25,7 +25,7 @@ public static class ShootingRange
     /// <summary>The ledges: rocket-jump height (2 cells up), and double that for the far one.</summary>
     public const float LowLedge = 2f, HighLedge = 3.5f;
 
-    public enum Kind { Still, Moving, High }
+    public enum Kind { Still, Moving, High, Trial }
 
     /// <summary>The key for a weapon on the rack: 1 to 9, then 0, -, =, [ and ] for the Quake weapons.</summary>
     public static string KeyFor(int slot) => slot < 9 ? (slot + 1).ToString() : slot switch { 9 => "0", 10 => "-", 11 => "=", 12 => "[", _ => "]" };
@@ -68,6 +68,10 @@ public static class ShootingRange
             (33, 1, 38, 7, Maps.FloorGlyph(HighLedge)),
             (1, 1, 7, 7, Maps.FloorGlyph(LowLedge)));
     }
+
+    /// <summary>A standing target dummy at (x, y), as the map glyph 'i' places one.</summary>
+    public static Monster MakeTarget(float x, float y) =>
+        new(Dummy) { X = x, Y = y, State = AiState.Idle, Target = new RangeTarget { HomeX = x, HomeY = y, Kind = Kind.Still, Phase = x } };
 
     /// <summary>A target dummy's picture: a straw man on a post with a painted target on its chest.</summary>
     public static void BuildArt() => Art.Monsters["dummy"] = Art.PoseSet(DrawDummy);
@@ -121,7 +125,9 @@ public sealed partial class Game
     /// <summary>
     /// The range and the rocket-jump course: mana never runs out, health comes back, and your own rockets can't kill you.
     /// </summary>
-    public bool SafeRockets => Practicing && (Course.Range || Course.Rockets || Course.Grenades);
+    /// <summary>A rail trial is on (see RailTrials).</summary>
+    public bool RailTrial;
+    public bool SafeRockets => (Practicing && (Course.Range || Course.Rockets || Course.Grenades || Course.Tower)) || Level?.Quake == true;
 
     /// <summary>On a fresh range: the full loadout (your class's first weapon in hand), the rack, and the dummies.</summary>
     void SetUpRange()
@@ -180,11 +186,18 @@ public sealed partial class Game
         p.BlueMana = p.GreenMana = 200;
         for (int k = 1; k < QuakeAmmo.Kinds; k++) p.Ammo[k] = QuakeAmmo.Max((AmmoKind)k);
         if (!OnRange) return;
-        foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target != null && !m.Alive).ToList())
-            if ((m.Target.DownFor += dt) >= ShootingRange.RespawnTime) StandUp(m);
+        RailTick(dt);
         if (!Drilling) return;
         DrillLeft -= dt;
         if (DrillLeft <= 0) EndDrill();
+    }
+
+    /// <summary>Knocked-down targets stand back up (on the range and custom maps; the grenade course's stay down, and trials' go).</summary>
+    void TargetsTick(float dt)
+    {
+        if (Level == null || (Practicing && Course.Grenades)) return;
+        foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target is { Kind: not ShootingRange.Kind.Trial } && !m.Alive).ToList())
+            if ((m.Target.DownFor += dt) >= ShootingRange.RespawnTime) StandUp(m);
     }
 
     /// <summary>A dummy stands back up at its spot, whole.</summary>
@@ -223,6 +236,7 @@ public sealed partial class Game
         if (!down) { m.State = AiState.Pain; m.StateTime = 0; return; }
         m.Target.DownFor = 0;
         if (Course.Grenades) { GrenadeTargetDown(); return; }
+        if (m.Target.Kind == ShootingRange.Kind.Trial) { RailTargetDown(m); return; }
         if (!Drilling) return;
         int pts = ShootingRange.Points(m.Target.Kind);
         DrillScore += pts; DrillKills++;
@@ -232,6 +246,7 @@ public sealed partial class Game
     public void StartDrill()
     {
         if (!OnRange) return;
+        if (RailTrial) { RailTrial = false; ClearRailTarget(); }
         foreach (var m in Level.Things.OfType<Monster>().Where(m => m.Target != null).ToList()) StandUp(m);
         Drilling = true; DrillLeft = ShootingRange.DrillTime; DrillScore = DrillKills = DrillShots = 0;
         Messages.Clear();
