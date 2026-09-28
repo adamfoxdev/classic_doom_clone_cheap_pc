@@ -847,6 +847,7 @@ public sealed partial class Game
         RunXp = 0; XpPopup = 0;
         Cheated = false; RunDeaths = 0;
         Intro = null; HitStop = 0; Shake = 0;
+        ResetDirector();
         _nightmareThroughout = Difficulties.Of(Vars) == Difficulty.Nightmare;
         P.FloorZ = Level.FloorUnder(P.X, P.Y, P.Radius);
         Messages.Clear();
@@ -966,6 +967,7 @@ public sealed partial class Game
         float step = FeelStep(dt); // a hit-stop, or a boss intro's slow motion
         UpdatePlayer(inp, step);
         HazardTick(step);
+        DirectorTick(step);
         UpdateWorld(step);
         RematchTick(step);
         CheckBossIntros();
