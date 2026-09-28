@@ -683,6 +683,29 @@ public static partial class Headless
             g.P.Mods[g.P.Weapon] = had; g.P.Charging = false; g.P.Charge = 0;
             g.Level.Things.RemoveAll(t => t is Pickup { Kind: PickupKind.Mod });
 
+            // New Game+: the Hanging Cisterns flooding, you wading in it
+            {
+                var ng = new Game { FixedSeed = 1, AchievementsOn = false, Profile = new Profile { NgUnlocked = 1 } };
+                ng.StartNewGamePlus(PClass.Cleric, 1);
+                ng.Warp(Array.FindIndex(ng.Hub, l => l.RawName == "Hanging Cisterns"));
+                ng.Level.Things.RemoveAll(t => t is Monster);
+                ng.P.X = 12.5f; ng.P.Y = 9.5f; ng.P.FloorZ = ng.Level.FloorAt(12.5f, 9.5f); ng.P.Angle = 0.3f; ng.P.Pitch = 10;
+                ng.P.Health = 1000;
+                ng.Update(default, 1f / 35f);
+                ng.HazardClock = Game.FloodEvery - Game.FloodLength + 1;
+                for (int k = 0; k < 20; k++) ng.Update(default, 1f / 35f);
+                ng.Messages.Clear(); ng.P.DamageFlash = 0; ng.Shake = 0;
+                ng.Say(Words.T("The water is rising! Get up on a ledge!"));
+                var rr = new Renderer();
+                rr.Render(ng);
+                var big = new uint[Renderer.W * 3 * Renderer.H * 3];
+                for (int y = 0; y < Renderer.H * 3; y++)
+                    for (int x = 0; x < Renderer.W * 3; x++)
+                        big[y * Renderer.W * 3 + x] = rr.Fb[(y / 3) * Renderer.W + x / 3];
+                Png.Save(Path.Combine(dir, "126_ngplus_flood.png"), big, Renderer.W * 3, Renderer.H * 3);
+                Console.WriteLine("wrote " + Path.Combine(dir, "126_ngplus_flood.png"));
+            }
+
             // Options > Effects
             g.Paused = true;
             g.Menu.Show(MenuPage.Options);

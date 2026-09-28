@@ -54,6 +54,7 @@ public sealed class Renderer
         if (g.ShowMap) DrawAutomap(g);
         DrawHud(g);
         DrawMessages(g);
+        if (!g.ShowMap) DrawHazardBanner(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
         if (g.Intro != null && !g.ShowMap) DrawBossIntro(g, g.Intro);
@@ -1399,6 +1400,16 @@ public sealed class Renderer
         if (p.PickupFlash > 0) Tint(Col.Rgb(255, 210, 90), (int)(p.PickupFlash * 60));
         if (p.TeleportFlash > 0) Tint(Col.Rgb(255, 255, 255), (int)(p.TeleportFlash * 200));
         if (g.Mode == GameMode.Dead) Tint(Col.Rgb(120, 0, 0), 90);
+        if (g.InCoolant) Tint(Col.Rgb(40, 200, 220), 70); // wading in the flood
+    }
+
+    /// <summary>A New Game+ hazard in progress: a banner under the top of the view.</summary>
+    void DrawHazardBanner(Game g)
+    {
+        string text = g.Gusting ? "GUST" : g.Flooding ? "FLOOD" : null;
+        if (text == null) return;
+        uint c = g.Gusting ? Col.Rgb(200, 220, 240) : Col.Rgb(90, 230, 240);
+        CenterText(text, 30, (int)(g.Time * 4) % 2 == 0 ? c : Col.Shade(c, 180));
     }
 
     void Tint(uint c, int amt)

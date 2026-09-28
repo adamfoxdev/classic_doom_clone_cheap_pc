@@ -529,6 +529,15 @@ highest tier you've opened.
 - **Saving:** a New Game+ campaign saves and continues like any other; the title's Continue line names the tier.
 - **Weapon mods** are commoner in New Game+ chests, and every New Game+ mini-boss drops one. See
   [Weapon mods](#weapon-mods).
+- **Hazards:** three maps turn against you in New Game+. Each tells you what's changed as you arrive.
+
+  | Map | Hazard |
+  |---|---|
+  | **Bedrock Depths** | Stand still on a tunnel floor you've dug and it cracks after 0.6 s, then gives way at 1.3 s: it drops a step under you, for 5 damage. Each spot only drops once, so you can always step back out. Keep moving and it holds. |
+  | **Windspire** | Every 9 seconds a gust blows for 2.5 s, in a new direction each time, and a GUST banner shows. It nudges you on the ground and pushes hard up on the heights, at up to 1.8 cells a second, so mind the edges. |
+  | **Hanging Cisterns** | Every 40 seconds the floor floods for 8 s, with a warning 4 s ahead. Standing in it hurts, 4 damage every half second, and tints the view. Get up on a ledge until it drains. |
+
+  ![A flood in the Cisterns](docs/ngplus_flood.png)
 
 ## Weapon mods
 
@@ -1065,6 +1074,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
 | `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
+| `src/Hazards.cs` | New Game+ hazards: the Depths' crumbling floors, the Windspire's gusts and the Cisterns' floods |
 | `src/Rematch.cs` | Mini-boss rematches: starting one, the clock, and each boss's board |
 | `src/Codex.cs` | The monster codex: each monster's lore and how to beat it, and your kills of each |
 | `src/WeaponMods.cs` | Weapon mods: the four, their chest odds, fitting them, and piercing, chain, charge and frost |
@@ -1078,7 +1088,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches, hazards |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

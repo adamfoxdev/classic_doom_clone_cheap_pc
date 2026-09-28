@@ -965,6 +965,7 @@ public sealed partial class Game
         AutoSaveTick(dt);
         float step = FeelStep(dt); // a hit-stop, or a boss intro's slow motion
         UpdatePlayer(inp, step);
+        HazardTick(step);
         UpdateWorld(step);
         RematchTick(step);
         CheckBossIntros();
