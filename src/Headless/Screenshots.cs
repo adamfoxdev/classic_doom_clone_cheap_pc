@@ -263,6 +263,40 @@ public static partial class Headless
             g.Menu.Close();
             g.GoToTitle();
 
+            // rematches: four beaten, three with times; then a fight against the Hive Queen, and the Mining Mech's board
+            var savedBosses = g.Profile.MiniBosses.ToList();
+            g.Profile.MiniBosses.Clear();
+            g.Profile.MiniBosses.AddRange(new[] { "warden", "stalker", "thornmother", "keeper" });
+            foreach (var (boss, n, cls, t, d) in new[] { ("warden", g.RunnerName, "Fighter", 48.2f, 20), ("warden", "ACE-1", "Mage", 55.9f, 21), ("warden", g.RunnerName, "Cleric", 61.4f, 24),
+                                                      ("stalker", g.RunnerName, "Fighter", 37.5f, 22), ("thornmother", "NOVA", "Mage", 72.0f, 23) })
+                g.Profile.AddRematchRun(new RematchRun { Boss = boss, Name = n, Class = cls, Time = t, When = new DateTime(2026, 9, d) });
+            g.Menu.Show(MenuPage.ArenaSetup);
+            g.Menu.Show(MenuPage.Rematch);
+            g.Menu.Cursor = 2;
+            Shot("123_rematch_menu");
+            g.Menu.Close();
+            g.StartRematch(PClass.Mage, MiniBosses.Thornmother);
+            {
+                var tq = g.Level.Things.OfType<Monster>().Single();
+                g.Vars.Freeze = true; g.Vars.BossIntros = false;
+                PlaceCam(tq.X - 4f, tq.Y + 0.5f, g.Level.FloorAt(tq.X - 4f, tq.Y + 0.5f), 0, MathF.Atan2(-0.5f, 4f), 6f);
+                tq.State = AiState.Chase; tq.Health = (int)(tq.MaxHealth * 0.55f);
+                g.RematchTime = 23.46f;
+                Tick(default, 2);
+                g.Messages.Clear();
+                Shot("124_rematch_fight");
+                g.Vars.Freeze = false; g.Vars.BossIntros = true;
+            }
+            g.Paused = true;
+            g.Menu.Show(MenuPage.Pause);
+            g.Menu.Show(MenuPage.Leaderboard);
+            g.Menu.BoardBoss = 0;
+            Shot("125_rematch_board");
+            g.Menu.Close(); g.Paused = false;
+            g.GoToTitle();
+            g.Profile.RematchRuns.Clear();
+            g.Profile.MiniBosses.Clear(); g.Profile.MiniBosses.AddRange(savedBosses);
+
             // the endless course: a few platforms in, looking on down the gaps; then its board
             g.StartEndless(PClass.Fighter, 1234);
             var ep = g.Course.Platforms;

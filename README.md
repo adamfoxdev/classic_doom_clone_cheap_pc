@@ -643,6 +643,24 @@ with a trick of its own; a health bar shows low in the view while you fight it.
 ![The Thornmother](docs/thornmother.png)
 ![The Rock Wyrm, surfaced in the Depths](docs/rock_wyrm.png)
 ![The Storm Leviathan over the Void Crossing](docs/storm_leviathan.png)
+
+#### Rematches
+
+**Arena → Rematch** lets you fight any mini-boss you've beaten again, against the clock.
+- **The fight:** you pick a class and fight it alone on its own map, starting a little way off. The other monsters
+  and the chests are gone. In the Void Crossing the Leviathan waits 30 cells down the lane, not at the far end.
+- **The clock:** it runs from the start until the boss falls, and shows in the top-right corner with your best
+  against that boss.
+- **The board:** each boss has a board of its ten quickest wins, any class. See it under **Leaderboard**
+  (Left/Right picks the boss) or next to each name on the Rematch page.
+- **Nothing to farm:** a rematch pays no experience and drops no loot. It isn't saved, and doesn't count toward
+  the codex.
+- **Another go:** Restart on the pause menu, or dying, starts it over.
+- **Locked:** a boss you haven't beaten in the campaign shows as `???` until you have.
+
+![The Rematch page](docs/rematch_menu.png)
+![A rematch against the Hive Queen, with the clock](docs/rematch_fight.png)
+![A rematch board](docs/rematch_board.png)
 ![The Drowned Keeper](docs/drowned_keeper.png)
 
 ## Story mode
@@ -1047,6 +1065,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
 | `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
+| `src/Rematch.cs` | Mini-boss rematches: starting one, the clock, and each boss's board |
 | `src/Codex.cs` | The monster codex: each monster's lore and how to beat it, and your kills of each |
 | `src/WeaponMods.cs` | Weapon mods: the four, their chest odds, fitting them, and piercing, chain, charge and frost |
 | `src/NewGamePlus.cs` | New Game+: what each tier does to the hub, and going round again |
@@ -1059,7 +1078,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

@@ -144,6 +144,10 @@ public sealed class Renderer
                 DrawCharacter(g);
                 break;
 
+            case MenuPage.Rematch:
+                DrawRematchMenu(g);
+                break;
+
             case MenuPage.Codex:
                 DrawCodex(g);
                 break;
@@ -178,7 +182,7 @@ public sealed class Renderer
                 break;
         }
 
-        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.Effects or MenuPage.ArenaSetup or MenuPage.Achievements or MenuPage.Codex))
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.Effects or MenuPage.ArenaSetup or MenuPage.Achievements or MenuPage.Codex or MenuPage.Rematch))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
     }
 
@@ -193,6 +197,7 @@ public sealed class Renderer
         if (m.BoardArena) { DrawArenaBoard(g, def); return; }
         if (m.BoardDaily) { DrawDailyBoard(g); return; }
         if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
+        if (m.BoardRematch) { DrawRematchBoard(g); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
         var (tg, ts, tb) = m.BoardCourse.MedalTimes(m.BoardClass);
         string targets = $"GOLD {tg:0.0}   SILVER {ts:0.0}   BRONZE {tb:0.0}";
@@ -224,6 +229,40 @@ public sealed class Renderer
         }
         CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
         CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>A mini-boss's rematch board: the ten quickest wins against it, any class.</summary>
+    void DrawRematchBoard(Game g)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        var boss = MiniBosses.All[m.BoardBoss];
+        CenterText($"REMATCH   < {boss.Name.ToUpperInvariant()} >", 26, blue);
+        CenterText("QUICKEST WINS, ANY CLASS", 36, gold);
+        var runs = g.Profile.RematchBoard(boss.MiniBoss);
+        if (runs.Count == 0)
+        {
+            CenterText("NO WINS YET.", 70, MenuText);
+            CenterText("ARENA > REMATCH ON THE TITLE MENU.", 82, MenuDim);
+        }
+        else
+        {
+            var latest = runs.MaxBy(r => r.When);
+            Text(18, 48, "#", MenuDim); Text(40, 48, "TIME", MenuDim); Text(90, 48, "CLASS", MenuDim); Text(172, 48, "NAME", MenuDim); Text(250, 48, "DATE", MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
+                string cls = Enum.TryParse<PClass>(r.Class, out var pc) ? ClassDef.All[(int)pc].Name.ToUpperInvariant() : r.Class;
+                Text(18, y, $"{i + 1,2}", c);
+                Text(40, y, $"{r.Time:0.00}", c);
+                Text(90, y, cls, c);
+                Text(172, y, r.Name, c);
+                Text(250, y, r.When == default ? "-" : r.When.ToString("yyyy-MM-dd"), c);
+            }
+        }
+        CenterText("LEFT/RIGHT: BOSS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
     }
 
     /// <summary>The endless course's board for one class: the runs that reached the most platforms, then the quickest.</summary>
@@ -310,7 +349,7 @@ public sealed class Renderer
         int n = ArenaModInfo.All.Length;
         for (int i = 0; i < items.Length; i++)
         {
-            int y = 44 + i * 12 + (i >= n ? 6 : 0);
+            int y = 41 + i * 11 + (i >= n ? 5 : 0);
             bool sel = i == m.Cursor;
             if (i >= n) { MenuItem(items[i], y, sel); continue; }
             var mod = ArenaModInfo.All[i];
@@ -476,6 +515,37 @@ public sealed class Renderer
         if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), 174, Col.Rgb(120, 255, 140));
         else CenterText("ENTER: SPEND A POINT    ESC: BACK", 174, MenuDim);
         CenterText($"KILLS {pr.TotalKills}    WINS {pr.Wins}    TOTAL XP {pr.TotalXp}", 186, MenuDim);
+    }
+
+    /// <summary>Arena > Rematch: the six mini-bosses, the ones you've beaten with your best time against them.</summary>
+    void DrawRematchMenu(Game g)
+    {
+        var m = g.Menu;
+        var items = m.Items(MenuPage.Rematch);
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255);
+        CenterText("REMATCH", 10, gold, 2);
+        CenterText("BEAT A MINI-BOSS AGAIN, AGAINST THE CLOCK", 30, MenuDim);
+        for (int i = 0; i < items.Length; i++)
+        {
+            bool sel = i == m.Cursor, back = i == items.Length - 1;
+            int y = 48 + i * 14 + (back ? 6 : 0);
+            if (back) { MenuItem(items[i], y, sel); continue; }
+            var boss = MiniBosses.All[i];
+            bool open = g.Profile.MiniBosses.Contains(boss.MiniBoss);
+            if (sel) Rect(30, y - 2, 260, 11, Col.Rgb(70, 40, 20));
+            Text(38, y, items[i].ToUpperInvariant(), sel ? MenuSel : open ? MenuText : MenuDim);
+            var best = g.Profile.RematchBoard(boss.MiniBoss).FirstOrDefault();
+            string right = !open ? "NOT BEATEN YET" : best != null ? $"BEST {best.Time:0.00}" : "NO TIME YET";
+            Text(282 - Font.Width(right), y, right, open ? (best != null ? gold : blue) : MenuDim);
+        }
+        if (m.Cursor < MiniBosses.All.Length)
+        {
+            var boss = MiniBosses.All[m.Cursor];
+            string where = g.Profile.MiniBosses.Contains(boss.MiniBoss) ? Words.T(Rematches.Map(boss)).ToUpperInvariant() : "BEAT IT IN THE CAMPAIGN TO UNLOCK IT";
+            CenterText(where, 154, blue);
+        }
+        if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), 168, Col.Rgb(120, 255, 140));
+        CenterText("ENTER: FIGHT   ESC: BACK", 186, MenuDim);
     }
 
     /// <summary>
@@ -1636,6 +1706,7 @@ public sealed class Renderer
         DrawSpeed(g);
         if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
         if (g.OnEndless && style != HudStyle.Off) DrawEndlessHud(g);
+        if (g.Rematch != null && style != HudStyle.Off) DrawRematchClock(g);
         if (g.Practicing) DrawDemoBanner(g);
         switch (style)
         {
@@ -1695,6 +1766,16 @@ public sealed class Renderer
             Text(W - 4 - Font.Width(next) - 9, ny, next, Medals.Colour(medal));
             MedalDot(W - 9, ny + 1, medal);
         }
+    }
+
+    /// <summary>In a rematch: the clock, and your best against this boss.</summary>
+    void DrawRematchClock(Game g)
+    {
+        var best = g.Profile.RematchBoard(g.Rematch.MiniBoss).FirstOrDefault(r => r.Name == g.RunnerName);
+        string time = $"TIME {g.RematchTime:0.00}";
+        int y = g.Vars.ShowFps ? 12 : 3;
+        Text(W - 4 - Font.Width(time), y, time, g.RematchWon ? Col.Rgb(120, 255, 140) : Col.Rgb(240, 236, 220));
+        if (best != null) { string top = $"BEST {best.Time:0.00}"; Text(W - 4 - Font.Width(top), y + 10, top, Col.Rgb(255, 220, 90)); }
     }
 
     /// <summary>On the endless course: the platform you're on out of the course's, your best, and the seed.</summary>
@@ -2040,6 +2121,7 @@ public sealed class Renderer
         StoneBackdrop(g.Time);
         CenterText("CHOOSE YOUR CLASS", 10, Col.Rgb(230, 170, 50), 2);
         if (g.PendingArena) CenterText(Words.T("THE CHAOS ARENA: SURVIVE THE WAVES"), 28, Col.Rgb(230, 120, 255));
+        else if (g.PendingRematch is { } rb) CenterText($"REMATCH: {rb.Name.ToUpperInvariant()}", 28, Col.Rgb(255, 150, 90));
         else if (g.PendingPractice) CenterText($"PRACTICE: {g.PendingCourse.Name.ToUpperInvariant()}", 28, Col.Rgb(170, 200, 255));
         else if (g.NgTier > 0) CenterText($"{NgPlus.Name(g.NgTier)}: {NgPlus.Short(g.NgTier)}", 28, Col.Rgb(255, 120, 90));
         else CenterText(g.Relaxed ? "RELAXED MODE" : "CLASSIC MODE", 28, g.Relaxed ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 150, 120));

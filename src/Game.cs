@@ -240,6 +240,7 @@ public sealed partial class Game
     public void StartPractice(PClass cls, Course course = null)
     {
         Course = course ?? Courses.Hangar;
+        Rematch = null;
         if (Course.Endless && Course.Seed <= 0) Course = Endless.For(Endless.NewSeed()); // picked from the menu: a fresh seed
         var c = Course;
         HubSource = () => new[] { c.Map().Build() };
@@ -282,6 +283,7 @@ public sealed partial class Game
     {
         HubSource = () => new[] { Maps.ChaosArena.Build() };
         TestingMap = true;
+        Rematch = null;
         Practicing = false; Demo = false; PracticeSpeed = 1f;
         ArenaMode = true;
         DailyMode = daily;
@@ -638,6 +640,7 @@ public sealed partial class Game
         StoryMode = false; Story = null;
         SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
+        Rematch = null; PendingRematch = null;
         Practicing = false; Demo = false; PracticeSpeed = 1f;
         Mode = GameMode.Title;
         Paused = false;
@@ -703,6 +706,7 @@ public sealed partial class Game
     public void StartStory(int caseIndex)
     {
         StoryCase = Math.Clamp(caseIndex, 0, HexenSharp.Story.Cases.Length - 1);
+        Rematch = null;
         var c = HexenSharp.Story.Cases[StoryCase];
         HubSource = () => new[] { c.Map.Build() };
         TestingMap = true;
@@ -859,6 +863,7 @@ public sealed partial class Game
         else if (!TestingMap) Say($"You are the {P.Def.Name}. Find a way through the hub.");
         if (Practicing) SetUpCourse(); // starting a course, or Restart on one
         if (StoryMode) SetUpCase();
+        if (Rematch != null) SetUpRematch();
     }
 
     static Thing Place(Thing t, Thing at, Level lv)
@@ -919,10 +924,11 @@ public sealed partial class Game
                 {
                     if (PendingPractice) { PendingPractice = false; StartPractice((PClass)MenuIndex, PendingCourse); }
                     else if (PendingArena) { PendingArena = false; StartArena((PClass)MenuIndex); }
+                    else if (PendingRematch is { } boss) { PendingRematch = null; StartRematch((PClass)MenuIndex, boss); }
                     else NewGame((PClass)MenuIndex);
                     PlaySound(Sfx.Teleport, 1);
                 }
-                if (inp.Pause) { PendingPractice = PendingArena = false; GoToTitle(); }
+                if (inp.Pause) { PendingPractice = PendingArena = false; PendingRematch = null; GoToTitle(); }
                 return;
             case GameMode.Victory:
                 // a play-tested map starts over, so you can keep iterating; the hub goes back to the title
@@ -960,6 +966,7 @@ public sealed partial class Game
         float step = FeelStep(dt); // a hit-stop, or a boss intro's slow motion
         UpdatePlayer(inp, step);
         UpdateWorld(step);
+        RematchTick(step);
         CheckBossIntros();
         Arcade.Update(dt);
         DigTarget = Mode == GameMode.Playing && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;

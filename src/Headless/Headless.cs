@@ -65,6 +65,8 @@ public static partial class Headless
         ArenaModeChecks(Check);
         Console.WriteLine("Save and continue:");
         SaveChecks(Check);
+        Console.WriteLine("Mini-boss rematches:");
+        RematchChecks(Check);
         Console.WriteLine("Monster codex:");
         CodexChecks(Check);
         Console.WriteLine("Weapon mods:");

@@ -84,6 +84,21 @@ public sealed class Profile
         return place + 1;
     }
 
+    /// <summary>Mini-boss rematches won: each boss's ten quickest, any class.</summary>
+    public List<RematchRun> RematchRuns { get; set; } = new();
+
+    public List<RematchRun> RematchBoard(string boss) =>
+        RematchRuns.Where(r => r.Boss == boss).OrderBy(r => r.Time).Take(BoardSize).ToList();
+
+    /// <summary>Adds a rematch won; its place on that boss's board, or 0 if it didn't make the ten.</summary>
+    public int AddRematchRun(RematchRun run)
+    {
+        RematchRuns.Add(run);
+        var board = RematchBoard(run.Boss);
+        RematchRuns.RemoveAll(r => r.Boss == run.Boss && !board.Contains(r));
+        return board.IndexOf(run) + 1;
+    }
+
     /// <summary>Endless course runs, the best ten for each class (most platforms, then quickest).</summary>
     public List<EndlessRun> EndlessRuns { get; set; } = new();
 
@@ -235,6 +250,7 @@ public sealed class Profile
             p.DailyRuns ??= new();
             p.EndlessRuns ??= new();
             p.KillsBy ??= new();
+            p.RematchRuns ??= new();
             p.Achievements ??= new();
             // runs saved before scores: 100 a wave, as a run with no modifiers scores
             foreach (var board in p.ArenaRuns.Values)

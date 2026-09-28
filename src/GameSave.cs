@@ -63,7 +63,7 @@ public sealed partial class Game
         if (!Enum.TryParse<PClass>(s.Player.Class, out var cls) || !Enum.TryParse<GameStyle>(s.Style, out var style)) return false;
         // a fresh hub, the usual way; then everything the save remembers goes back over it
         HubSource = Maps.BuildHub;
-        TestingMap = false; Practicing = false; ArenaMode = false; StoryMode = false; Story = null; Demo = false;
+        TestingMap = false; Practicing = false; ArenaMode = false; StoryMode = false; Story = null; Demo = false; Rematch = null;
         Style = style;
         NgTier = s.NgTier;
         NewGame(cls);

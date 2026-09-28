@@ -418,6 +418,13 @@ public sealed partial class Game
     /// <summary>A mini-boss falls: its loot, its experience, and it's crossed off your list for good.</summary>
     void MiniBossDown(Monster m)
     {
+        if (Rematch != null)
+        {
+            // a rematch: just the time, no loot or experience
+            foreach (var t in Level.Things.OfType<Monster>().Where(o => o.Summoner == m && o.Alive).ToList()) DamageMonster(t, 100000);
+            RematchDown();
+            return;
+        }
         Say($"The {m.Def.Name} falls!");
         PlaySound(Sfx.BossSight, 0.8f);
         foreach (var (kind, dx) in new[] { (PickupKind.Urn, -0.35f), (PickupKind.Armor, 0.35f) })
