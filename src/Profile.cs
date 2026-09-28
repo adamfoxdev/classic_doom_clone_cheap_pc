@@ -117,6 +117,23 @@ public sealed class Profile
         return board.IndexOf(run) + 1;
     }
 
+    /// <summary>Shooting range drills, the best ten for each class (highest score, then fewest shots).</summary>
+    public List<RangeRun> RangeRuns { get; set; } = new();
+
+    public List<RangeRun> RangeBoard(PClass cls) =>
+        RangeRuns.Where(r => r.Class == cls.ToString()).OrderByDescending(r => r.Score).ThenBy(r => r.Shots).Take(BoardSize).ToList();
+
+    public int RangeBest(PClass cls) => RangeRuns.Where(r => r.Class == cls.ToString()).Select(r => r.Score).DefaultIfEmpty(0).Max();
+
+    /// <summary>Adds a drill; its place on the class's board, or 0 if it didn't make the ten.</summary>
+    public int AddRangeRun(RangeRun run)
+    {
+        RangeRuns.Add(run);
+        var board = RangeBoard(Enum.Parse<PClass>(run.Class));
+        RangeRuns.RemoveAll(r => r.Class == run.Class && !board.Contains(r));
+        return board.IndexOf(run) + 1;
+    }
+
     /// <summary>Scored daily challenge runs: one per name per day, the first they finished.</summary>
     public List<DailyRun> DailyRuns { get; set; } = new();
 
@@ -259,6 +276,7 @@ public sealed class Profile
             p.MiniBosses ??= new();
             p.DailyRuns ??= new();
             p.EndlessRuns ??= new();
+            p.RangeRuns ??= new();
             p.KillsBy ??= new();
             p.RematchRuns ??= new();
             p.Achievements ??= new();

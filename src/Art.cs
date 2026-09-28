@@ -38,15 +38,18 @@ public static class Art
     public static Tex SkyDusk, SkyIce, SkyNight;
     // Sprites
     public static readonly Dictionary<string, Tex[]> Monsters = new();
-    public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt, Seeker;
+    public static Tex[] Fireball, Bolt, Shard, Serpent, Flame, Lightning, Hammer, BossBall, CentaurBolt, Seeker, Rocket;
+    /// <summary>A rocket's smoke trail puff.</summary>
+    public static Tex Smoke;
     public static Tex[] Torch, Relics;
     /// <summary>The practice ghost: a hologram runner (sci-fi) or a pale spectre (fantasy), two strides.</summary>
     public static Tex[] Ghost;
     public static Tex Pillar, Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, ChestClosed, ChestOpen, LoreStone, LoreStoneRead, WeaponPiece2, WeaponPiece3, Tree, Crystal, Jetpack;
     // HUD
     public static Tex HudBack;
-    // First-person weapons, indexed [class*3 + slot][frame]
-    public static Tex[][] Weapons = new Tex[9][];
+    // First-person weapons, indexed [class*3 + slot][frame], then the rocket launcher (9)
+    public static Tex[][] Weapons = new Tex[10][];
+    public const int RocketLauncherArt = 9;
 
     public static ArtStyle Style = ArtStyle.SciFi;
     /// <summary>Bumped whenever the art is rebuilt, so caches (the editor's icons) know to refresh.</summary>
@@ -68,6 +71,7 @@ public static class Art
         if (style == ArtStyle.SciFi) SciFiArt.Apply();
         if (style == ArtStyle.SciFi && Rendered) RenderedArt.Apply();
         MiniBosses.BuildArt(); // from whichever monsters the style has
+        ShootingRange.BuildArt();
         RubbleCracked = CrackStages(Rubble);
         RubbleChunk = Chunk(Rubble);
         Ores = OreColors.Select((c, k) => Veins(Rubble, c, 300 + (uint)k)).ToArray();
@@ -97,6 +101,7 @@ public static class Art
         PickupKind.Weapon3 => WeaponPiece3,
         PickupKind.Jetpack => Jetpack,
         PickupKind.Upgrade => Upgrade[0],
+        PickupKind.Arms => Weapons[variant % Weapons.Length][0], // the range's rack: the weapon itself
         _ => Relics[variant % Relics.Length],
     };
 
@@ -832,6 +837,8 @@ public static class Art
         Shard = new[] { ShardTex(0), ShardTex(1) };
         Lightning = new[] { LightningTex(1), LightningTex(2) };
         Hammer = new[] { HammerTex(0), HammerTex(1) };
+        Smoke = Orb(Col.Rgb(110, 108, 104), Col.Rgb(190, 186, 180), 2);
+        Rocket = new[] { Orb(Col.Rgb(150, 150, 140), Col.Rgb(255, 210, 120), 0), Orb(Col.Rgb(255, 120, 30), Col.Rgb(255, 240, 150), 1) };
         Torch = new[] { TorchTex(0), TorchTex(1), TorchTex(2) };
         Ghost = new[] { GhostTex(0), GhostTex(1) };
 
@@ -1326,6 +1333,37 @@ public static class Art
                 }
                 Weapons[cls * 3 + slot] = frames;
             }
+        var rl = new Tex[2];
+        for (int f = 0; f < 2; f++)
+        {
+            var c = new Canvas(WW, WH);
+            DrawRocketLauncher(c, f == 1);
+            c.Noise(new Rng((uint)(90 + f)), 8);
+            c.Outline(Dark);
+            rl[f] = c.T;
+        }
+        Weapons[RocketLauncherArt] = rl;
+    }
+
+    /// <summary>The rocket launcher: a heavy square tube held low in the middle, its muzzle a dark hole (flame when it fires).</summary>
+    static void DrawRocketLauncher(Canvas c, bool fire)
+    {
+        int kick = fire ? 6 : 0;
+        uint body = Col.Rgb(92, 88, 84), dark = Col.Rgb(46, 44, 42), band = Col.Rgb(150, 120, 60);
+        // the tube widens toward you: stacked slices from the muzzle down
+        for (int y = 26 + kick; y < WH; y++)
+        {
+            float t = (y - 26 - kick) / (float)(WH - 26 - kick);
+            int half = (int)(12 + 14 * t);
+            c.Rect(64 - half, y, half * 2, 1, Col.Shade(body, (int)(90 + 50 * t)));
+            c.Rect(64 - half, y, 3, 1, Col.Shade(body, 170)); // lit edge
+        }
+        c.Rect(50, 26 + kick, 28, 6, Col.Rgb(120, 116, 110));
+        c.Ellipse(64, 29 + kick, 9, 3, dark);
+        c.Rect(54, 44 + kick, 20, 4, band); c.Rect(46, 64 + kick, 36, 4, band);
+        c.Rect(78, 52 + kick, 10, 8, Col.Rgb(70, 66, 62)); // sight
+        if (fire) { c.Glow(64, 24 + kick, 26, Col.Rgb(255, 150, 40)); c.Glow(64, 26 + kick, 12, Col.Rgb(255, 240, 160)); }
+        Arm(c, 116, 80, 92, 70, Col.Rgb(90, 90, 100), Col.Rgb(200, 150, 110));
     }
 
     static void Arm(Canvas c, float x, float y, float x1, float y1, uint sleeve, uint skin)

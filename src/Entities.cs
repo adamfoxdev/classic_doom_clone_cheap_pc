@@ -62,7 +62,7 @@ public sealed class Decor : Thing
 
 // ---------------------------------------------------------------- pickups
 
-public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic, Jetpack, Upgrade, Mod }
+public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic, Jetpack, Upgrade, Mod, Arms }
 
 public sealed class Pickup : Thing
 {
@@ -72,7 +72,7 @@ public sealed class Pickup : Thing
     public Pickup(PickupKind kind, float size = 0.4f, int variant = 0)
     {
         Kind = kind; Variant = variant; SpriteW = size; SpriteH = size;
-        FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.Relic or PickupKind.Upgrade or PickupKind.Mod;
+        FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.Relic or PickupKind.Upgrade or PickupKind.Mod or PickupKind.Arms;
     }
     public override Tex Sprite(float time) => Kind == PickupKind.Upgrade ? Art.Upgrade[(int)(time * 6) % Art.Upgrade.Length]
         : Kind == PickupKind.Mod ? WeaponMods.SpriteFrames(Variant)[(int)(time * 6) % Art.Upgrade.Length]
@@ -119,6 +119,10 @@ public sealed class Monster : Thing
     public float SpecialCd, SpecialTime, DashX, DashY;
     public int SpecialPhase, NextBlinkHp;
     public Monster Summoner;
+    /// <summary>A blast's push (cells a second), sliding it away and dying off (see Game.KnockTick).</summary>
+    public float KnockX, KnockY;
+    /// <summary>A shooting range dummy's place and kind (null for every real monster).</summary>
+    public RangeTarget Target;
     /// <summary>Out of reach: a Dark Bishop's blur, or the Rock Wyrm inside the rock (unseen as well).</summary>
     public bool Blurring => BlurTime > 0 || Burrowed;
     public bool Burrowed;
@@ -193,7 +197,7 @@ public sealed class Monster : Thing
 
 // ---------------------------------------------------------------- projectiles
 
-public enum ProjKind { Fireball, CentaurBolt, BossBall, Seeker, Bolt, Shard, Serpent, Flame, Lightning, Hammer }
+public enum ProjKind { Fireball, CentaurBolt, BossBall, Seeker, Bolt, Shard, Serpent, Flame, Lightning, Hammer, Rocket }
 
 public sealed class Projectile : Thing
 {
@@ -228,6 +232,7 @@ public sealed class Projectile : Thing
         ProjKind.Serpent => Art.Serpent,
         ProjKind.Flame => Art.Flame,
         ProjKind.Lightning => Art.Lightning,
+        ProjKind.Rocket => Art.Rocket,
         _ => Art.Hammer,
     };
 

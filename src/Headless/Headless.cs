@@ -85,6 +85,8 @@ public static partial class Headless
         CodexChecks(Check);
         Console.WriteLine("Weapon mods:");
         ModChecks(Check);
+        Console.WriteLine("Rocket launcher and shooting range:");
+        RangeChecks(Check);
         Console.WriteLine("Game feel:");
         FeelChecks(Check);
         Console.WriteLine("Endless course:");

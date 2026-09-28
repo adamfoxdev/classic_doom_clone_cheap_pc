@@ -449,7 +449,7 @@ public static partial class Headless
         g.Profile.DailyRuns.Add(new DailyRun { Date = today.ToString("yyyy-MM-dd"), Name = "RIVAL", Score = 99999, Waves = 30 });
         check(Daily.Streak(g.Profile, "TESTER", today) == 3 && Daily.Streak(g.Profile, "TESTER", today.AddDays(1)) == 3, "a streak counts the days in a row, up to today (or yesterday, till you play)");
         g.Paused = true; g.Menu.Show(MenuPage.Leaderboard);
-        for (int k = 0; k < 6 && !g.Menu.BoardDaily; k++) g.Menu.Update(new Input { Down = true }, 1f / 35f);
+        for (int k = 0; k < 7 && !g.Menu.BoardDaily; k++) g.Menu.Update(new Input { Down = true }, 1f / 35f);
         var r = new Renderer();
         r.Render(g);
         int top = r.Fb.Count(px => px == Col.Rgb(230, 190, 80)), mineLit = r.Fb.Count(px => px == Col.Rgb(120, 255, 140));

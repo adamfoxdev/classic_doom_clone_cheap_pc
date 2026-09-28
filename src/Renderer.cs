@@ -168,7 +168,7 @@ public sealed class Renderer
 
             case MenuPage.Courses:
                 CenterText("PRACTICE", 14, Col.Rgb(230, 190, 80), 2);
-                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 40 + i * 12, i == m.Cursor);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 34 + i * 11, i == m.Cursor);
                 if (m.Cursor < Courses.All.Length)
                 {
                     var course = Courses.All[m.Cursor];
@@ -178,6 +178,11 @@ public sealed class Renderer
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.EndlessBest(c)}");
                         CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                    }
+                    if (course.Range)
+                    {
+                        var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.RangeBest(c)}");
+                        CenterText("BEST DRILL: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
                     }
                 }
                 CenterText("ARROWS + ENTER    ESC: BACK", 186, MenuDim);
@@ -199,6 +204,7 @@ public sealed class Renderer
         if (m.BoardArena) { DrawArenaBoard(g, def); return; }
         if (m.BoardDaily) { DrawDailyBoard(g); return; }
         if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
+        if (m.BoardRange) { DrawRangeBoard(g, def); return; }
         if (m.BoardRematch) { DrawRematchBoard(g); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
         var (tg, ts, tb) = m.BoardCourse.MedalTimes(m.BoardClass);
@@ -1283,7 +1289,7 @@ public sealed class Renderer
         if (g.Level.Flight) { DrawCockpit(g); return; }
         if (g.Mode == GameMode.Dead || g.Relaxed || g.StoryMode) return; // relaxed mode and cases: weapons stay sheathed
         int slot = p.Weapon;
-        var frames = Art.Weapons[(int)p.Class * 3 + slot];
+        var frames = Art.Weapons[p.CurWeapon.ArtIndex];
         var tex = p.FireAnim > 0.06f ? frames[1] : frames[0];
         int bx = (int)(MathF.Cos(p.Bob * 0.5f) * 5 * p.BobAmount);
         int by = (int)(MathF.Abs(MathF.Sin(p.Bob * 0.5f)) * 5 * p.BobAmount);
@@ -1726,6 +1732,7 @@ public sealed class Renderer
         DrawSpeed(g);
         if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
         if (g.OnEndless && style != HudStyle.Off) DrawEndlessHud(g);
+        if (g.OnRange && style != HudStyle.Off) DrawRangeHud(g);
         if (g.Rematch != null && style != HudStyle.Off) DrawRematchClock(g);
         if (g.Practicing) DrawDemoBanner(g);
         switch (style)
@@ -1809,6 +1816,61 @@ public sealed class Renderer
         Text(W - 4 - Font.Width(seed), y + (best > 0 ? 20 : 10), seed, Col.Rgb(150, 150, 160));
     }
 
+    /// <summary>On the range: in a drill, the time left and the score; otherwise, how to start one, and your best.</summary>
+    void DrawRangeHud(Game g)
+    {
+        int y = g.Vars.ShowFps ? 12 : 3;
+        int best = g.Profile.RangeBest(g.P.Class);
+        void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
+        if (g.Drilling)
+        {
+            Right($"DRILL {MathF.Ceiling(g.DrillLeft):0}", 0, g.DrillLeft < 10 ? Col.Rgb(255, 120, 90) : Col.Rgb(240, 236, 220));
+            Right($"SCORE {g.DrillScore}", 10, Col.Rgb(120, 255, 140));
+            Right($"DOWN {g.DrillKills}  SHOTS {g.DrillShots}", 20, Col.Rgb(150, 150, 160));
+        }
+        else
+        {
+            Right($"{Keys.Name(g.Binds.Get(Act.Use, 0))}: DRILL", 0, Col.Rgb(240, 236, 220));
+            if (best > 0) Right($"BEST {best}", 10, Col.Rgb(255, 220, 90));
+        }
+        if (g.RocketJumps > 0) Right($"ROCKET JUMPS {g.RocketJumps}", g.Drilling ? 30 : best > 0 ? 20 : 10, Col.Rgb(255, 170, 80));
+    }
+
+    /// <summary>The shooting range's board for one class: the best drills.</summary>
+    void DrawRangeBoard(Game g, ClassDef def)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        CenterText($"SHOOTING RANGE   < {def.Name.ToUpperInvariant()} >", 26, blue);
+        CenterText($"ONE-MINUTE DRILLS, BY SCORE", 36, gold);
+        var runs = g.Profile.RangeBoard(m.BoardClass);
+        if (runs.Count == 0)
+        {
+            CenterText("NO DRILLS YET.", 70, MenuText);
+            CenterText("PICK PRACTICE > SHOOTING RANGE, THEN PRESS USE.", 82, MenuDim);
+        }
+        else
+        {
+            var latest = runs.MaxBy(r => r.When);
+            Text(18, 48, "#", MenuDim); Text(40, 48, "SCORE", MenuDim); Text(88, 48, "DOWN", MenuDim); Text(128, 48, "SHOTS", MenuDim);
+            Text(172, 48, "NAME", MenuDim); Text(250, 48, "DATE", MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
+                Text(18, y, $"{i + 1,2}", c);
+                Text(40, y, $"{r.Score}", c);
+                Text(88, y, $"{r.Kills}", c);
+                Text(128, y, $"{r.Shots}", c);
+                Text(172, y, r.Name, c);
+                Text(250, y, r.When == default ? "-" : r.When.ToString("yyyy-MM-dd"), c);
+            }
+        }
+        CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
     /// <summary>A little medal: a coloured disc with a dark rim (grey and hollow for none).</summary>
     void MedalDot(int x, int y, Medal m)
     {
@@ -1850,11 +1912,18 @@ public sealed class Renderer
 
         // weapon slots, underlined with the mana colour the current weapon uses
         Text(202, by, "ARMS", label);
-        for (int i = 0; i < 3; i++)
+        if (p.HasWeapon.Length > 3)
         {
-            uint c = !p.HasWeapon[i] ? Col.Rgb(70, 60, 50) : i == p.Weapon ? Col.Rgb(255, 220, 90) : Col.Rgb(200, 190, 170);
-            Text(202 + i * 9, by + 12, (i + 1).ToString(), c);
+            // the range's loadout: the weapon in hand's key, and how many of the rack you've taken
+            Text(202, by + 12, ((p.Weapon + 1) % 10).ToString(), Col.Rgb(255, 220, 90));
+            Text(212, by + 12, $"x{p.HasWeapon.Count(h => h)}", Col.Rgb(200, 190, 170));
         }
+        else
+            for (int i = 0; i < 3; i++)
+            {
+                uint c = !p.HasWeapon[i] ? Col.Rgb(70, 60, 50) : i == p.Weapon ? Col.Rgb(255, 220, 90) : Col.Rgb(200, 190, 170);
+                Text(202 + i * 9, by + 12, (i + 1).ToString(), c);
+            }
         var w = p.CurWeapon;
         if (w.Mana > 0) Rect(202, by + 22, 24, 3, w.Mana == 1 ? Col.Rgb(60, 120, 255) : Col.Rgb(60, 210, 80));
 
