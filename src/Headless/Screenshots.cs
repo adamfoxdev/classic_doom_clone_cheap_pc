@@ -262,6 +262,27 @@ public static partial class Headless
             Shot("110_daily_board");
             g.Menu.Close();
             g.GoToTitle();
+
+            // the endless course: a few platforms in, looking on down the gaps; then its board
+            g.StartEndless(PClass.Fighter, 1234);
+            var ep = g.Course.Platforms;
+            foreach (int k in new[] { 1, 2, 3, 4, 5 })
+            {
+                g.P.X = (ep[k].x0 + ep[k].x1) / 2f; g.P.Y = 5.5f; g.P.FloorZ = ep[k].floor; g.P.Z = 0;
+                Tick(default, 2);
+            }
+            g.P.X = ep[5].x1 - 0.5f; g.P.Y = 4.2f; g.P.Angle = 0.12f; g.P.Pitch = -6f;
+            g.Messages.RemoveAll(m => !m.text.StartsWith("Platform 6"));
+            Tick(default);
+            Shot("115_endless");
+            foreach (var (n, pl, seed, t) in new[] { (g.RunnerName, 27, 1234, 88.4f), ("ACE-1", 24, 90210, 71.2f), (g.RunnerName, 19, 555, 60.9f), ("NOVA", 12, 1234, 41.5f) })
+                g.Profile.AddEndlessRun(new EndlessRun { Name = n, Class = "Fighter", Platforms = pl, Seed = seed, Time = t, When = new DateTime(2026, 9, 20 + pl % 7) });
+            g.Menu.Show(MenuPage.Leaderboard);
+            g.Menu.BoardEndless = true; g.Menu.BoardDaily = g.Menu.BoardArena = false; g.Menu.BoardClass = PClass.Fighter;
+            Shot("116_endless_board");
+            g.Menu.Close();
+            g.Profile.EndlessRuns.Clear();
+            g.GoToTitle();
         }
 
         // a chest, closed then opened
@@ -661,6 +682,8 @@ public static partial class Headless
         g.GoToTitle();
         g.Menu.Show(MenuPage.Courses); g.Menu.Cursor = 1;
         Shot("90_practice_courses");
+        g.Menu.Cursor = Array.IndexOf(Courses.All, Endless.Pick);
+        Shot("117_practice_endless");
         g.Menu.Close();
         foreach (var (course, name, cam) in new[]
         {

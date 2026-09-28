@@ -25,6 +25,8 @@ public sealed class MenuSystem
     public bool BoardArena;
     /// <summary>The Leaderboard page shows the daily challenge's board, for the day BoardDay back from today.</summary>
     public bool BoardDaily;
+    /// <summary>The Leaderboard page shows the endless course's board.</summary>
+    public bool BoardEndless;
     public int BoardDay;
 
     public MenuSystem(Game g) { _g = g; }
@@ -41,6 +43,7 @@ public sealed class MenuSystem
             BoardCourse = _g.Practicing && _g.Course.Timed ? _g.Course : Courses.Hangar;
             BoardArena = _g.ArenaMode && !_g.DailyMode;
             BoardDaily = _g.DailyMode;
+            BoardEndless = _g.OnEndless;
             BoardDay = 0;
         }
     }
@@ -194,12 +197,14 @@ public sealed class MenuSystem
             }
             if (inp.Up || inp.Down)
             {
-                // the timed courses, then the arena, then the daily challenge, round and round
+                // the timed courses, then the endless course, the arena and the daily challenge, round and round
                 var timed = Courses.Timed;
-                int n = timed.Length + 2, i = BoardDaily ? timed.Length + 1 : BoardArena ? timed.Length : Array.IndexOf(timed, BoardCourse);
+                int n = timed.Length + 3;
+                int i = BoardEndless ? timed.Length : BoardArena ? timed.Length + 1 : BoardDaily ? timed.Length + 2 : Array.IndexOf(timed, BoardCourse);
                 i = (i + (inp.Up ? n - 1 : 1)) % n;
-                BoardArena = i == timed.Length;
-                BoardDaily = i == timed.Length + 1;
+                BoardEndless = i == timed.Length;
+                BoardArena = i == timed.Length + 1;
+                BoardDaily = i == timed.Length + 2;
                 if (i < timed.Length) BoardCourse = timed[i];
                 BoardDay = 0;
                 _g.PlaySound(Sfx.Swing, 0.5f);

@@ -163,7 +163,8 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   climbing, and recharges whenever you're on the ground. Run dry in mid-air and you'll drop, and it won't
   relight until you let go of `Q` and press it again.
 - **Strafe-jumping practice** (**Practice** on the title menu): three timed courses (the Velocity Hangar, Descent
-  and the Circuit), each with a leaderboard, medals, a ghost of your best run and a demo run to watch, and Free Roam, an empty field to move
+  and the Circuit), each with a leaderboard, medals, a ghost of your best run and a demo run to watch; Endless, a seeded
+  run of gaps that gets harder until you fall; and Free Roam, an empty field to move
   around in. See [Quake movement](#quake-movement).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
@@ -270,6 +271,7 @@ Switch to the old direct movement with **Options → Movement** or `quakemove 0`
 | **Velocity Hangar** | A straight hangar of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells. |
 | **Descent** | Platforms dropping away (6 units up to 1) over gaps of 3 to 7 cells: each fall buys the hang time for a wider gap. As the Marine the last needs about 195%, as the Psion 225%. |
 | **Circuit** | One clockwise lap of an 8-wide loop round a walled island, through a checkpoint on each side and back over the finish line behind the start. Strafe into the corners to carry your speed round them. |
+| **Endless** | 50 platforms over gaps, built from a seed, that get harder as you go. There's no clock to beat: you score the platforms you reach before you fall. See [The endless course](#the-endless-course). |
 | **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
 
 On the timed courses:
@@ -359,6 +361,38 @@ On the timed courses:
 ![The Circuit's first corner](docs/circuit.png)
 ![Free Roam](docs/free_roam.png)
 ![The practice course leaderboard](docs/leaderboard.png)
+
+#### The endless course
+
+**Practice → Endless** builds a fresh course from a random seed each time you pick it. It's a run of platforms,
+9 wide, over gaps with lift pads below, like the Velocity Hangar, but 50 platforms long and harder the further you get.
+
+- **How it ramps:**
+  - The first few gaps take a plain running jump.
+  - After that the gaps widen, from about 2 cells to about 8.
+  - The platforms shrink from 12 cells to 3.
+  - From the fifth platform the floor starts dropping, more at a time the further you go, or rising a step. A drop
+    buys hang time, so its gap is a cell wider; a rise costs some, so its gap is narrower.
+  - By the last stretch the gaps need more than the top strafe-jumping speed (300% of your run), so nobody reaches
+    the end. On seed 1234 as the Marine, strafe jumping gets you to platform 39.
+- **One fall ends the run.** Falling onto a lift pad scores the platforms you reached past the first, puts the run
+  on your class's endless board, and starts you again from the top on the same seed.
+- **While you run:** the top-right corner shows the platform you're on out of 49, your best and the seed. Each
+  platform tells you how fast you'll need to be for the next gap, as on the other gap courses.
+- **What counts:**
+  - Your first landing past the start starts the clock. The time only breaks ties between runs that reached the
+    same platform.
+  - Falling at the first gap isn't recorded.
+  - Neither are runs at 50% or 25% speed, or the demo's.
+- **Seeds:** Restart keeps the seed. `endless 1234` in the console plays seed 1234, and `endless` alone rolls a new
+  one. The board lists each run's seed, so you can race a friend on theirs.
+- **The board:** **Leaderboard** has an Endless page, between the timed courses and the arena. It keeps each class's
+  ten furthest runs, the quickest first among equals.
+- **The demo** plays it too. On seed 1234 it gets past platform 30 before the gaps outgrow it.
+- **Into the Unknown:** reaching platform 25 earns the achievement.
+
+![The endless course, five platforms in](docs/endless.png)
+![The endless board](docs/endless_board.png)
 
 ### Chaos Arena
 
@@ -705,7 +739,7 @@ points with `Enter`. Every skill has 10 ranks:
 harder per level. The game announces each level-up, and the character screen shows every weapon's level and
 progress.
 
-**Achievements:** there are 23, listed under **Character → Achievements**. Each pays experience once, when it
+**Achievements:** there are 24, listed under **Character → Achievements**. Each pays experience once, when it
 unlocks, with a banner and a message; this works anywhere, practice and the arena included. The list shows which
 you've got and when, and how far along you are with the ones that build up.
 
@@ -720,6 +754,7 @@ you've got and when, and how far along you are with the ones that build up.
 | Untouchable | Win in the classic style without dying once | 500 |
 | Nightmare Walker | Win on Nightmare, start to finish | 750 |
 | Once More, With Feeling | Win a New Game+ campaign | 400 |
+| Into the Unknown | Reach platform 25 on the endless course | 300 |
 | Pilgrim | Win in the relaxed style: find every relic | 300 |
 | Jack of All Trades | Win as all three classes | 500 |
 | On the Podium | Earn a medal on a practice course | 50 |
@@ -840,6 +875,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `profile [reset]` | show your level, skills and totals, or start your progress over |
 | `name [name]` | show or set the name your practice course times go on the leaderboard under |
 | `demo` | on a practice course, start the demo run from the beginning |
+| `endless [seed]` | play the endless practice course on a new seed, or on the one you name |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -945,6 +981,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Arcade.cs` | Arcade mode: damage numbers, score and the style rank |
 | `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
 | `src/Practice.cs` | The practice courses: Velocity Hangar, Descent, Circuit and Free Roam |
+| `src/Endless.cs` | The endless practice course: its seeded platforms, falling, and its board |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
 | `src/Bindings.cs` | Rebindable actions, key names, turning key state into game input |
@@ -968,7 +1005,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+ |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

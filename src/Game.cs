@@ -235,6 +235,7 @@ public sealed partial class Game
     public void StartPractice(PClass cls, Course course = null)
     {
         Course = course ?? Courses.Hangar;
+        if (Course.Endless && Course.Seed <= 0) Course = Endless.For(Endless.NewSeed()); // picked from the menu: a fresh seed
         var c = Course;
         HubSource = () => new[] { c.Map().Build() };
         TestingMap = true;
@@ -430,7 +431,7 @@ public sealed partial class Game
     /// </summary>
     public int GapSpeedPercent(int cells, float drop = 0)
     {
-        float j = Vars.JumpPower, air = (j + MathF.Sqrt(j * j + 2 * Vars.Gravity * drop)) / Vars.Gravity;
+        float j = Vars.JumpPower, air = (j + MathF.Sqrt(MathF.Max(0, j * j + 2 * Vars.Gravity * drop))) / Vars.Gravity;
         float need = (cells - 2 * P.Radius) / air;
         return (int)(MathF.Ceiling(need / RunSpeed * 20) * 5);
     }
@@ -450,12 +451,13 @@ public sealed partial class Game
         if (zone >= plats.Length - 1) return "Made it! Step into the exit to finish the run.";
         int gap = plats[zone + 1].x0 - plats[zone].x1 - 1;
         string zig = zone == 2 ? " Zig-zag: switch strafe keys and turn the other way each hop." : "";
-        return $"Platform {zone + 1}. The next gap is {gap} wide: hit about {GapSpeedPercent(gap, plats[zone].floor - plats[zone + 1].floor)}% speed.{zig}";
+        return $"Platform {(Course.Endless ? zone : zone + 1)}. The next gap is {gap} wide: hit about {GapSpeedPercent(gap, plats[zone].floor - plats[zone + 1].floor)}% speed.{zig}";
     }
 
     /// <summary>Crossed the finish: report the time and its place on your class's leaderboard, and start the run over.</summary>
     void FinishRun()
     {
+        if (OnEndless) { EndEndlessRun(true); return; }
         if (Demo)
         {
             Recording.Record(RunTime, P.X, P.Y, P.FloorZ + P.Z);
@@ -518,7 +520,7 @@ public sealed partial class Game
     /// <summary>Back to the start line: the clock at zero, a fresh recording, and the ghost waiting beside you.</summary>
     void ResetRun()
     {
-        RunTime = 0; RunStarted = false;
+        RunTime = 0; RunStarted = false; EndlessReached = 0;
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         Recording = new GhostTrack();
@@ -1211,7 +1213,7 @@ public sealed partial class Game
         if (Practicing)
         {
             // the clock starts when you leave the spot you started on
-            if (!RunStarted && Course.Timed && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
+            if (!RunStarted && Course.Timed && !Course.Endless && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
             if (RunStarted)
             {
                 RunTime += dt;
@@ -1464,6 +1466,7 @@ public sealed partial class Game
                         Health = Math.Max(p.Health, 50), Armor = p.Armor,
                     };
                 PlaySound(Sfx.Secret, 0.7f);
+                if (OnEndless) EndlessPlatform(zone);
                 if (Practicing) Say(CourseHint(zone) + GhostSplit(zone));
                 else { Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count})."); SaveNow(); }
             }
@@ -1473,7 +1476,8 @@ public sealed partial class Game
         bool onLift = lv.Marks[cell] == '=' && p.OnGround && MathF.Abs(p.FloorZ - lv.Floors[cell]) < 0.01f;
         if (onLift && !_onLift)
         {
-            if (Checkpoint != null && Checkpoint.Level == lv)
+            if (OnEndless) { EndEndlessRun(false); onLift = false; } // on the endless course a fall ends the run
+            else if (Checkpoint != null && Checkpoint.Level == lv)
             {
                 MoveTo(Checkpoint.X, Checkpoint.Y, Checkpoint.Angle);
                 PlaySound(Sfx.Teleport, 1);

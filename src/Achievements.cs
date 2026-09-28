@@ -18,6 +18,7 @@ public static class Achievements
     /// <summary>A game through the hub (not a practice course, the arena, a story case or a custom map).</summary>
     static bool InHub(Game g) => g.P != null && !g.TestingMap && !g.StoryMode && g.Mode is GameMode.Playing or GameMode.Victory;
     static int ArenaBest(Game g) => Math.Max(Enum.GetValues<PClass>().Max(c => Pr(g).ArenaBestWave(c)), g.ArenaMode && g.Level?.Arena is { } a ? a.BestWave : 0);
+    static int EndlessBest(Game g) => Enum.GetValues<PClass>().Max(c => Pr(g).EndlessBest(c));
     static int GoldCourses(Game g) => Courses.Timed.Count(c => Enum.GetValues<PClass>().Any(cls => c.MedalFor(cls, Pr(g).CourseBestTime(c.Key(cls))) == Medal.Gold));
     static int Bits(int m) => System.Numerics.BitOperations.PopCount((uint)m);
 
@@ -34,6 +35,8 @@ public static class Achievements
         new("flawless", "Untouchable", "Win in the classic style without dying once", 500, g => Pr(g).FlawlessWins >= 1),
         new("nightmare", "Nightmare Walker", "Win on Nightmare, start to finish", 750, g => Pr(g).NightmareWins >= 1),
         new("ng_plus", "Once More, With Feeling", "Win a New Game+ campaign", 400, g => Pr(g).NgBest >= 1),
+        new("endless_25", "Into the Unknown", "Reach platform 25 on the endless course", 300,
+            g => EndlessBest(g) >= 25, g => (Math.Min(EndlessBest(g), 25), 25)),
         new("pilgrim", "Pilgrim", "Win in the relaxed style: find every relic", 300, g => Pr(g).RelaxedWins >= 1),
         new("all_classes", "Jack of All Trades", "Win as all three classes", 500,
             g => Pr(g).ClassWins.Distinct().Count() >= 3, g => (Pr(g).ClassWins.Distinct().Count(), 3)),
