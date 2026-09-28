@@ -7,7 +7,7 @@ namespace HexenSharp;
 /// </summary>
 public sealed record Course(string Id, string Name, string About, Func<MapDef> Map, bool Timed, string Intro,
     (int x0, int x1, float floor)[] Platforms = null, float StartAngle = 0, bool Jetpack = false, float Route = 0,
-    bool Endless = false, int Seed = 0, bool Range = false, bool Rockets = false, bool Grenades = false, bool Tower = false, bool Soccer = false, bool Pool = false)
+    bool Endless = false, int Seed = 0, bool Range = false, bool Rockets = false, bool Grenades = false, bool Tower = false, bool Soccer = false, bool Pool = false, bool Fishing = false)
 {
     /// <summary>The leaderboard and ghost key for a class (the Velocity Hangar's are just the class, as they were first).</summary>
     public string Key(PClass cls) => Id == "hangar" ? cls.ToString() : $"{Id}/{cls}";
@@ -80,7 +80,7 @@ public static class Courses
         "A WIDE OPEN FIELD WITH NOTHING IN IT: NO CLOCK, NO EXIT. PRACTISE HOWEVER YOU LIKE.",
         FreeRoamMap, false, "Free Roam: all the room you want, and a jetpack (Q). Nothing to finish; Esc when you're done.", Jetpack: true);
 
-    public static readonly Course[] All = { Hangar, Descent, Circuit, RocketCourse.Course, GrenadeCourse.Course, HexenSharp.Endless.Pick, HexenSharp.Tower.Pick, HexenSharp.Soccer.Course, HexenSharp.Pool.Course, ShootingRange.Course, FreeRoam };
+    public static readonly Course[] All = { Hangar, Descent, Circuit, RocketCourse.Course, GrenadeCourse.Course, HexenSharp.Endless.Pick, HexenSharp.Tower.Pick, HexenSharp.Soccer.Course, HexenSharp.Pool.Course, HexenSharp.Fishing.Course, ShootingRange.Course, FreeRoam };
     public static Course[] Timed => All.Where(c => c.Timed).ToArray();
 
     /// <summary>
@@ -148,6 +148,8 @@ public sealed class DemoPilot
     internal SoccerBall PoolTarget;
     internal int PoolPocket;
     internal float PoolUntil;
+    /// <summary>Fishing: toggled every tick, so a held button reads as fresh presses.</summary>
+    internal bool FishTick;
 
     public Input Next(Game g, float dt)
     {
@@ -156,6 +158,7 @@ public sealed class DemoPilot
         if (g.Course.Tower) return TowerPilot.Next(g, this);
         if (g.Course.Soccer) return SoccerPilot.Next(g, this);
         if (g.Course.Pool) return PoolPilot.Next(g, this);
+        if (g.Course.Fishing) return FishingPilot.Next(g, this);
         var p = g.P;
         var c = g.Course;
         float run = g.RunSpeed, v = p.HSpeed;

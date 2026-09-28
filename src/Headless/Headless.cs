@@ -99,6 +99,8 @@ public static partial class Headless
         SoccerChecks(Check);
         Console.WriteLine("Rocket Pool:");
         PoolChecks(Check);
+        Console.WriteLine("Fishing:");
+        FishingChecks(Check);
         Console.WriteLine("Map colours:");
         MapColourChecks(Check);
         Console.WriteLine("Game feel:");

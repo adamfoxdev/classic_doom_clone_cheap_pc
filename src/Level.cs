@@ -7,6 +7,8 @@ public sealed class Theme
     public Tex FloorIn, CeilIn, FloorOut, Sky;
     /// <summary>The face of a step or ledge (null for the usual one; 'wallcolor' sets it).</summary>
     public Tex Riser;
+    /// <summary>The floor of water cells (Level.Water), when a map has any (the fishing lake).</summary>
+    public Tex Water;
     public uint FogColor;
     public float FogDist = 14f; // distance at which everything is fully fogged
     public int Light = 256;
@@ -182,6 +184,8 @@ public sealed class Level
     public float EliteChance;
     /// <summary>A custom map made for the Quake weapons (a jump course, say): you have them alone, ammo never runs out, and your own blasts can't kill you.</summary>
     public bool Quake;
+    /// <summary>Which cells are water (drawn with the theme's Water floor); null for a map without any.</summary>
+    public bool[] Water;
 
     public Level(string name, string entry, string[] rows, Theme theme, string[] heightRows = null, float defaultHeight = 1f, string[] floorRows = null)
     {

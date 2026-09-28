@@ -189,6 +189,22 @@ public sealed class Profile
         return board.IndexOf(run) + 1;
     }
 
+    /// <summary>Fishing sessions, the best ten for each class (most weight landed, then the biggest fish).</summary>
+    public List<FishingRun> FishingRuns { get; set; } = new();
+
+    public List<FishingRun> FishingBoard(PClass cls) =>
+        FishingRuns.Where(r => r.Class == cls.ToString()).OrderByDescending(r => r.Kg).ThenByDescending(r => r.Biggest).Take(BoardSize).ToList();
+
+    public float FishingBest(PClass cls) => FishingRuns.Where(r => r.Class == cls.ToString()).Select(r => r.Kg).DefaultIfEmpty(0).Max();
+
+    public int AddFishingRun(FishingRun run)
+    {
+        FishingRuns.Add(run);
+        var board = FishingBoard(Enum.Parse<PClass>(run.Class));
+        FishingRuns.RemoveAll(r => r.Class == run.Class && !board.Contains(r));
+        return board.IndexOf(run) + 1;
+    }
+
     /// <summary>Shooting range drills, the best ten for each class (highest score, then fewest shots).</summary>
     public List<RangeRun> RangeRuns { get; set; } = new();
 
@@ -351,6 +367,7 @@ public sealed class Profile
             p.TowerRuns ??= new();
             p.SoccerRuns ??= new();
             p.PoolRuns ??= new();
+            p.FishingRuns ??= new();
             p.RailRuns ??= new();
             p.InstagibRuns ??= new();
             p.RangeRuns ??= new();
