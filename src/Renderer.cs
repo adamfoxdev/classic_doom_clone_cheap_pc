@@ -773,6 +773,10 @@ public sealed class Renderer
         int x0 = W / 2 - tex.W / 2 + 20 + bx;
         int y0 = ViewH - tex.H + 4 + by + (int)(p.Raise * tex.H);
         int light = Math.Max(g.Level.Theme.Light, 200);
+        // an upgraded arsenal glows with its tier's colour, pulsing
+        int tier = g.ArsenalTier;
+        uint tint = Arsenal.Colour(tier);
+        int glow = tier == 0 ? 0 : 40 + 14 * tier + (int)(24 * MathF.Sin(g.Time * 5));
         for (int y = 0; y < tex.H; y++)
         {
             int sy = y0 + y;
@@ -783,6 +787,7 @@ public sealed class Renderer
                 if ((uint)sx >= W) continue;
                 uint c = tex.Px[y * tex.W + x];
                 if (Col.A(c) == 0) continue;
+                if (glow > 0) c = Col.Lerp(c, tint, glow);
                 Fb[sy * W + sx] = Col.Shade(c, light);
             }
         }
@@ -939,7 +944,7 @@ public sealed class Renderer
         }
 
         if (g.Vars.Hud == HudStyle.Off) return;
-        int top = (g.Vars.ShowFps ? 12 : 3) + (g.ArenaMode && g.Level.Arena != null ? 32 : 0) + (g.Level.Ship != null ? 50 : 0);
+        int top = (g.Vars.ShowFps ? 12 : 3) + (g.ArenaMode && g.Level.Arena != null ? 42 : 0) + (g.Level.Ship != null ? 50 : 0);
         string score = $"SCORE {a.Score:000000}";
         Text(W - 6 - Font.Width(score), top, score, Col.Rgb(255, 240, 200));
         if (!a.Active) return;
@@ -1049,6 +1054,11 @@ public sealed class Renderer
             }
         }
         if (!a.Started) return;
+        if (g.ArsenalTier > 0 && g.Vars.Hud != HudStyle.Off)
+        {
+            string ars = $"ARSENAL {Words.T(Arsenal.Name(g.ArsenalTier)).ToUpperInvariant()}";
+            Text(W - 4 - Font.Width(ars), top + 30, ars, Arsenal.Colour(g.ArsenalTier));
+        }
         string status = a.InIntermission ? $"WAVE {a.Wave} CLEARED" : $"WAVE {a.Wave}  LEFT {a.Remaining}";
         if (g.Vars.Hud != HudStyle.Off) Text(W - 4 - Font.Width(status), top, status, Col.Rgb(230, 120, 255));
         if (a.BannerTime > 0)

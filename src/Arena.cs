@@ -170,7 +170,44 @@ public sealed class ArenaState
             t.Level = _lv;
             _lv.Things.Add(t);
         }
+        // every third wave, an arsenal upgrade on the altar itself: your weapons keep up with the waves
+        if (Wave % Arsenal.Every == 0 && Wave / Arsenal.Every <= Arsenal.MaxTier)
+        {
+            _lv.Things.Add(new Pickup(PickupKind.Upgrade, 0.5f) { X = _altar.x, Y = _altar.y, Level = _lv });
+            g.Say("An arsenal upgrade waits on the altar!");
+        }
     }
+}
+
+/// <summary>
+/// Arena arsenal upgrades: one drops on the altar after every third wave, five in all. Each one makes every weapon hit
+/// harder and fire faster; the second adds shots to every volley and lets melee blows cleave through several monsters,
+/// the third makes every shot explode, the fourth widens the volleys and cleaves again, the fifth is everything at full.
+/// </summary>
+public static class Arsenal
+{
+    public const int MaxTier = 5, Every = 3;
+    static readonly string[] Names = { "", "Blessed", "Runed", "Exalted", "Mythic", "Divine" };
+    static readonly string[] Effects =
+    {
+        "",
+        "Every weapon hits harder and fires faster.",
+        "Volleys fan out and melee blows cleave.",
+        "Every shot explodes on impact.",
+        "Wider volleys, wider cleaves.",
+        "Full power!",
+    };
+    static readonly uint[] Colours = { 0, Col.Rgb(90, 220, 255), Col.Rgb(120, 255, 140), Col.Rgb(255, 220, 80), Col.Rgb(255, 140, 50), Col.Rgb(255, 80, 230) };
+
+    public static string Name(int tier) => Names[Math.Clamp(tier, 0, MaxTier)];
+    public static string Describe(int tier) => Effects[Math.Clamp(tier, 0, MaxTier)];
+    public static uint Colour(int tier) => Colours[Math.Clamp(tier, 0, MaxTier)];
+    public static float Damage(int tier) => 1f + 0.35f * tier;
+    public static float FireRate(int tier) => 1f + 0.12f * tier;
+    public static float Reach(int tier) => 0.15f * tier;
+    public static int Cleave(int tier) => tier >= 4 ? 4 : tier >= 2 ? 3 : 1;
+    public static int ExtraShots(int tier) => tier >= 4 ? 4 : tier >= 2 ? 2 : 0;
+    public static float Splash(float splash, int tier) => splash > 0 ? splash * (1 + 0.2f * tier) : tier >= 3 ? 0.6f + 0.1f * (tier - 3) : 0f;
 }
 
 /// <summary>

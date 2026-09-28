@@ -62,7 +62,7 @@ public sealed class Decor : Thing
 
 // ---------------------------------------------------------------- pickups
 
-public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic, Jetpack }
+public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic, Jetpack, Upgrade }
 
 public sealed class Pickup : Thing
 {
@@ -72,9 +72,9 @@ public sealed class Pickup : Thing
     public Pickup(PickupKind kind, float size = 0.4f, int variant = 0)
     {
         Kind = kind; Variant = variant; SpriteW = size; SpriteH = size;
-        FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.Relic;
+        FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.Relic or PickupKind.Upgrade;
     }
-    public override Tex Sprite(float time) => Art.PickupSprite(Kind, Variant);
+    public override Tex Sprite(float time) => Kind == PickupKind.Upgrade ? Art.Upgrade[(int)(time * 6) % Art.Upgrade.Length] : Art.PickupSprite(Kind, Variant);
 }
 
 // ---------------------------------------------------------------- monsters

@@ -2587,13 +2587,16 @@ public static class Headless
         check(a.Live.Count > 0 && a.Live.All(m => m.State != AiState.Idle), "wave monsters spawn awake");
         float hp1 = a.Live.Max(m => m.Health / (float)m.Def.Health);
 
+        var tiers = new List<int>();
         for (int wave = 1; wave <= 5; wave++)
         {
             for (int k = 0; k < 35 * 60 && !a.InIntermission; k++) { g.KillAll(); Tick(default); }
             if (wave == 1) check(a.InIntermission, "killing everything clears the wave");
             if (wave == 1) check(g.Level.Things.OfType<Pickup>().Any(), "supplies appear after a wave");
             Tick(default, (int)(35 * ArenaState.Intermission) + 2);
+            tiers.Add(g.P.ArenaTier);
         }
+        check(tiers.SequenceEqual(new[] { 0, 0, 1, 1, 1 }), $"an arsenal upgrade drops on the altar after wave 3, not before (tiers {string.Join(",", tiers)})");
         check(a.Wave == 6, $"waves keep coming (now on wave {a.Wave})");
         Tick(default, 35 * 3);
         float hp6 = a.Live.Max(m => m.Health / (float)m.Def.Health);
@@ -2601,6 +2604,56 @@ public static class Headless
         check(hp6 > hp1, $"later waves are tougher (health x{hp1:0.00} -> x{hp6:0.00})");
         check(ArenaState.Compose(5, new Random(1)).Any(d => d.Boss), "wave 5 brings a Heresiarch");
         check(!ArenaState.Compose(1, new Random(1)).Any(d => d != Monster.Ettin), "wave 1 is only ettins");
+        ArsenalChecks(check);
+    }
+
+    static void ArsenalChecks(Action<bool, string> check)
+    {
+        check(Enumerable.Range(0, 5).All(t => Arsenal.Damage(t + 1) > Arsenal.Damage(t) && Arsenal.FireRate(t + 1) > Arsenal.FireRate(t)),
+              "each arsenal tier hits harder and fires faster");
+
+        // a melee swing: one monster at tier 0, several at once from tier 2
+        int Cleaved(int tier)
+        {
+            var g = new Game { FixedSeed = 1 };
+            g.StartArena(PClass.Fighter);
+            g.Vars.God = true;
+            g.Level.Things.RemoveAll(t => t is Monster);
+            g.P.ArenaTier = tier; g.P.Angle = 0; g.P.Weapon = 0;
+            var ms = new[] { (0.8f, 0f), (0.9f, 0.3f), (0.9f, -0.3f) }
+                .Select(o => new Monster(Monster.Ettin) { X = g.P.X + o.Item1, Y = g.P.Y + o.Item2, Level = g.Level }).ToList();
+            g.Level.Things.AddRange(ms);
+            for (int k = 0; k < 35 && ms.All(m => m.Health == m.Def.Health); k++) g.Update(new Input { Fire = k == 0 || ms.All(m => m.Health == m.Def.Health) }, 1f / 35f);
+            return ms.Count(m => m.Health < m.Def.Health);
+        }
+        int c0 = Cleaved(0), c2 = Cleaved(2);
+        check(c0 == 1 && c2 >= 2, $"an upgraded melee swing cleaves through several monsters ({c0} -> {c2})");
+
+        // a ranged shot: more projectiles, hitting harder; outside the arena upgrades do nothing
+        (int shots, int dmg) Volley(int tier, bool arena)
+        {
+            var g = new Game { FixedSeed = 1 };
+            if (arena) g.StartArena(PClass.Mage); else g.NewGame(PClass.Mage);
+            g.Level.Things.RemoveAll(t => t is Monster);
+            g.P.ArenaTier = tier; g.P.Weapon = 0;
+            for (int k = 0; k < 35 && !g.Level.Things.OfType<Projectile>().Any(p => p.FromPlayer); k++) g.Update(new Input { Fire = true }, 1f / 35f);
+            var ps = g.Level.Things.OfType<Projectile>().Where(p => p.FromPlayer).ToList();
+            return (ps.Count, ps.Count == 0 ? 0 : ps.Max(p => p.DmgMax));
+        }
+        var v0 = Volley(0, true); var v4 = Volley(4, true); var vOut = Volley(5, false);
+        check(v0.shots > 0 && v4.shots >= v0.shots + 4 && v4.dmg > v0.dmg, $"upgraded shots fan out and hit harder ({v0.shots}x{v0.dmg} -> {v4.shots}x{v4.dmg})");
+        check(vOut.shots == v0.shots && vOut.dmg == v0.dmg, "upgrades only count in the arena");
+
+        // five in all: a sixth stays on the altar
+        var h = new Game { FixedSeed = 1 };
+        h.StartArena(PClass.Cleric);
+        h.P.ArenaTier = Arsenal.MaxTier;
+        var up = new Pickup(PickupKind.Upgrade, 0.5f) { X = h.P.X, Y = h.P.Y, Level = h.Level };
+        h.Level.Things.Add(up);
+        h.Update(default, 1f / 35f);
+        check(h.P.ArenaTier == Arsenal.MaxTier && !up.Removed, "the arsenal tops out at five upgrades");
+        h.StartArena(PClass.Cleric);
+        check(h.P.ArenaTier == 0, "a new run starts with a plain arsenal");
     }
 
     static void BishopChecks(Action<bool, string> check)
@@ -3564,6 +3617,10 @@ public static class Headless
         Shot("14b_arena_arcade");
         g.Vars.Arcade = false;
         g.Arcade.Reset();
+        g.P.ArenaTier = 4;
+        g.P.Weapon = Math.Max(0, Array.FindLastIndex(g.P.HasWeapon, w => w));
+        Shot("14c_arena_arsenal");
+        g.P.ArenaTier = 0;
 
         // jumping (camera raised) with the console open
         g.P.VZ = 3.3f;

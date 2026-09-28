@@ -30,6 +30,8 @@ public static class Art
     /// <summary>Story mode: the townsfolk you question, evidence markers, and Neon Harbor's streets, fronts and skyline.</summary>
     public static Tex[] People, ClueMark;
     public static Tex ClueFound, Street, Facade, SkyCity;
+    /// <summary>The arena's arsenal upgrade: a pulsing power core in a spinning ring.</summary>
+    public static Tex[] Upgrade;
     // Flats
     public static Tex FloorStone, FloorWood, Grass, Snow, CeilWood, CeilStone, PortalFloor, ExitFloor, ExitFloorOff, SpawnFloor, AltarFloor, AltarFloorOff, PlateFloor,
         CheckpointFloor, CheckpointFloorOff, LiftFloor;
@@ -73,6 +75,7 @@ public static class Art
         BuildBarren(style == ArtStyle.SciFi);
         BuildVoid(style == ArtStyle.SciFi);
         BuildTown();
+        Upgrade = Enumerable.Range(0, 4).Select(UpgradeFrame).ToArray();
         PillarFrames = new[] { Pillar };
         TreeFrames = new[] { Tree };
         Version++;
@@ -91,6 +94,7 @@ public static class Art
         PickupKind.Weapon2 => WeaponPiece2,
         PickupKind.Weapon3 => WeaponPiece3,
         PickupKind.Jetpack => Jetpack,
+        PickupKind.Upgrade => Upgrade[0],
         _ => Relics[variant % Relics.Length],
     };
 
@@ -396,6 +400,24 @@ public static class Art
             c.Outline(Dark);
             ClueFound = c.T;
         }
+    }
+
+    static Tex UpgradeFrame(int f)
+    {
+        var c = new Canvas(32, 32);
+        float pulse = 1 + 0.12f * MathF.Sin(f * MathF.PI / 2);
+        c.Glow(16, 16, 15 * pulse, Col.Rgb(255, 120, 230));
+        c.Circle(16, 16, 7 * pulse, Col.Rgb(255, 200, 250));
+        c.Circle(15, 15, 3.5f, Col.Rgb(255, 255, 255));
+        // a tilted ring spinning round the core
+        for (int k = 0; k < 24; k++)
+        {
+            float a = k * MathF.Tau / 24 + f * MathF.PI / 8;
+            float x = 16 + MathF.Cos(a) * 13, y = 16 + MathF.Sin(a) * 5;
+            if (MathF.Sin(a) < 0 && Math.Abs(x - 16) < 7) continue; // behind the core
+            c.Circle(x, y, 1.1f, k % 3 == 0 ? Col.Rgb(255, 240, 120) : Col.Rgb(200, 140, 255));
+        }
+        return c.T;
     }
 
     /// <summary>A bright yellow evidence tag with a question mark, at glow `v` (it pulses between frames).</summary>

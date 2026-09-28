@@ -101,6 +101,8 @@ public sealed class Player
     public const int BlockStack = 64;
     /// <summary>Ore you're carrying, by Level.OreGlyphs index (iron, crystal, fuel).</summary>
     public readonly int[] Ore = new int[Level.OreGlyphs.Length];
+    /// <summary>Arsenal upgrades picked up in the arena (0 to Arsenal.MaxTier); they power up every weapon there.</summary>
+    public int ArenaTier;
     public bool[] HasWeapon = { true, false, false };
     public int Weapon, PendingWeapon = -1;
     public float Cooldown, FireAnim, Raise, Bob, BobAmount;
@@ -1253,32 +1255,38 @@ public sealed class Game
         }
         if (powered && w.Mana == 1) p.BlueMana -= ManaCost(w);
         if (powered && w.Mana == 2) p.GreenMana -= ManaCost(w);
-        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate * Profile.FireRateMult);
+        int tier = ArsenalTier;
+        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate * Profile.FireRateMult * Arsenal.FireRate(tier));
         p.FireAnim = 0.22f;
         PlaySound(w.Sound, 1);
         WakeNear(p.X, p.Y, 10f);
 
         if (w.Melee)
         {
-            Monster best = null;
-            float bestD = float.MaxValue;
+            // an upgraded arsenal reaches further, and from the second upgrade cleaves through several at once
+            float range = w.Range + Arsenal.Reach(tier);
+            var hits = new List<(Monster m, float d)>();
             foreach (var t in Level.Things)
             {
                 if (t is not Monster m || !m.Alive || m.Blurring) continue;
                 float d = Dist(m.X, m.Y, p.X, p.Y);
-                if (d > w.Range + m.Radius) continue;
+                if (d > range + m.Radius) continue;
                 float diff = AngleDiff(MathF.Atan2(m.Y - p.Y, m.X - p.X), p.Angle);
-                if (MathF.Abs(diff) > 0.45f || !Level.Sight(p.X, p.Y, m.X, m.Y)) continue;
-                if (d < bestD) { bestD = d; best = m; }
+                if (MathF.Abs(diff) > 0.45f + (tier >= 2 ? 0.25f : 0f) || !Level.Sight(p.X, p.Y, m.X, m.Y)) continue;
+                hits.Add((m, d));
             }
-            if (best != null)
+            if (hits.Count > 0)
             {
-                int dmg = (int)MathF.Round(Rand(w.DmgMin, w.DmgMax) * PlayerDamageMult(p.Weapon));
-                if (!powered) dmg /= 2;
-                float bz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
-                if (powered && w.Mana > 0) SpawnPuff(Art.Bolt[1], best.X, best.Y, bz, 0.4f);
-                else SpawnPuff(Art.Fireball[1], best.X, best.Y, bz, 0.25f);
-                DamageMonster(best, dmg, p.Weapon);
+                foreach (var (best, _) in hits.OrderBy(h => h.d).Take(Arsenal.Cleave(tier)))
+                {
+                    int dmg = (int)MathF.Round(Rand(w.DmgMin, w.DmgMax) * PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier));
+                    if (!powered) dmg /= 2;
+                    float bz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
+                    if (tier > 0) SpawnPuff(Art.Lightning[1], best.X, best.Y, bz, 0.35f + 0.08f * tier);
+                    else if (powered && w.Mana > 0) SpawnPuff(Art.Bolt[1], best.X, best.Y, bz, 0.4f);
+                    else SpawnPuff(Art.Fireball[1], best.X, best.Y, bz, 0.25f);
+                    DamageMonster(best, dmg, p.Weapon);
+                }
                 PlaySound(Sfx.Hit, 1);
             }
             else
@@ -1292,13 +1300,16 @@ public sealed class Game
 
         float launchZ = p.FloorZ + p.Z + 0.32f;
         float? vz = VerticalAim(launchZ, w.Speed);
-        float mult = PlayerDamageMult(p.Weapon);
-        for (int i = 0; i < w.Count; i++)
+        float mult = PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier);
+        // upgrades add shots to the volley, fanned out either side of your aim
+        int count = w.Count + Arsenal.ExtraShots(tier);
+        float spread = w.Spread > 0 ? w.Spread : 0.07f;
+        for (int i = 0; i < count; i++)
         {
-            float a = p.Angle + (i - (w.Count - 1) / 2f) * w.Spread;
+            float a = p.Angle + (i - (count - 1) / 2f) * spread;
             var pr = new Projectile
             {
-                Kind = w.Proj, FromPlayer = true, Splash = w.Splash, Owner = null, Slot = p.Weapon,
+                Kind = w.Proj, FromPlayer = true, Splash = Arsenal.Splash(w.Splash, tier), Owner = null, Slot = p.Weapon,
                 DmgMin = (int)MathF.Round(w.DmgMin * mult), DmgMax = (int)MathF.Round(w.DmgMax * mult),
                 X = p.X + MathF.Cos(a) * 0.3f, Y = p.Y + MathF.Sin(a) * 0.3f, Z = launchZ,
                 VX = MathF.Cos(a) * w.Speed, VY = MathF.Sin(a) * w.Speed, Level = Level,
@@ -1726,6 +1737,8 @@ public sealed class Game
     }
 
     float PlayerDamageMult(int slot) => Profile.DamageMult * Profile.WeaponMult(P.Class, slot);
+    /// <summary>Your arsenal upgrades, which only count in the arena they were won in.</summary>
+    public int ArsenalTier => Level?.Arena != null ? P.ArenaTier : 0;
 
     /// <summary>Play-testing a custom map, or on a practice course, earns no experience; the arena does.</summary>
     bool NoXp => TestingMap && !ArenaMode;
@@ -1815,6 +1828,16 @@ public sealed class Game
                 pk.Removed = true;
                 p.PickupFlash = 1;
                 PlaySound(Sfx.Relic, 1);
+                Say(msg);
+                return;
+            case PickupKind.Upgrade:
+                if (p.ArenaTier >= Arsenal.MaxTier) return;
+                p.ArenaTier++;
+                msg = $"Arsenal upgrade: {Words.T(Arsenal.Name(p.ArenaTier))}! {Arsenal.Describe(p.ArenaTier)}";
+                pk.Removed = true;
+                p.PickupFlash = 1;
+                PlaySound(Sfx.BossSight, 0.7f);
+                PlaySound(Sfx.Item, 1);
                 Say(msg);
                 return;
             case PickupKind.Jetpack:

@@ -350,6 +350,12 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
   that doesn't clear a wave isn't recorded.
 - **Medals:** bronze for clearing wave 5, silver for 10, gold for 15, the same for every class. Each medal
   means getting past one more round of Heresiarchs. You're told when a wave earns a new medal.
+- **Arsenal upgrades:** after waves 3, 6, 9, 12 and 15 an upgrade appears on the altar (Blessed, Runed, Exalted,
+  Mythic, Divine; Mk II to Mk VI in sci-fi). Each one powers up every weapon you carry for the rest of the run:
+  +35% damage and +12% fire rate per tier, and longer melee reach. From tier 2, melee swings cleave through up to
+  3 monsters (4 from tier 4) and ranged attacks fire 2 extra shots in a fan (4 from tier 4). From tier 3, every
+  shot also splashes. Your weapon glows in the tier's colour, and the HUD shows the tier under the medal line.
+  Upgrades only count in the arena, and each run starts from scratch.
 - **HUD:** under the wave count, the top-right corner shows your best for the class and the next medal you
   don't have yet.
 - **When you die:** it tells you the run's waves, time and kills, and where it placed. Press `Enter` to go
