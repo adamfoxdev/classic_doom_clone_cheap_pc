@@ -538,10 +538,11 @@ public sealed partial class Game
     public void ShowGhost()
     {
         if (Ghost != null) { Ghost.Removed = true; Level.Things.Remove(Ghost); Ghost = null; }
-        if (!Practicing || !Course.Timed || !Vars.Ghost || Demo) return;
+        if (!Practicing || !(Course.Timed || RivalHere) || !Vars.Ghost || Demo) return;
         GhostTrack track;
         float time;
         if (DemoTrack != null) (track, time) = (DemoTrack, DemoTime); // after a demo, race it
+        else if (RivalHere) (track, time) = (Rival.Track, Rival.Time); // a friend's ghost, from a code
         else if (Profile.Ghosts.TryGetValue(Course.Key(P.Class), out var saved)) (track, time) = (GhostTrack.Decode(saved.Path), saved.Time);
         else return;
         if (track.Points.Count < 2) return;
@@ -1238,7 +1239,7 @@ public sealed partial class Game
                 RunTime += dt;
                 Recording.Record(RunTime, p.X, p.Y, p.FloorZ + p.Z);
             }
-            bool wantGhost = Vars.Ghost && !Demo && Course.Timed && (DemoTrack != null || Profile.Ghosts.ContainsKey(Course.Key(p.Class)));
+            bool wantGhost = Vars.Ghost && !Demo && (Course.Timed || RivalHere) && (DemoTrack != null || RivalHere || Profile.Ghosts.ContainsKey(Course.Key(p.Class)));
             if (wantGhost != (Ghost != null)) ShowGhost();
             Ghost?.Seek(RunTime);
         }

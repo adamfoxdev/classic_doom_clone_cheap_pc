@@ -65,6 +65,8 @@ public static partial class Headless
         ArenaModeChecks(Check);
         Console.WriteLine("Save and continue:");
         SaveChecks(Check);
+        Console.WriteLine("Ghost codes:");
+        GhostCodeChecks(Check);
         Console.WriteLine("New Game+ director:");
         DirectorChecks(Check);
         Console.WriteLine("New Game+ hazards:");

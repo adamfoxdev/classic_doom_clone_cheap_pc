@@ -365,6 +365,23 @@ On the timed courses:
 ![Free Roam](docs/free_roam.png)
 ![The practice course leaderboard](docs/leaderboard.png)
 
+#### Ghost codes
+
+Race a friend's ghost without being online together: send them your run as a code, and they race it.
+- **Sharing a run:** open the console (`~`) and type `ghostcode`.
+  - **On a timed course:** it shares your best there as your class.
+  - **On the endless course:** it shares your last run on that seed.
+  - **What you get:** the code is printed, copied to the clipboard and saved as a `.hxghost` file in the
+    `ghosts` folder next to your profile. A 13-second run is about 700 characters.
+- **Racing one:** copy their code and type `ghostload`: it reads the code off the clipboard. `ghostload <file>`
+  loads a `.hxghost` file from your ghosts folder, or from anywhere by its path.
+  - **Where it takes you:** to the code's course, or its endless seed, if you're not already there. You race as
+    your class, or theirs if you load from the title.
+  - **Whose ghost:** theirs runs in place of your own, until you type `ghostclear`.
+- **What's in a code:** the course and seed, the class, the name, the time, and the path, one point every 50 ms to
+  within 1/64 of a cell. It's compressed, in URL-safe text; line breaks from pasting don't matter, and a damaged code
+  is refused.
+
 #### The endless course
 
 **Practice → Endless** builds a fresh course from a random seed each time you pick it. It's a run of platforms,
@@ -960,6 +977,8 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `profile [reset]` | show your level, skills and totals, or start your progress over |
 | `name [name]` | show or set the name your practice course times go on the leaderboard under |
 | `demo` | on a practice course, start the demo run from the beginning |
+| `ghostcode` | share your best on this timed course (or your last endless run) as a code: printed, copied and saved to a file |
+| `ghostload [file]` | race a friend's ghost from the code on the clipboard, or a `.hxghost` file; `ghostclear` goes back to your own |
 | `endless [seed]` | play the endless practice course on a new seed, or on the one you name |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
@@ -1081,6 +1100,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
 | `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
+| `src/GhostCodes.cs` | Ghost codes: packing a run into a line of text, and racing a friend's |
 | `src/Director.cs` | The New Game+ director: ambushes when you backtrack through places you've been |
 | `src/Hazards.cs` | New Game+ hazards: the Depths' crumbling floors, the Windspire's gusts and the Cisterns' floods |
 | `src/Rematch.cs` | Mini-boss rematches: starting one, the clock, and each boss's board |
@@ -1096,7 +1116,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches, hazards, the director |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex, rematches, hazards, the director, ghost codes |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |
