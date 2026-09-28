@@ -97,6 +97,8 @@ public static partial class Headless
         BruteChecks(Check);
         Console.WriteLine("Rocket Soccer:");
         SoccerChecks(Check);
+        Console.WriteLine("Map colours:");
+        MapColourChecks(Check);
         Console.WriteLine("Game feel:");
         FeelChecks(Check);
         Console.WriteLine("Endless course:");
