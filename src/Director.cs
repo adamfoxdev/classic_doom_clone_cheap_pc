@@ -38,7 +38,7 @@ public sealed partial class Game
     {
         _visited.Clear(); _ambushes.Clear(); _natives.Clear();
         _directorClock = 0; _ambushCd = AmbushCooldown(NgTier); _backtrackUntil = 0;
-        _directorRng = new Random((FixedSeed ?? Environment.TickCount) + 29);
+        _directorRng = new Random(RunSeed + 29);
         LastAmbush = new();
         if (Hub == null) return;
         foreach (var lv in Hub)

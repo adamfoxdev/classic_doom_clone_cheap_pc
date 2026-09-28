@@ -171,7 +171,9 @@ public sealed partial class Game
     public readonly GameVars Vars = new();
     public readonly DevConsole Con;
     public float Fps;
-    readonly Random _rng = new(1234);
+    Random _rng = new(1234);
+    /// <summary>The seed this run's dice were rolled from (FixedSeed, or the clock): a replay starts from it.</summary>
+    public int RunSeed;
     float _exitMsgCd;
 
     public readonly Bindings Binds = new();
@@ -511,6 +513,7 @@ public sealed partial class Game
         LastPlace = place;
         // the ghost is your best run: this one replaces it if it's the new best, or if there's no ghost yet
         Recording.Record(RunTime, P.X, P.Y, P.FloorZ + P.Z);
+        LapFinished?.Invoke(RunTime, Recording);
         if (place == 1 || !Profile.Ghosts.ContainsKey(key))
         {
             Profile.Ghosts[key] = new CourseGhost { Time = RunTime, Path = Recording.Encode() };
@@ -645,6 +648,8 @@ public sealed partial class Game
         SaveProfile();
         if (TestingMap) { TestingMap = false; HubSource = Maps.BuildHub; }
         Rematch = null; PendingRematch = null;
+        if (CurrentReplay is { Frames.Count: > 0 }) LastReplay = CurrentReplay;
+        CurrentReplay = null;
         Practicing = false; Demo = false; PracticeSpeed = 1f;
         Mode = GameMode.Title;
         Paused = false;
@@ -803,9 +808,12 @@ public sealed partial class Game
         EndArenaRun(); // Restart, or trying again after dying
         Arcade.Reset();
         Hub = HubSource();
-        _loot = new Random(FixedSeed ?? Environment.TickCount);
-        _modRng = new Random((FixedSeed ?? Environment.TickCount) + 17);
-        _eliteRng = new Random((FixedSeed ?? Environment.TickCount) + 41);
+        // every die this run rolls comes from one seed, so a replay of it (see Replay) plays out the same
+        RunSeed = FixedSeed ?? Environment.TickCount;
+        _rng = new Random(RunSeed + 1233);
+        _loot = new Random(RunSeed);
+        _modRng = new Random(RunSeed + 17);
+        _eliteRng = new Random(RunSeed + 41);
         _elitesMet.Clear();
         if (ArenaMode && DailyMode) cls = Daily.For(DailyDate).cls; // the day's class, every attempt
         else if (ArenaMode && (ArenaMods & ArenaMod.RandomClass) != 0) cls = (PClass)_loot.Next(3); // a fresh roll every run
@@ -871,6 +879,7 @@ public sealed partial class Game
         if (Practicing) SetUpCourse(); // starting a course, or Restart on one
         if (StoryMode) SetUpCase();
         if (Rematch != null) SetUpRematch();
+        BeginReplay();
     }
 
     static Thing Place(Thing t, Thing at, Level lv)
@@ -883,6 +892,7 @@ public sealed partial class Game
 
     public void Update(Input inp, float dt)
     {
+        CurrentReplay?.Frames.Add((dt, inp)); // the run's replay: every frame, as it came
         if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
         dt = MathF.Min(dt, 0.05f);
         Time += dt;

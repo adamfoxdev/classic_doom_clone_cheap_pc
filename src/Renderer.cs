@@ -68,6 +68,7 @@ public sealed class Renderer
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
             CenterText(g.CanRespawn ? "PRESS ENTER TO RETURN TO THE CHECKPOINT" : "PRESS ENTER TO TRY AGAIN", 90, Col.Rgb(230, 220, 200));
         if (g.Vars.ShowFps) Text(W - 40, 3, $"{g.Fps:0} FPS", Col.Rgb(120, 255, 120));
+        if (g.Replaying && (int)(g.Time * 2) % 2 == 0) Text(4, ViewH - 10, "REPLAY  (ESC: STOP)", Col.Rgb(255, 90, 90));
     }
 
     // ================================================================ menus

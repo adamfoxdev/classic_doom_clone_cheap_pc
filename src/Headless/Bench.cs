@@ -156,3 +156,17 @@ public static class BenchCompare
         return ok ? 0 : 1;
     }
 }
+
+public static partial class Headless
+{
+    /// <summary>--replay file: plays a replay headlessly and prints where it ended.</summary>
+    public static int PlayReplay(string path)
+    {
+        var r = File.Exists(path) ? Replay.Decode(File.ReadAllText(path)) : null;
+        if (r == null) { Console.WriteLine("not a replay: " + path); return 2; }
+        var g = r.Play();
+        Console.WriteLine($"{r.Start.Kind} as the {r.Start.Class}, seed {r.Start.Seed}: {r.Frames.Count} frames, {r.Duration:0.00}s");
+        Console.WriteLine(Replay.StateHash(g));
+        return 0;
+    }
+}

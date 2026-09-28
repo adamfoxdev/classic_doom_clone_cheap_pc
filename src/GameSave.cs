@@ -25,7 +25,7 @@ public sealed partial class Game
     /// map being play-tested), with you alive, and not mid-flight through the Void Crossing (that goes back to your
     /// last save, on the Barren World).
     /// </summary>
-    public bool CanSave => P != null && Hub != null && Level != null && Mode == GameMode.Playing && !TestingMap && !Practicing
+    public bool CanSave => !Replaying && P != null && Hub != null && Level != null && Mode == GameMode.Playing && !TestingMap && !Practicing
                            && !ArenaMode && !StoryMode && !Level.Flight && Array.IndexOf(Hub, Level) >= 0;
 
     /// <summary>Saves the campaign now, if it's one to save. True when it did.</summary>
@@ -92,6 +92,7 @@ public sealed partial class Game
         Messages.Clear();
         Say($"Welcome back. {Level.EntryMessage}");
         SavedGame = s;
+        CurrentReplay = null; // a replay can't start from a save
         _autoSaveClock = 0;
         return true;
     }

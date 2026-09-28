@@ -17,6 +17,9 @@ public static class Program
         if (args.Contains("--selftest")) return Headless.SelfTest();
         if (args.Contains("--shots")) return Headless.Screenshots(args.SkipWhile(a => a != "--shots").Skip(1).FirstOrDefault() ?? "shots");
         if (args.Contains("--bench-compare")) return BenchCompare.Run(args);
+        if (args.Contains("--make-replays")) return Headless.MakeReplays(keepInputs: false);
+        if (args.Contains("--update-replays")) return Headless.MakeReplays(keepInputs: true);
+        if (args.Contains("--replay")) return Arg(args, "--replay") is { } rp ? Headless.PlayReplay(rp) : Usage();
         if (args.Contains("--bench")) return Headless.Bench(int.TryParse(Arg(args, "--bench"), out int n) ? n : 300);
         if (args.Contains("--sounds")) return Headless.ExportSounds(Arg(args, "--sounds") ?? "sounds");
         if (args.Contains("--check-map")) return Arg(args, "--check-map") is { } check ? MapFiles.Check(check) : Usage();
@@ -41,7 +44,7 @@ public static class Program
     static int Usage()
     {
         Console.WriteLine("usage: HexenSharp [--play map.hxm [--class fighter|cleric|mage] [--relaxed]] | --check-map map.hxm |");
-        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --shots dir | --sounds dir | --version | --bench [frames] | --bench-compare limit base.txt... -- head.txt...");
+        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --shots dir | --sounds dir | --version | --replay file | --bench [frames] | --bench-compare limit base.txt... -- head.txt...");
         return 2;
     }
 
@@ -123,10 +126,13 @@ public static class Program
                 inp.LookY = md.Y;
             }
 
-            game.Update(inp, Raylib.GetFrameTime());
-            audio?.UpdateMusic(game.MusicTrack, game.Vars.Music, game.MusicIntensity);
+            // watching a replay, it plays instead (Esc stops it); otherwise the game takes your input
+            if (game.Watch != null) game.WatchStep(inp, Raylib.GetFrameTime());
+            else game.Update(inp, Raylib.GetFrameTime());
+            var shown = game.Watch ?? game;
+            audio?.UpdateMusic(shown.MusicTrack, game.Vars.Music, shown.MusicIntensity);
             watcher?.Poll(game, Raylib.GetFrameTime());
-            renderer.Render(game);
+            renderer.Render(shown);
             Raylib.UpdateTexture(tex, renderer.Fb);
 
             if (inp.Screenshot)
