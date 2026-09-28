@@ -287,6 +287,7 @@ Switch to the old direct movement with **Options → Movement** or `quakemove 0`
 | **Rocket Tower** | An endless climb up shafts of platforms from a seed, rocket jump by rocket jump. One fall ends the run. See [The rocket tower](#the-rocket-tower). |
 | **Rocket Soccer** | A walled pitch with two goals, two kicker ramps and a big ball, to blast into the lit goal with rockets and grenades. Two-minute matches with their own board. See [Rocket Soccer](#rocket-soccer). |
 | **Rocket Pool** | A giant pool table with ten balls racked in a triangle and six sunken pockets. Blast them in with rockets, the black 8 last, as fast as you can. Its own board. See [Rocket Pool](#rocket-pool). |
+| **Fishing** | A lake below a grassy shore and a dock out into it. Cast, strike when it bites, and reel fish in without snapping the line. Three-minute sessions, scored by the weight you land, with their own board. See [Fishing](#fishing). |
 | **Shooting Range** | Every weapon on a rack, with a Quake rocket launcher, railgun and grenade launcher, target dummies, and ledges to rocket jump onto. Use starts a one-minute drill with its own board. See [The shooting range](#the-shooting-range). |
 | **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
 
@@ -703,6 +704,43 @@ launcher (1), with the grenade launcher (2) for trick shots.
 ![Rocket Pool: the rack from behind the head string](docs/rocket_pool.png)
 
 ![The demo lining up the 3 ball](docs/rocket_pool_demo.png)
+
+#### Fishing
+
+**Practice → Fishing** puts you at the end of a wooden dock on a lake, with a fishing rod in hand.
+
+- **Cast:** fire casts the bobber where you're looking; look up to cast further. A line runs from the rod's tip to it.
+  Fire again while it waits to reel it back in. If it lands on the bank, cast again.
+- **Strike:** when a fish bites, the bobber is tugged under with a splash and **BITE!** flashes. Fire within a second
+  to hook it, or it lets go and you wait for the next bite.
+- **Reel:** hold fire to reel the fish in, and watch the **LINE** bar under the middle of the view.
+  - While the fish runs (**IT'S RUNNING - EASE OFF!**), reeling strains the line hard, and it pulls out line.
+  - Let go and the tension eases. If the tension fills the bar, the line snaps and the fish is gone.
+  - If it runs out all your line, it gets away.
+- **The fish:** further out the water's deeper, and the fish are bigger and fight harder.
+
+  | Fish | Weight |
+  |---|---|
+  | Bluegill | 0.1-0.5 kg, near the shore |
+  | Perch | 0.2-0.9 kg |
+  | Trout | 0.5-2.5 kg |
+  | Bass | 0.8-3.5 kg |
+  | Pike | 2-7 kg, out deep |
+  | Catfish | 3-12 kg, the deepest water |
+  | Golden Carp | 5-9 kg, rare |
+  | Old Boot | 0 kg, junk |
+
+- **A session** lasts three minutes from your first cast. The top-right corner shows the clock, the weight landed,
+  the fish and your best, and each catch shows a card with its picture and weight. At time up the session goes on
+  your class's board (a Fishing page on the Leaderboard, by weight and then the biggest fish).
+- **Fall in** and you're back on the dock.
+- **The demo** casts straight out, strikes the moment a fish bites, and reels, letting go whenever the fish runs.
+
+![Fishing: the line out from the dock](docs/fishing.png)
+
+![A fish on the line, running](docs/fishing_reel.png)
+
+![A pike landed](docs/fishing_catch.png)
 
 #### The rocket-jump course
 

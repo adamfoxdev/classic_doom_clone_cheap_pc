@@ -484,6 +484,31 @@ public static partial class Headless
             Shot("160_pool_board");
             g.Menu.Close();
             g.Profile.PoolRuns.Clear();
+            // Fishing: the line out from the dock, a fish on (reeling), then a catch's card
+            g.StartPractice(PClass.Fighter, Fishing.Course);
+            Tick(default, 10);
+            g.P.Pitch = 24;
+            Tick(new Input { Fire = true }); Tick(default);
+            for (int k = 0; k < 90 && g.Fish == FishState.Casting; k++) Tick(default);
+            g.P.Pitch = -8;
+            g.Messages.Clear();
+            Tick(default, 8);
+            Shot("162_fishing");
+            for (int k = 0; k < 35 * 15 && g.Fish != FishState.Bite; k++) Tick(default);
+            Tick(new Input { Fire = true });
+            g.Hooked = Fishing.All.Single(s => s.Name == "Pike"); g.HookedKg = 5.6f;
+            for (int k = 0; k < 20; k++) Tick(new Input { Fire = !g.FishRunning });
+            Shot("163_fishing_reel");
+            for (int k = 0; k < 35 * 40 && g.Fish == FishState.Reeling; k++) Tick(new Input { Fire = !g.FishRunning && g.LineTension < 0.7f });
+            Tick(default, 6);
+            Shot("164_fishing_catch");
+            foreach (var (n, kg, fish, big, bigName) in new[] { (g.RunnerName, 24.6f, 11, 7.2f, "Catfish"), ("ACE-1", 19.1f, 9, 6.4f, "Pike"), (g.RunnerName, 12.8f, 8, 7.9f, "Golden Carp"), ("NOVA", 6.3f, 7, 2.1f, "Bass") })
+                g.Profile.AddFishingRun(new FishingRun { Name = n, Class = "Fighter", Kg = kg, Fish = fish, Biggest = big, BiggestName = bigName, When = new DateTime(2026, 9, 20 + fish % 7) });
+            g.Menu.Show(MenuPage.Leaderboard);
+            g.Menu.BoardFishing = true; g.Menu.BoardClass = PClass.Fighter;
+            Shot("165_fishing_board");
+            g.Menu.Close();
+            g.Profile.FishingRuns.Clear();
             g.StartPractice(PClass.Fighter, Soccer.Course);
             foreach (var (n, goals, shots) in new[] { (g.RunnerName, 9, 41), ("ACE-1", 7, 30), (g.RunnerName, 7, 52), ("NOVA", 4, 38) })
                 g.Profile.AddSoccerRun(new SoccerRun { Name = n, Class = "Fighter", Goals = goals, Shots = shots, When = new DateTime(2026, 9, 20 + shots % 7) });
@@ -1091,6 +1116,8 @@ public static partial class Headless
         Shot("152_practice_soccer");
         g.Menu.Cursor = Array.IndexOf(Courses.All, Pool.Course);
         Shot("161_practice_pool");
+        g.Menu.Cursor = Array.IndexOf(Courses.All, Fishing.Course);
+        Shot("166_practice_fishing");
         g.Menu.Close();
         foreach (var (course, name, cam) in new[]
         {

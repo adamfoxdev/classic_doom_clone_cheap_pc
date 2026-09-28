@@ -34,6 +34,8 @@ public sealed class WeaponDef
     /// <summary>Its art in Art.Weapons (class * 3 + slot for the classes' own), and whether it's the rocket launcher.</summary>
     public int ArtIndex;
     public bool Rocket, Rail, Grenade, Shotgun, Beam;
+    /// <summary>The fishing rod: fire casts, strikes and reels (see Fishing) rather than shooting.</summary>
+    public bool Rod;
     /// <summary>A Quake weapon's ammo (None for the classes' weapons, which use mana); Cost is then rounds a shot.</summary>
     public AmmoKind Ammo;
     /// <summary>The Quake weapons come up fast.</summary>
@@ -453,6 +455,7 @@ public sealed partial class Game
                 TowerTick(DemoPilot.Tick);
                 SoccerTick(DemoPilot.Tick);
                 PoolTick(DemoPilot.Tick);
+                FishingTick(DemoPilot.Tick);
             }
             return false;
         }
@@ -471,6 +474,7 @@ public sealed partial class Game
         if (Course.Tower) SetUpTower();
         if (Course.Soccer) SetUpSoccer();
         if (Course.Pool) SetUpPool();
+        if (Course.Fishing) SetUpFishing();
         ResetRun();
     }
 
@@ -581,6 +585,7 @@ public sealed partial class Game
         if (Practicing && Course.Tower) { TowerHeight = 0; TowerPlatform = 0; _towerCarry = -1; }
         if (Practicing && Course.Soccer) ResetSoccer();
         if (Practicing && Course.Pool) ResetPool();
+        if (Practicing && Course.Fishing) ResetFishing();
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         Recording = new GhostTrack();
@@ -1052,6 +1057,7 @@ public sealed partial class Game
         TowerTick(step);
         SoccerTick(step);
         PoolTick(step);
+        FishingTick(step);
         RoomLookTick(dt);
         QuakeArenaTick();
         TargetsTick(step);
@@ -1437,7 +1443,8 @@ public sealed partial class Game
 
         p.Cooldown -= dt;
         p.FireAnim = MathF.Max(0, p.FireAnim - dt);
-        if (!ChargeTrigger(inp, dt) && inp.Fire && !Relaxed && !StoryMode && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
+        if (p.CurWeapon.Rod) RodInput(inp, dt);
+        else if (!ChargeTrigger(inp, dt) && inp.Fire && !Relaxed && !StoryMode && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
     }
 
     void SelectWeapon(int w)

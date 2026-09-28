@@ -190,6 +190,11 @@ public sealed class Renderer
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.SoccerBest(c)}");
                         CenterText("MOST GOALS: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
                     }
+                    if (course.Fishing)
+                    {
+                        var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.FishingBest(c):0.0}");
+                        CenterText("BEST KG: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                    }
                     if (course.Pool)
                     {
                         var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {(g.Profile.PoolBest(c) is > 0 and var b ? $"{b:0.0}S" : "-")}");
@@ -223,6 +228,7 @@ public sealed class Renderer
         if (m.BoardTower) { DrawTowerBoard(g, def); return; }
         if (m.BoardSoccer) { DrawSoccerBoard(g, def); return; }
         if (m.BoardPool) { DrawPoolBoard(g, def); return; }
+        if (m.BoardFishing) { DrawFishingBoard(g, def); return; }
         if (m.BoardRail) { DrawRailBoard(g, def); return; }
         if (m.BoardInstagib) { DrawInstagibBoard(g, def); return; }
         if (m.BoardRange) { DrawRangeBoard(g, def); return; }
@@ -1144,6 +1150,7 @@ public sealed class Renderer
             else if (mk == '=') { ft = Art.LiftFloor; fl = 300; }
             else if (mk == '!') { ft = lv.Arena?.Started == true ? Art.AltarFloorOff : Art.AltarFloor; fl = 300; }
             else if (mk != '\0') { ft = Art.PortalFloor; fl = 300; }
+            else if (lv.Water != null && lv.Water[cell] && th.Water != null) ft = th.Water;
             else if (lv.Outdoor[cell]) ft = th.OutdoorFloor;
             else if (lv.Dig) ft = Art.RubbleCracked[lv.CrackStage(cell, Level.Face.Floor)];
         }
@@ -1228,7 +1235,7 @@ public sealed class Renderer
             float screenX = W / 2f * (1 + tX / depth);
             float scale = Proj / depth;
             float sw = t.SpriteW * scale, sh = t.SpriteH * scale;
-            float baseZ = t is Projectile or Puff or GhostRunner or SoccerBall ? t.Z : lv.FloorAt(t.X, t.Y) + t.Z;
+            float baseZ = t is Projectile or Puff or GhostRunner or SoccerBall or Bobber ? t.Z : lv.FloorAt(t.X, t.Y) + t.Z;
             float left = screenX - sw / 2, top = _horizon - (baseZ + t.SpriteH - _eyeZ) * scale;
             int x0 = Math.Max(0, (int)MathF.Ceiling(left)), x1 = Math.Min(W, (int)MathF.Ceiling(left + sw));
             int y0 = Math.Max(0, (int)MathF.Ceiling(top)), y1 = Math.Min(ViewH, (int)MathF.Ceiling(top + sh));
@@ -1335,6 +1342,40 @@ public sealed class Renderer
                 if (glow > 0) c = Col.Lerp(c, tint, glow);
                 Fb[sy * W + sx] = Col.Shade(c, light);
             }
+        }
+        // the fishing line: from the rod's tip out to the bobber
+        if (p.CurWeapon.Rod && g.Bobber is { Removed: false } bob && Project(bob.X, bob.Y, bob.Z + bob.SpriteH, out int bx2, out int by2))
+        {
+            var (tx, ty) = Art.RodTip[tex == frames[1] ? 1 : 0];
+            DrawLine(x0 + tx, y0 + ty, bx2, by2, Col.Rgb(225, 225, 230));
+        }
+    }
+
+    /// <summary>Where a point in the world is on the screen (false when it's behind you).</summary>
+    bool Project(float x, float y, float z, out int sx, out int sy)
+    {
+        float invDet = 1f / (_plX * _dirY - _dirX * _plY);
+        float rx = x - _px, ry = y - _py;
+        float depth = invDet * (-_plY * rx + _plX * ry);
+        sx = sy = 0;
+        if (depth < 0.15f) return false;
+        float tX = invDet * (_dirY * rx - _dirX * ry);
+        sx = (int)(W / 2f * (1 + tX / depth));
+        sy = (int)(_horizon - (z - _eyeZ) * Proj / depth);
+        return true;
+    }
+
+    /// <summary>A thin line across the view (clipped to it).</summary>
+    void DrawLine(int x0, int y0, int x1, int y1, uint c)
+    {
+        int dx = Math.Abs(x1 - x0), dy = -Math.Abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy;
+        for (int n = 0; n < 2000; n++)
+        {
+            if ((uint)x0 < W && (uint)y0 < ViewH) Fb[y0 * W + x0] = c;
+            if (x0 == x1 && y0 == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
         }
     }
 
@@ -1797,6 +1838,7 @@ public sealed class Renderer
         if (g.OnTower && style != HudStyle.Off) DrawTowerHud(g);
         if (g.OnSoccer && style != HudStyle.Off) DrawSoccerHud(g);
         if (g.OnPool && style != HudStyle.Off) DrawPoolHud(g);
+        if (g.OnFishing && style != HudStyle.Off) DrawFishingHud(g);
         if (g.LastTrick != Trick.None && g.TrickAge < Tricks.CalloutTime && style != HudStyle.Off)
         {
             // a trick's name across the view, fading as it goes
@@ -2013,6 +2055,66 @@ public sealed class Renderer
         string mark = ahead ? "v" : rel > 0 ? ">" : "<";
         Text(ax - Font.Width(label) / 2, 36, label, lit);
         Text(ax - Font.Width(mark) / 2, 44, mark, lit);
+    }
+
+    void DrawFishingBoard(Game g, ClassDef def) =>
+        DrawRunBoard(g, $"FISHING   < {def.Name.ToUpperInvariant()} >", "WEIGHT LANDED IN THREE MINUTES", "NOTHING LANDED YET. PICK PRACTICE > FISHING.",
+            new[] { ("KG", 40), ("FISH", 86), ("BIGGEST", 124), ("NAME", 214), ("DATE", 272) }, g.Profile.FishingBoard(g.Menu.BoardClass), r => r.When,
+            r => new[] { $"{r.Kg:0.00}", $"{r.Fish}", $"{r.Biggest:0.0} {r.BiggestName.ToUpperInvariant()}", r.Name, r.When == default ? "-" : r.When.ToString("MM-dd") });
+
+    /// <summary>
+    /// At the lake: the clock, the weight landed and the fish, what to do now (cast, wait, strike, reel), the line's
+    /// tension and how much line is out while you reel, and a card with your last catch.
+    /// </summary>
+    void DrawFishingHud(Game g)
+    {
+        int y = g.Vars.ShowFps ? 12 : 3;
+        void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
+        int secs = (int)MathF.Ceiling(MathF.Max(0, g.FishingLeft));
+        Right($"{secs / 60}:{secs % 60:00}", 0, !g.RunStarted ? Col.Rgb(150, 150, 160) : secs <= 10 ? Col.Rgb(255, 110, 90) : Col.Rgb(240, 236, 220));
+        Right($"{g.FishKg:0.00} KG", 10, Col.Rgb(120, 255, 140));
+        Right($"FISH {g.FishCount}", 20, Col.Rgb(170, 200, 255));
+        float best = g.Profile.FishingBest(g.P.Class);
+        if (best > 0) Right($"BEST {best:0.00}", 30, Col.Rgb(255, 220, 90));
+        // what now, under the middle of the view
+        string what = g.Fish switch
+        {
+            FishState.Idle => "FIRE: CAST",
+            FishState.Casting or FishState.Waiting => "WAITING FOR A BITE...  FIRE: REEL IN",
+            FishState.Bite => "BITE! FIRE!",
+            _ => g.FishRunning ? "IT'S RUNNING - EASE OFF!" : "HOLD FIRE: REEL",
+        };
+        uint whatCol = g.Fish == FishState.Bite || g.Fish == FishState.Reeling && g.FishRunning ? Col.Rgb(255, 120, 90) : Col.Rgb(240, 236, 220);
+        if (g.Fish != FishState.Bite || (int)(g.Time * 8) % 2 == 0) CenterText(what, ViewH - 44, whatCol);
+        if (g.Fish == FishState.Reeling)
+        {
+            // the tension (green to red) and the line out
+            int bx = W / 2 - 50, by = ViewH - 34;
+            Rect(bx - 1, by - 1, 102, 7, Col.Rgb(10, 10, 12));
+            float t = Math.Clamp(g.LineTension, 0, 1);
+            uint tc = Col.Lerp(Col.Rgb(80, 220, 90), Col.Rgb(255, 60, 40), (int)(t * 256));
+            Rect(bx, by, (int)(100 * t), 5, tc);
+            Text(bx - 34, by - 1, "LINE", MenuDim);
+            Text(bx + 106, by - 1, $"{g.LineOut:0.0}M", MenuDim);
+        }
+        // the last catch's card
+        if (g.LandedShow > 0 && g.Landed is { } s)
+        {
+            var pic = Fishing.Picture(s);
+            int cw = 120, ch = 44, cx = W / 2 - cw / 2, cy = 24;
+            Rect(cx, cy, cw, ch, Col.Rgb(16, 20, 28));
+            Rect(cx + 1, cy + 1, cw - 2, 1, Col.Rgb(90, 140, 190));
+            for (int py = 0; py < pic.H; py++)
+                for (int px = 0; px < pic.W; px++)
+                {
+                    uint c = pic.Px[py * pic.W + px];
+                    if (Col.A(c) == 0) continue;
+                    Put(cx + 6 + px, cy + 4 + py, c);
+                }
+            Text(cx + 50, cy + 8, s.Name.ToUpperInvariant(), s.Name == "Golden Carp" ? Col.Rgb(255, 210, 60) : Col.Rgb(240, 236, 220));
+            Text(cx + 50, cy + 20, s.Junk ? "JUNK" : $"{g.LandedKg:0.00} KG", Col.Rgb(120, 255, 140));
+            if (!s.Junk && g.LandedKg >= g.BiggestKg && g.FishCount > 1) Text(cx + 50, cy + 30, "BIGGEST YET!", Col.Rgb(255, 220, 90));
+        }
     }
 
     void DrawPoolBoard(Game g, ClassDef def) =>

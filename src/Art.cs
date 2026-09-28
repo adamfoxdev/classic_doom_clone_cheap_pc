@@ -48,8 +48,8 @@ public static class Art
     // HUD
     public static Tex HudBack;
     // First-person weapons, indexed [class*3 + slot][frame], then the rocket launcher (9)
-    public static Tex[][] Weapons = new Tex[14][];
-    public const int RocketLauncherArt = 9, RailgunArt = 10, GrenadeLauncherArt = 11, ShotgunArt = 12, LightningGunArt = 13;
+    public static Tex[][] Weapons = new Tex[15][];
+    public const int RocketLauncherArt = 9, RailgunArt = 10, GrenadeLauncherArt = 11, ShotgunArt = 12, LightningGunArt = 13, RodArt = 14;
     /// <summary>The Quake ammo boxes (by AmmoKind; 0 unused), and a pellet's mark on a wall.</summary>
     public static Tex[] AmmoBox = new Tex[QuakeAmmo.Kinds];
     public static Tex PelletMark;
@@ -1374,7 +1374,7 @@ public static class Art
             gl[f] = c.T;
         }
         Weapons[GrenadeLauncherArt] = gl;
-        foreach (var (index, draw, seed) in new (int, Action<Canvas, bool>, uint)[] { (ShotgunArt, DrawSuperShotgun, 101), (LightningGunArt, DrawLightningGun, 103) })
+        foreach (var (index, draw, seed) in new (int, Action<Canvas, bool>, uint)[] { (ShotgunArt, DrawSuperShotgun, 101), (LightningGunArt, DrawLightningGun, 103), (RodArt, DrawRod, 107) })
         {
             var frames = new Tex[2];
             for (int f = 0; f < 2; f++)
@@ -1387,6 +1387,26 @@ public static class Art
             }
             Weapons[index] = frames;
         }
+    }
+
+    /// <summary>Where the rod's tip is in its picture (the line runs from here), still and mid-cast.</summary>
+    public static readonly (int x, int y)[] RodTip = { (44, 2), (58, 10) };
+
+    /// <summary>The fishing rod: a long thin rod rising from your hand up and left, a cork grip, a reel, and rings along it; mid-cast it's flexed back.</summary>
+    static void DrawRod(Canvas c, bool fire)
+    {
+        var (tx, ty) = RodTip[fire ? 1 : 0];
+        uint rod = Col.Rgb(60, 50, 44), cork = Col.Rgb(196, 150, 96), reel = Col.Rgb(150, 154, 160);
+        c.Line(98, 80, tx, ty, 3, rod);
+        c.Line(97, 80, tx, ty, 1, Col.Shade(rod, 190));
+        for (int k = 1; k <= 3; k++)
+        {
+            float f = k / 4.5f;
+            float rx = 98 + (tx - 98) * f, ry = 80 + (ty - 80) * f;
+            c.Circle(rx + 1.5f, ry, 1.6f, Col.Rgb(200, 200, 205)); // the rings
+        }
+        c.Line(100, 80, 90, 60, 6, cork);
+        c.Circle(86, 66, 6, reel); c.Circle(86, 66, 3, Col.Shade(reel, 140)); c.Rect(79, 64, 5, 2, Col.Rgb(60, 60, 64));
     }
 
     /// <summary>The super shotgun: two short barrels side by side up the middle, over a wooden stock; a flash from both.</summary>
