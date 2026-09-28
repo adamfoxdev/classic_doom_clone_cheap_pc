@@ -115,7 +115,7 @@ public static class Program
             }
 
             game.Update(inp, Raylib.GetFrameTime());
-            audio?.UpdateMusic(game.MusicTrack, game.Vars.Music);
+            audio?.UpdateMusic(game.MusicTrack, game.Vars.Music, game.MusicIntensity);
             watcher?.Poll(game, Raylib.GetFrameTime());
             renderer.Render(game);
             Raylib.UpdateTexture(tex, renderer.Fb);

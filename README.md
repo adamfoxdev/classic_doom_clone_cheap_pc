@@ -74,6 +74,8 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   gates open once all its levers are pulled *and* all its plates are covered. Lift a block off a plate and the
   gate drops again.
 - **Mini-bosses** on six of the optional maps, each with a trick of its own. See [Mini-bosses](#mini-bosses).
+- **Game feel** you can tune under **Options → Effects**: screen shake, a hit-stop on heavy blows, damage numbers,
+  boss intro cards and music that swells when you're in a fight. See [Options and key bindings](#options-and-key-bindings).
 - **Chaos Arena** (**Arena** on the title menu): endless wave survival, with its own leaderboard and medals.
   Step on the golden altar to start. Each wave has more monsters and tougher types (Afrits from wave 2,
   Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed scale up every wave, and every fifth
@@ -833,6 +835,19 @@ Open **Options** from the title menu, or press `Esc` in game and pick Options.
   mode, chords and drums, with a seeded melody. The same tunes play on organ, strings and flute in the fantasy
   style, and on saw pads, square arpeggios and drum machines in sci-fi. Moving between maps crossfades from one to
   the next. `--sounds dir` exports the loops as WAV files along with the sound effects.
+- **Effects** opens a page of game-feel settings, each also a console command:
+
+  | Setting | Default | What it does |
+  |---|---|---|
+  | **Screen shake** (`shake 0-2`) | Normal | The view shakes when you're hit, in proportion to the damage, and when you land a heavy blow or a big kill; felling a boss shakes it hard. It settles within a second. Strong doubles it; Off turns it off. |
+  | **Hit-stop** (`hitstop 0\|1`) | On | Heavy blows freeze the action for a split second: 45 ms for a hit of 40 or more, 70 ms for killing something with 100 health or more (a Centaur, say), and 140 ms for felling a boss. Your view still turns. |
+  | **Damage numbers** (`damagenumbers 0\|1`) | Off | Numbers pop out of what you hit, as in arcade mode, but without its score: white, orange for a heavy blow. Arcade mode always shows them. |
+  | **Boss intros** (`bossintros 0\|1`) | On | The first time a mini-boss or the Heresiarch notices you, its name card appears: letterbox bars slide in, the view zooms in a touch, it roars, and its name and a line about it show in the lower third for under three seconds. Once per boss. Nothing's hostile in the relaxed style, so there are none there. |
+  | **Dynamic music** (`dynamicmusic 0\|1`) | On | Every track has a tension layer, locked to it: driving drums, a bass pulsing in eighths and a sixteenth-note arpeggio. It swells in over a second and a half while a monster near you is onto you or a boss is in the fight, and dies away over five seconds once it's clear. Not on the practice courses, or in the relaxed style. |
+
+  ![A boss intro card](docs/boss_intro.png)
+  ![Damage numbers without arcade mode](docs/damage_numbers.png)
+  ![Options, Effects](docs/effects_menu.png)
 - **Crosshair** (or `crosshair 0-3` in the console): off (the default), a dot, a cross or a circle, drawn light with
   a dark outline at the centre of the view, where your shots go. It follows the horizon when you look up or down,
   works with any HUD style, and hides on the automap and in the cockpit (which has its own gunsight).
@@ -994,7 +1009,8 @@ in both looks (`76_…`, `77_…`).
 | `src/Words.cs` | Names and messages in the current style (e.g. Heresiarch → Overmind) |
 | `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
-| `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
+| `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
+| `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
 | `src/NewGamePlus.cs` | New Game+: what each tier does to the hub, and going round again |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
 | `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |
@@ -1005,7 +1021,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

@@ -120,6 +120,8 @@ public sealed class Monster : Thing
     /// <summary>Out of reach: a Dark Bishop's blur, or the Rock Wyrm inside the rock (unseen as well).</summary>
     public bool Blurring => BlurTime > 0 || Burrowed;
     public bool Burrowed;
+    /// <summary>Its intro card has been shown (bosses only; see Game.CheckBossIntros).</summary>
+    public bool Introduced;
     public override int Alpha => Burrowed ? 0 : BlurTime > 0 ? 90 : 256;
 
     public Monster(MonsterDef def)

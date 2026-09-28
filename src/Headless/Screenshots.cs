@@ -527,6 +527,7 @@ public static partial class Headless
         }
 
         // the mini-bosses, each awake and facing you in its own map, with its health bar
+        g.Vars.BossIntros = false; // these show the bosses themselves, without their intro cards
         foreach (var (name, map, dx, dy, pitch) in new[]
         {
             ("104_quarry_warden", "Deepdelve Quarry", -2.6f, 0f, 0f),
@@ -591,6 +592,53 @@ public static partial class Headless
             g.Messages.Clear();
             Shot("112_storm_leviathan");
             g.Vars.Freeze = false;
+        }
+        g.Vars.BossIntros = true;
+        {
+            // the Thornmother's intro card, the moment she notices you
+            g.Warp(Array.FindIndex(g.Hub, l => l.RawName == "Verdant Moon"));
+            var tm = g.Level.Things.OfType<Monster>().FirstOrDefault(t => t.Def == MiniBosses.Thornmother);
+            if (tm == null) { MiniBosses.Place(g.Level); tm = g.Level.Things.OfType<Monster>().First(t => t.Def == MiniBosses.Thornmother); }
+            g.Level.Things.RemoveAll(t => t is Monster { Def.MiniBoss: null });
+            tm.Introduced = false; tm.State = AiState.Idle; tm.Health = tm.MaxHealth;
+            float cx = tm.X - 3.6f, cy = tm.Y + 0.6f;
+            g.Vars.Freeze = true;
+            PlaceCam(cx, cy, g.Level.FloorAt(cx, cy), 0, MathF.Atan2(tm.Y - cy, tm.X - cx), 6f);
+            tm.State = AiState.Chase;
+            Tick(default, 16);
+            PlaceCam(cx, cy, g.Level.FloorAt(cx, cy), 0, MathF.Atan2(tm.Y - cy, tm.X - cx), 6f);
+            g.Messages.Clear();
+            Shot("118_boss_intro");
+            g.Intro = null;
+
+            // damage numbers on their own (Options > Effects), down the Hab Ring's great hall
+            g.Warp(0);
+            g.Level.Things.RemoveAll(t => t is Monster);
+            PlaceCam(10.5f, 5.5f, g.Level.FloorAt(10.5f, 5.5f), 0, 0, 0);
+            g.Vars.DamageNumbers = true;
+            g.Arcade.Floaters.Clear();
+            foreach (var (dx, dy, hits) in new[] { (4f, -0.8f, new[] { 14, 52 }), (5.5f, 0.9f, new[] { 9, 11, 23 }) })
+            {
+                var m = new Monster(Monster.Slaughtaur) { X = 10.5f + dx, Y = 5.5f + dy, Level = g.Level, State = AiState.Chase };
+                g.Level.Things.Add(m);
+                foreach (int hit in hits) g.DamageMonster(m, hit, 0);
+            }
+            g.HitStop = 0; g.Shake = 0;
+            Tick(default, 4);
+            g.Messages.Clear();
+            Shot("119_damage_numbers");
+            g.Vars.DamageNumbers = false;
+            g.Vars.Freeze = false;
+            g.Level.Things.RemoveAll(t => t is Monster);
+            g.Arcade.Floaters.Clear();
+
+            // Options > Effects
+            g.Paused = true;
+            g.Menu.Show(MenuPage.Options);
+            g.Menu.Show(MenuPage.Effects);
+            g.Menu.Cursor = 0;
+            Shot("120_effects_menu");
+            g.Menu.Close(); g.Paused = false;
         }
 
         // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on

@@ -55,10 +55,11 @@ public sealed class Renderer
         DrawMessages(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
-        if (g.Vars.Hud != HudStyle.Off && !g.ShowMap) DrawBossBar(g);
+        if (g.Intro != null && !g.ShowMap) DrawBossIntro(g, g.Intro);
+        if (g.Vars.Hud != HudStyle.Off && !g.ShowMap) DrawBossBar(g); // over the letterbox
         DrawAchievementBanner(g);
         if (g.Story != null) DrawStory(g);
-        if (g.Vars.Arcade && !g.ShowMap) DrawArcade(g);
+        if ((g.Vars.Arcade || g.Vars.DamageNumbers) && !g.ShowMap) DrawArcade(g);
 
         if (g.Mode == GameMode.Dead && g.P.EyeZ <= 0.13f)
             CenterText("YOU DIED", 60, Col.Rgb(220, 40, 30), 3);
@@ -72,7 +73,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int TitleTop = 108, TitleRow = 9, TitleFooter = 190, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 26, OptionsRow = 10, OptionsFooter = 188;
+    public const int TitleTop = 108, TitleRow = 9, TitleFooter = 190, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 26, OptionsRow = 9, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected)
     {
@@ -102,14 +103,15 @@ public sealed class Renderer
                 break;
 
             case MenuPage.Options:
-                CenterText("OPTIONS", 8, Col.Rgb(230, 190, 80), 2);
+            case MenuPage.Effects:
+                CenterText(page == MenuPage.Effects ? "EFFECTS" : "OPTIONS", 8, Col.Rgb(230, 190, 80), 2);
                 for (int i = 0; i < items.Length; i++)
                 {
                     int y = OptionsTop + i * OptionsRow;
                     bool sel = i == m.Cursor;
                     string label = items[i].ToUpperInvariant(), val = m.Value(i);
                     if (val == "") { MenuItem(label, y, sel); continue; }
-                    if (sel) Rect(40, y - 1, 240, 10, Col.Rgb(70, 40, 20)); // rows are 10 apart
+                    if (sel) Rect(40, y - 1, 240, OptionsRow, Col.Rgb(70, 40, 20));
                     Text(48, y, label, sel ? MenuSel : MenuText);
                     string shown = sel ? $"< {val} >" : val;
                     Text(272 - Font.Width(shown), y, shown, sel ? MenuSel : Col.Rgb(170, 200, 255));
@@ -171,7 +173,7 @@ public sealed class Renderer
                 break;
         }
 
-        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.ArenaSetup or MenuPage.Achievements))
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.Effects or MenuPage.ArenaSetup or MenuPage.Achievements))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
     }
 
@@ -513,6 +515,30 @@ public sealed class Renderer
         Bar(x, y + 11, w, 4, b.Health / (float)b.MaxHealth, Col.Rgb(220, 50, 40));
     }
 
+    /// <summary>
+    /// A boss's intro card: letterbox bars slide in over the view, and in the lower third its name, large, between gold
+    /// rules that grow out from the middle, with a line about it under them.
+    /// </summary>
+    void DrawBossIntro(Game g, BossIntro intro)
+    {
+        float a = intro.Amount;
+        if (a <= 0) return;
+        int bar = (int)(16 * a);
+        Rect(0, 0, W, bar, Col.Rgb(0, 0, 0));
+        Rect(0, ViewH - bar, W, bar, Col.Rgb(0, 0, 0));
+        int y = ViewH - 66; // the lower third, clear of the boss itself and just above its health bar
+        int nameW = Font.Width(intro.Name, 2), rule = (int)((nameW / 2 + 24) * a);
+        uint gold = Col.Rgb(230, 190, 80);
+        Darken(W / 2 - rule - 6, y - 6, rule * 2 + 12, 40, (int)(150 * a));
+        Rect(W / 2 - rule, y - 4, rule * 2, 1, gold);
+        Rect(W / 2 - rule, y + 31, rule * 2, 1, gold);
+        if (a < 0.5f) return; // the words come once the rules are most of the way out
+        int shade = (int)(256 * Math.Clamp((a - 0.5f) * 2, 0, 1));
+        CenterText(intro.Name, y + 1 + 1, Col.Rgb(20, 10, 5), 2);
+        CenterText(intro.Name, y + 1, Col.Shade(Col.Rgb(255, 225, 150), shade), 2);
+        CenterText(intro.Title, y + 21, Col.Shade(Col.Rgb(210, 190, 160), shade));
+    }
+
     /// <summary>A freshly unlocked achievement, for a few seconds under the top of the view.</summary>
     void DrawAchievementBanner(Game g)
     {
@@ -612,15 +638,18 @@ public sealed class Renderer
         _theme = th;
         var p = g.P;
         _px = p.X; _py = p.Y;
-        _dirX = MathF.Cos(p.Angle); _dirY = MathF.Sin(p.Angle);
-        PlaneLen = MathF.Tan(g.Vars.Fov * MathF.PI / 360f);
+        // screen shake throws the view a little; a boss intro zooms in a touch
+        var (shakeYaw, shakePitch) = g.ShakeOffset();
+        _dirX = MathF.Cos(p.Angle + shakeYaw); _dirY = MathF.Sin(p.Angle + shakeYaw);
+        float zoom = g.Intro != null && g.Vars.BossIntros ? 1 - 0.08f * g.Intro.Amount : 1;
+        PlaneLen = MathF.Tan(g.Vars.Fov * MathF.PI / 360f) * zoom;
         Proj = (W / 2f) / PlaneLen;
         _fogDist = th.FogDist * g.Vars.Fog;
         _invFog = 1f / _fogDist;
         _fullBright = g.Vars.FullBright;
         _plX = -_dirY * PlaneLen; _plY = _dirX * PlaneLen;
         _eyeZ = MathF.Min(p.FloorZ + p.ViewZ + MathF.Sin(p.Bob) * 0.025f * p.BobAmount, lv.HeightAt(p.X, p.Y) - 0.05f);
-        _horizon = ViewH / 2f + p.Pitch;
+        _horizon = ViewH / 2f + p.Pitch + shakePitch;
         for (int y = 0; y < H; y++) _rowK[y] = Proj / (y + 0.5f - _horizon);
         uint fog = th.FogColor;
         int baseLight = Light(th);
@@ -1261,6 +1290,7 @@ public sealed class Renderer
         float invDet = 1f / (_plX * _dirY - _dirX * _plY);
         foreach (var f in a.Floaters)
         {
+            if (!g.Vars.Arcade && f.Score) continue; // damage numbers on their own: no score
             float rx = f.X - _px, ry = f.Y - _py;
             float depth = invDet * (-_plY * rx + _plX * ry);
             if (depth < 0.2f) continue;
@@ -1268,13 +1298,13 @@ public sealed class Renderer
             int sx = (int)(W / 2f * (1 + tX / depth)), sy = (int)(_horizon - (f.Z - _eyeZ) * Proj / depth);
             if (sx < 0 || sx >= W || sy < 0 || sy >= ViewH - 8 || depth > _depth[sy * W + sx] + 0.6f) continue; // behind a wall
             float life = f.Life / f.MaxLife;
-            uint c = Col.Shade(f.Colour, (int)(120 + 136 * MathF.Min(1, life * 2)));
+            uint c = Col.Shade(g.Vars.Arcade ? f.Colour : f.Plain, (int)(120 + 136 * MathF.Min(1, life * 2)));
             int tw = Font.Width(f.Text) * f.Scale;
             Text(sx - tw / 2 + 1, sy + 1, f.Text, Col.Rgb(10, 8, 8), f.Scale);
             Text(sx - tw / 2, sy, f.Text, c, f.Scale);
         }
 
-        if (g.Vars.Hud == HudStyle.Off) return;
+        if (g.Vars.Hud == HudStyle.Off || !g.Vars.Arcade) return;
         int top = (g.Vars.ShowFps ? 12 : 3) + (g.ArenaMode && g.Level.Arena != null ? 42 : 0) + (g.Level.Ship != null ? 50 : 0);
         string score = $"SCORE {a.Score:000000}";
         Text(W - 6 - Font.Width(score), top, score, Col.Rgb(255, 240, 200));

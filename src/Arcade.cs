@@ -7,6 +7,10 @@ public sealed class Floater
     public string Text;
     public uint Colour;
     public int Scale = 1;
+    /// <summary>A score pop (arcade mode only), not a damage number.</summary>
+    public bool Score;
+    /// <summary>Its colour when shown as a plain damage number, outside arcade mode.</summary>
+    public uint Plain;
 }
 
 /// <summary>
@@ -60,12 +64,13 @@ public sealed class Arcade
         Style = MathF.Min(Ranks.Length - 0.001f, Style + gain / (1 + Rank * 0.35f)); // higher ranks are harder to climb
         int points = dmg * 10 * Multiplier;
         Score += points;
-        Pop(x, y, z, dmg.ToString(), Colours[Rank], 1, 0.8f);
+        // outside arcade mode (damage numbers on their own) heavy blows show orange, the rest white
+        Pop(x, y, z, dmg.ToString(), Colours[Rank], 1, 0.8f, plain: dmg >= Game.HeavyHit ? Col.Rgb(255, 170, 70) : Col.Rgb(240, 236, 225));
         if (kill)
         {
             int bonus = maxHealth * (boss ? 50 : 20) * Multiplier;
             Score += bonus;
-            Pop(x, y, z + 0.3f, $"+{bonus}", Col.Rgb(255, 240, 150), 1, 1.3f);
+            Pop(x, y, z + 0.3f, $"+{bonus}", Col.Rgb(255, 240, 150), 1, 1.3f, score: true);
         }
         if (Rank > _lastRank) RankFlash = 1f;
         _lastRank = Rank;
@@ -99,10 +104,10 @@ public sealed class Arcade
         Floaters.RemoveAll(f => f.Life <= 0);
     }
 
-    void Pop(float x, float y, float z, string text, uint colour, int scale, float life)
+    void Pop(float x, float y, float z, string text, uint colour, int scale, float life, bool score = false, uint plain = 0)
     {
         // spread repeated pops a little so a flurry of hits stays readable
         float j = (Floaters.Count % 5 - 2) * 0.22f;
-        Floaters.Add(new Floater { X = x + j, Y = y - j, Z = z + Floaters.Count % 3 * 0.15f, Text = text, Colour = colour, Scale = scale, Life = life, MaxLife = life });
+        Floaters.Add(new Floater { X = x + j, Y = y - j, Z = z + Floaters.Count % 3 * 0.15f, Text = text, Colour = colour, Scale = scale, Life = life, MaxLife = life, Score = score, Plain = plain });
     }
 }

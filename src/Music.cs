@@ -146,6 +146,75 @@ public static class MusicGen
         return outp;
     }
 
+    /// <summary>
+    /// The track's tension layer, for dynamic music: the same 8 bars, locked to the same loop, with driving drums (a
+    /// kick every beat, a snare on 2 and 4, sixteenth-note hats), a bass pulsing in eighths on the chord root and a
+    /// staccato arpeggio of the chord's tones in sixteenths. Played over the track when monsters are onto you.
+    /// </summary>
+    public static short[] MakeTension(string track, ArtStyle style)
+    {
+        track = Resolve(track);
+        var t = Tunes[track];
+        bool sci = style == ArtStyle.SciFi;
+        int len = Length(track);
+        var mix = new float[len];
+        float beat = 60f / t.Bpm, bar = beat * 4, six = beat / 4;
+        void Add(float start, float dur, Func<float, float> voice)
+        {
+            int s0 = (int)(start * Rate), n = (int)(dur * Rate);
+            for (int i = 0; i < n; i++) mix[(s0 + i) % len] += voice(i / (float)Rate);
+        }
+        for (int b = 0; b < 8; b++)
+        {
+            int chord = t.Chords[b];
+            float at = b * bar;
+            for (int k = 0; k < 16; k++)
+            {
+                float st = at + k * six;
+                // drums: kick on the beat, snare on 2 and 4, a hat on every sixteenth (accented on the eighths)
+                if (k % 4 == 0) Add(st, 0.25f, x => MathF.Sin(Tau * (50 * x + 120 * (1 - MathF.Exp(-x * 35)) / 35)) * MathF.Exp(-x * 14) * 0.5f);
+                if (k % 8 == 4)
+                {
+                    var nr = new Rng((uint)(b * 32 + k + 11));
+                    Add(st, 0.18f, x => (nr.Range(-1f, 1f) * 0.8f + MathF.Sin(Tau * 190 * x) * 0.4f) * MathF.Exp(-x * 20) * 0.3f);
+                }
+                var hr = new Rng((uint)(b * 64 + k + 3));
+                float prev = 0, accent = k % 2 == 0 ? 0.09f : 0.05f;
+                Add(st, 0.04f, x => { float n = hr.Range(-1f, 1f); float h = n - prev; prev = n; return h * MathF.Exp(-x * 90) * accent; });
+                // bass: the chord root, pulsing in eighths
+                if (k % 2 == 0)
+                {
+                    float f = Hz(Note(t, chord) - 12);
+                    Add(st, six * 1.8f, x =>
+                    {
+                        float env = MathF.Min(1, x / 0.005f) * MathF.Exp(-x * 9);
+                        float v = sci ? Saw(x * f) * 0.7f : MathF.Sin(Tau * f * x) + 0.5f * MathF.Sin(Tau * 2 * f * x);
+                        return v * env * 0.28f;
+                    });
+                }
+                // arpeggio: up and down the chord, an octave above the melody's range
+                int[] steps = { 0, 2, 4, 7, 4, 2 };
+                float fa = Hz(Note(t, chord + steps[k % steps.Length]) + 24);
+                Add(st, six * 0.9f, x =>
+                {
+                    float env = MathF.Exp(-x * 16);
+                    float v = sci ? Square(x * fa) * 0.5f : MathF.Sin(Tau * fa * x) * 0.8f + 0.2f * MathF.Sin(Tau * 3 * fa * x);
+                    return v * env * 0.09f;
+                });
+            }
+        }
+        if (!sci)
+        {
+            float y = mix[^1];
+            for (int i = 0; i < len; i++) { y += (mix[i] - y) * 0.4f; mix[i] = y; }
+        }
+        float peak = mix.Max(MathF.Abs);
+        float gain = peak > 0 ? 0.45f / peak : 0;
+        var outp = new short[len];
+        for (int i = 0; i < len; i++) outp[i] = (short)(Math.Clamp(mix[i] * gain, -1f, 1f) * 32767);
+        return outp;
+    }
+
     static float Saw(float phase) => 2 * (phase - MathF.Floor(phase + 0.5f));
     static float Square(float phase) => phase - MathF.Floor(phase) < 0.5f ? 1 : -1;
 
@@ -161,35 +230,41 @@ public static class MusicGen
 
 /// <summary>
 /// Plays the music: loops the current track and crossfades (over a second) when it changes, a block of samples at
-/// a time for the audio stream. Tracks are made the first time they're needed and kept. Pure C#, so it's tested
-/// without an audio device.
+/// a time for the audio stream. Each track has a tension layer, locked to it, that swells in with Intensity (over
+/// SwellTime) and dies away when it drops (over CalmTime). Tracks are made the first time they're needed and kept.
+/// Pure C#, so it's tested without an audio device.
 /// </summary>
 public sealed class MusicMixer
 {
-    public const float Fade = 1f;
-    readonly System.Collections.Concurrent.ConcurrentDictionary<(string, ArtStyle), Lazy<short[]>> _cache = new();
-    short[] _cur, _old;
+    public const float Fade = 1f, SwellTime = 1.5f, CalmTime = 5f;
+    readonly System.Collections.Concurrent.ConcurrentDictionary<(string, ArtStyle, bool), Lazy<short[]>> _cache = new();
+    short[] _cur, _old, _curTen, _oldTen;
+    /// <summary>How much tension the game wants, 0 (calm) to 1 (a fight); Level follows it.</summary>
+    public float Intensity;
+    /// <summary>How loud the tension layer is now, 0 to 1.</summary>
+    public float Level { get; private set; }
     int _curPos, _oldPos;
     float _fade = 1; // 0 -> 1 as the new track comes in
     public string Track { get; private set; }
     public ArtStyle Style { get; private set; }
 
-    public short[] Get(string track, ArtStyle style)
+    public short[] Get(string track, ArtStyle style, bool tension = false)
     {
         track = MusicGen.Resolve(track);
-        return _cache.GetOrAdd((track, style), k => new Lazy<short[]>(() => MusicGen.Make(k.Item1, k.Item2))).Value;
+        return _cache.GetOrAdd((track, style, tension), k => new Lazy<short[]>(() => k.Item3 ? MusicGen.MakeTension(k.Item1, k.Item2) : MusicGen.Make(k.Item1, k.Item2))).Value;
     }
 
     /// <summary>Makes every track for a style on a background thread, so changing maps never waits for one.</summary>
-    public void Warm(ArtStyle style) => Task.Run(() => { foreach (var t in MusicGen.Tracks) Get(t, style); });
+    public void Warm(ArtStyle style) => Task.Run(() => { foreach (var t in MusicGen.Tracks) { Get(t, style); Get(t, style, true); } });
 
     /// <summary>Switches to a track (or to silence, for null), crossfading from the one playing.</summary>
     public void Play(string track, ArtStyle style)
     {
         string resolved = track == null ? null : MusicGen.Resolve(track);
         if (resolved == Track && style == Style) return;
-        (_old, _oldPos) = (_cur, _curPos);
+        (_old, _oldTen, _oldPos) = (_cur, _curTen, _curPos);
         _cur = resolved == null ? null : Get(resolved, style);
+        _curTen = resolved == null ? null : Get(resolved, style, true);
         _curPos = 0;
         _fade = _old == null ? 1 : 0;
         Track = resolved; Style = style;
@@ -198,13 +273,17 @@ public sealed class MusicMixer
     /// <summary>Fills `buf` with the next samples at `volume` (0-1).</summary>
     public void Fill(short[] buf, float volume)
     {
-        float step = 1f / (Fade * MusicGen.Rate);
+        float step = 1f / (Fade * MusicGen.Rate), up = 1f / (SwellTime * MusicGen.Rate), down = 1f / (CalmTime * MusicGen.Rate);
+        float want = Math.Clamp(Intensity, 0f, 1f);
         for (int i = 0; i < buf.Length; i++)
         {
-            float v = 0;
-            if (_cur != null) { v += _cur[_curPos] * _fade; _curPos = (_curPos + 1) % _cur.Length; }
-            if (_old != null && _fade < 1) { v += _old[_oldPos] * (1 - _fade); _oldPos = (_oldPos + 1) % _old.Length; }
-            if (_fade < 1) { _fade = MathF.Min(1, _fade + step); if (_fade >= 1) _old = null; }
+            float lv = Level;
+            Level = lv < want ? MathF.Min(want, lv + up) : MathF.Max(want, lv - down);
+            // the track dips a little under the tension layer, to leave it room
+            float under = 1 - 0.15f * lv, v = 0;
+            if (_cur != null) { v += (_cur[_curPos] * under + _curTen[_curPos] * lv) * _fade; _curPos = (_curPos + 1) % _cur.Length; }
+            if (_old != null && _fade < 1) { v += (_old[_oldPos] * under + _oldTen[_oldPos] * lv) * (1 - _fade); _oldPos = (_oldPos + 1) % _old.Length; }
+            if (_fade < 1) { _fade = MathF.Min(1, _fade + step); if (_fade >= 1) _old = _oldTen = null; }
             buf[i] = (short)Math.Clamp(v * volume, -32767f, 32767f);
         }
     }
