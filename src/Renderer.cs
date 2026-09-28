@@ -1295,6 +1295,7 @@ public sealed class Renderer
         int by = (int)(MathF.Abs(MathF.Sin(p.Bob * 0.5f)) * 5 * p.BobAmount);
         int x0 = W / 2 - tex.W / 2 + 20 + bx;
         int y0 = ViewH - tex.H + 4 + by + (int)(p.Raise * tex.H);
+        y0 += (int)(MathF.Max(0, -p.Pitch - Rockets.NormalPitch) * 0.6f); // looking right down (the rocket launcher), it drops out of the way
         int light = Math.Max(g.Level.Theme.Light, 200);
         // an upgraded arsenal glows with its tier's colour, pulsing
         int tier = g.ArsenalTier;
@@ -1335,8 +1336,16 @@ public sealed class Renderer
     void DrawCrosshair(Game g)
     {
         var style = g.Vars.Crosshair;
-        if (style == CrosshairStyle.Off || g.Level.Flight || g.ShowMap || g.Mode == GameMode.Dead) return;
+        if (g.Level.Flight || g.ShowMap || g.Mode == GameMode.Dead) return;
+        if (g.P.CurWeapon.Rocket) DrawRocketMarker(g); // the landing ring shows even with the crosshair off
+        if (style == CrosshairStyle.Off) return;
         int cx = W / 2, cy = (int)MathF.Round(ViewH / 2f + g.P.Pitch);
+        if (g.P.CurWeapon.Rocket)
+        {
+            // the rocket launcher's mark is where the rocket goes (it aims along the view, not the horizon)
+            cy = (int)MathF.Round(Math.Clamp(_horizon - MathF.Tan(g.RocketAim()) * Proj, 6, ViewH - 7));
+        }
+        else if (g.P.CurWeapon.Rail) cy = (int)MathF.Round(Math.Clamp(_horizon - MathF.Tan(g.RailAim()) * Proj, 6, ViewH - 7)); // the slug goes where you look
         var pts = new List<(int x, int y)>();
         switch (style)
         {
@@ -1359,6 +1368,31 @@ public sealed class Renderer
                 for (int dx = -1; dx <= 1; dx++)
                     if ((dx == 0) != (dy == 0)) Put(cx + x + dx, cy + y + dy, dark);
         foreach (var (x, y) in pts) Put(cx + x, cy + y, light);
+    }
+
+    /// <summary>Where a rocket fired now would land: a flat orange ring on the floor, when it's close enough to matter.</summary>
+    void DrawRocketMarker(Game g)
+    {
+        if (g.P.Pitch > -Rockets.NormalPitch * 0.5f || g.RocketLanding() is not { } hit) return;
+        float y = _horizon - (hit.z - _eyeZ) * Proj / hit.dist;
+        if (y > ViewH - 10)
+        {
+            // right at your feet, below the bottom of the view: the ring sits on the bottom edge, arrows pointing down
+            y = ViewH - 10;
+            uint a = Col.Rgb(255, 150, 40);
+            foreach (int ax in new[] { W / 2 - 22, W / 2 + 22 })
+                for (int k = 0; k < 4; k++) { Rect(ax - 3 + k, (int)y - 2 + k, 7 - 2 * k, 1, a); }
+        }
+        bool pinned = y >= ViewH - 10;
+        float rx = pinned ? 14f : Math.Clamp(0.35f * Proj / hit.dist, 3f, 60f), ry = pinned ? 4f : MathF.Max(2f, rx * MathF.Min(1f, (_eyeZ - hit.z) / hit.dist));
+        uint ink = Col.Rgb(20, 12, 8), c = Col.Rgb(255, 150, 40);
+        int n = (int)(rx * 8);
+        for (int k = 0; k < n; k++)
+        {
+            float t = k * MathF.Tau / n;
+            int x = (int)MathF.Round(W / 2f + MathF.Cos(t) * rx), py = (int)MathF.Round(y + MathF.Sin(t) * ry);
+            if ((uint)py < ViewH) { Put(x, py + 1, ink); Put(x, py, c); }
+        }
     }
 
     /// <summary>
@@ -1912,10 +1946,10 @@ public sealed class Renderer
 
         // weapon slots, underlined with the mana colour the current weapon uses
         Text(202, by, "ARMS", label);
-        if (p.HasWeapon.Length > 3)
+        if (p.Loadout != null)
         {
-            // the range's loadout: the weapon in hand's key, and how many of the rack you've taken
-            Text(202, by + 12, ((p.Weapon + 1) % 10).ToString(), Col.Rgb(255, 220, 90));
+            // a practice loadout (the range's rack, the rocket course's launcher): the weapon in hand's key, and how many you hold
+            Text(202, by + 12, ShootingRange.KeyFor(p.Weapon), Col.Rgb(255, 220, 90));
             Text(212, by + 12, $"x{p.HasWeapon.Count(h => h)}", Col.Rgb(200, 190, 170));
         }
         else

@@ -17,10 +17,14 @@ public static class Rockets
     /// <summary>How hard a blast pushes: velocity (cells a second) per point of blast damage (Quake's 8 units a second a point, in cells), on you and on monsters.</summary>
     public const float Knock = 0.09f, MonsterKnock = 0.04f;
     /// <summary>
-    /// The view only tilts so far, so near the bottom (and top) of it the launcher aims steeper than the view: from
-    /// SteepFrom pixels of look, the aim swings on to SteepAim degrees at the end, nearly straight down at your feet.
+    /// With the launcher in hand you can look further down (LookDown pixels of tilt rather than the usual 70), down to
+    /// the floor at your feet. The rocket goes where the middle of the view points, until the last stretch of the
+    /// tilt: from SteepFrom pixels it swings on steeper than the view, to SteepAim degrees at the end, nearly straight
+    /// down. The floor marker shows where it will land.
     /// </summary>
-    public const float SteepFrom = 40f, SteepAim = 85f, MaxPitch = 70f;
+    public const float SteepFrom = 110f, SteepAim = 85f, LookDown = 160f;
+    /// <summary>The usual limit on looking up and down, in pixels of tilt.</summary>
+    public const float NormalPitch = 70f;
 
     public static readonly WeaponDef Launcher = new()
     {
@@ -28,16 +32,15 @@ public static class Rockets
         Speed = 12.5f, Splash = SplashRadius, Rocket = true, ArtIndex = 9, Sound = Sfx.Explode,
     };
 
-    /// <summary>Every weapon in the game: each class's three, then the rocket launcher.</summary>
-    public static WeaponDef[] AllWeapons() => ClassDef.All.SelectMany(c => c.Weapons).Append(Launcher).ToArray();
+    /// <summary>Every weapon in the game: each class's three, then the rocket launcher and the railgun.</summary>
+    public static WeaponDef[] AllWeapons() => ClassDef.All.SelectMany(c => c.Weapons).Append(Launcher).Append(Railgun.Gun).ToArray();
 
     /// <summary>The rocket's climb angle (radians, up positive) for a view pitch, with `proj` the view's projection distance.</summary>
     public static float AimAngle(float pitch, float proj)
     {
-        float a = MathF.Abs(pitch), sign = MathF.Sign(pitch);
-        if (a <= SteepFrom) return MathF.Atan(pitch / proj);
+        if (pitch >= -SteepFrom) return MathF.Atan(pitch / proj);
         float from = MathF.Atan(SteepFrom / proj), to = SteepAim * MathF.PI / 180f;
-        return sign * (from + (to - from) * Math.Clamp((a - SteepFrom) / (MaxPitch - SteepFrom), 0f, 1f));
+        return -(from + (to - from) * Math.Clamp((-pitch - SteepFrom) / (LookDown - SteepFrom), 0f, 1f));
     }
 
     /// <summary>A blast's damage at a distance from its centre (0 past the radius).</summary>
@@ -81,7 +84,7 @@ public sealed partial class Game
         p.Boost = MathF.Max(p.Boost, p.HSpeed);
         RocketJumps++;
         int hurt = (int)(points * Rockets.SelfShare);
-        if (OnRange) hurt = Math.Min(hurt, p.Health - 1); // the range never kills you: jump all you like
+        if (SafeRockets) hurt = Math.Min(hurt, p.Health - 1); // practice never kills you: jump all you like
         if (hurt > 0) DamagePlayer(hurt);
     }
 
@@ -120,7 +123,7 @@ public sealed partial class Game
         var p = P;
         float proj = 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f);
         float climb = Rockets.AimAngle(p.Pitch, proj);
-        if (MathF.Abs(p.Pitch) <= Rockets.SteepFrom && VerticalAim(launchZ, w.Speed) is { } vz) climb = MathF.Atan2(vz, w.Speed);
+        if (MathF.Abs(p.Pitch) <= Rockets.NormalPitch && VerticalAim(launchZ, w.Speed) is { } vz) climb = MathF.Atan2(vz, w.Speed);
         float flat = MathF.Cos(climb) * w.Speed;
         var pr = new Projectile
         {
@@ -131,6 +134,39 @@ public sealed partial class Game
             Level = Level, SpriteW = 0.28f, SpriteH = 0.28f, Life = 8f,
         };
         Level.Things.Add(pr);
+    }
+
+    /// <summary>The climb angle a rocket fired now would take (ignoring the aim at a monster).</summary>
+    public float RocketAim() => Rockets.AimAngle(P.Pitch, 160f / MathF.Tan(Vars.Fov * MathF.PI / 360f));
+
+    /// <summary>
+    /// Where a rocket fired now would hit the floor, for the marker: its distance ahead of you and the floor's height
+    /// there. Null when it wouldn't come down within 12 cells, or would hit a wall first.
+    /// </summary>
+    public (float dist, float z)? RocketLanding()
+    {
+        var p = P;
+        float a = RocketAim();
+        if (a >= 0) return null;
+        float ca = MathF.Cos(p.Angle), sa = MathF.Sin(p.Angle), flat = MathF.Cos(a), down = MathF.Sin(a);
+        float d = 0.2f, z = p.FloorZ + p.Z + 0.32f;
+        for (int k = 0; k < 400 && d < 12f; k++)
+        {
+            const float step = 0.05f;
+            d += flat * step; z += down * step;
+            float x = p.X + ca * d, y = p.Y + sa * d;
+            if (Level.BlocksPoint(x, y)) return null;
+            float floor = Level.FloorAt(x, y);
+            if (z <= floor) return (d, floor);
+        }
+        return null;
+    }
+
+    /// <summary>How far down you can look: further with the rocket launcher in hand, easing back when you put it away.</summary>
+    void PitchLimit(Player p, float dt)
+    {
+        float low = p.CurWeapon.Rocket && p.PendingWeapon < 0 && !Level.Flight ? -Rockets.LookDown : -Rockets.NormalPitch;
+        if (p.Pitch < low) p.Pitch = MathF.Min(low, p.Pitch + dt * 300f);
     }
 
     /// <summary>A rocket's smoke: a puff left behind every so often as it flies.</summary>
@@ -144,21 +180,24 @@ public sealed partial class Game
 
 public sealed partial class Game
 {
-    /// <summary>Hands you the rocket launcher (on the key after your class's weapons) and a stock of green mana for it.</summary>
-    public void GiveRocketLauncher()
+    /// <summary>Hands you the rocket launcher (on the key after your class's weapons) and a stock of mana for it.</summary>
+    public void GiveRocketLauncher() => GiveExtra(Rockets.Launcher);
+
+    /// <summary>Hands you one of the Quake weapons, on the next key after what you carry, and a stock of mana.</summary>
+    public void GiveExtra(WeaponDef weapon)
     {
         var p = P;
-        int i = p.Loadout == null ? -1 : Array.FindIndex(p.Loadout, w => w.Rocket);
+        int i = p.Loadout == null ? -1 : Array.IndexOf(p.Loadout, weapon);
         if (i < 0)
         {
-            p.Loadout = p.Weapons.Append(Rockets.Launcher).ToArray();
+            p.Loadout = p.Weapons.Append(weapon).ToArray();
             i = p.Loadout.Length - 1;
             var had = p.HasWeapon;
             p.HasWeapon = new bool[p.Loadout.Length];
             had.CopyTo(p.HasWeapon, 0);
         }
         p.HasWeapon[i] = true;
-        p.GreenMana = Math.Max(p.GreenMana, 200);
+        p.BlueMana = Math.Max(p.BlueMana, 200); p.GreenMana = Math.Max(p.GreenMana, 200);
         SelectWeapon(i);
     }
 }

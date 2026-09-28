@@ -33,7 +33,7 @@ public sealed class WeaponDef
     public Sfx Sound;
     /// <summary>Its art in Art.Weapons (class * 3 + slot for the classes' own), and whether it's the rocket launcher.</summary>
     public int ArtIndex;
-    public bool Rocket;
+    public bool Rocket, Rail;
 }
 
 public sealed class ClassDef
@@ -437,6 +437,7 @@ public sealed partial class Game
                 PlayTime += DemoPilot.Tick;
                 UpdatePlayer(pilot, DemoPilot.Tick);
                 UpdateWorld(DemoPilot.Tick);
+                RangeTick(DemoPilot.Tick); // the demo's health and mana come back as yours do
             }
             return false;
         }
@@ -450,6 +451,7 @@ public sealed partial class Game
         P.Angle = Course.StartAngle;
         if (Course.Jetpack) { P.HasJetpack = true; P.Fuel = P.MaxFuel; }
         if (Course.Range) SetUpRange();
+        if (Course.Rockets) SetUpRocketCourse();
         ResetRun();
     }
 
@@ -478,6 +480,7 @@ public sealed partial class Game
                 : reached >= total ? "Every checkpoint! Cross the line to finish." : $"Checkpoint {reached} of {total}.";
         if (zone == 0) return Course.Intro;
         if (zone >= plats.Length - 1) return "Made it! Step into the exit to finish the run.";
+        if (Course.Rockets) return RocketCourse.Hint(zone);
         int gap = plats[zone + 1].x0 - plats[zone].x1 - 1;
         string zig = zone == 2 ? " Zig-zag: switch strafe keys and turn the other way each hop." : "";
         return $"Platform {(Course.Endless ? zone : zone + 1)}. The next gap is {gap} wide: hit about {GapSpeedPercent(gap, plats[zone].floor - plats[zone + 1].floor)}% speed.{zig}";
@@ -1162,7 +1165,11 @@ public sealed partial class Game
         // look
         float angle0 = p.Angle;
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
-        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), -70f, 70f);
+        // looking down stops at the limit (further with the rocket launcher); past it, having just put the launcher
+        // away, you can't go further, and PitchLimit eases you back
+        float lookDown = p.CurWeapon.Rocket && p.PendingWeapon < 0 ? Rockets.LookDown : Rockets.NormalPitch;
+        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), MathF.Min(p.Pitch, -lookDown), Rockets.NormalPitch);
+        PitchLimit(p, dt);
 
         // move
         InMove = Math.Sign(inp.Move); InStrafe = Math.Sign(inp.Strafe);
@@ -1463,6 +1470,7 @@ public sealed partial class Game
 
         float launchZ = p.FloorZ + p.Z + 0.32f;
         if (w.Rocket) { FireRocket(w, launchZ, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
+        if (w.Rail) { FireRail(w, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
         float? vz = VerticalAim(launchZ, w.Speed);
         float mult = PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power;
         // upgrades add shots to the volley, fanned out either side of your aim
@@ -1937,7 +1945,7 @@ public sealed partial class Game
     {
         if (P.Loadout == null) return Profile.WeaponMult(P.Class, slot);
         var w = slot >= 0 && slot < P.Loadout.Length ? P.Loadout[slot] : null;
-        if (w == null || w.Rocket || w.ArtIndex >= 9) return 1f;
+        if (w == null || w.Rocket || w.Rail || w.ArtIndex >= 9) return 1f;
         return Profile.WeaponMult((PClass)(w.ArtIndex / 3), w.ArtIndex % 3);
     }
     /// <summary>Your arsenal upgrades, which only count in the arena they were won in.</summary>
@@ -2066,6 +2074,7 @@ public sealed partial class Game
             case PickupKind.Weapon3:
                 {
                     int slot = pk.Kind == PickupKind.Weapon2 ? 1 : 2;
+                    if (p.Loadout != null) return; // a practice loadout has no room for the class's pieces
                     bool had = p.HasWeapon[slot];
                     p.HasWeapon[slot] = true;
                     if (slot == 1) p.BlueMana = Math.Min(200, p.BlueMana + 25); else p.GreenMana = Math.Min(200, p.GreenMana + 25);

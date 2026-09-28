@@ -48,8 +48,10 @@ public static class Art
     // HUD
     public static Tex HudBack;
     // First-person weapons, indexed [class*3 + slot][frame], then the rocket launcher (9)
-    public static Tex[][] Weapons = new Tex[10][];
-    public const int RocketLauncherArt = 9;
+    public static Tex[][] Weapons = new Tex[11][];
+    public const int RocketLauncherArt = 9, RailgunArt = 10;
+    /// <summary>The railgun's beam: its white core and the blue spiral round it.</summary>
+    public static Tex RailCore, RailSpiral;
 
     public static ArtStyle Style = ArtStyle.SciFi;
     /// <summary>Bumped whenever the art is rebuilt, so caches (the editor's icons) know to refresh.</summary>
@@ -838,6 +840,8 @@ public static class Art
         Lightning = new[] { LightningTex(1), LightningTex(2) };
         Hammer = new[] { HammerTex(0), HammerTex(1) };
         Smoke = Orb(Col.Rgb(110, 108, 104), Col.Rgb(190, 186, 180), 2);
+        RailCore = Orb(Col.Rgb(200, 255, 230), Col.Rgb(255, 255, 255), 0);
+        RailSpiral = Orb(Col.Rgb(60, 140, 255), Col.Rgb(160, 210, 255), 0);
         Rocket = new[] { Orb(Col.Rgb(150, 150, 140), Col.Rgb(255, 210, 120), 0), Orb(Col.Rgb(255, 120, 30), Col.Rgb(255, 240, 150), 1) };
         Torch = new[] { TorchTex(0), TorchTex(1), TorchTex(2) };
         Ghost = new[] { GhostTex(0), GhostTex(1) };
@@ -1343,6 +1347,33 @@ public static class Art
             rl[f] = c.T;
         }
         Weapons[RocketLauncherArt] = rl;
+        var rg = new Tex[2];
+        for (int f = 0; f < 2; f++)
+        {
+            var c = new Canvas(WW, WH);
+            DrawRailgun(c, f == 1);
+            c.Noise(new Rng((uint)(95 + f)), 6);
+            c.Outline(Dark);
+            rg[f] = c.T;
+        }
+        Weapons[RailgunArt] = rg;
+    }
+
+    /// <summary>The railgun: a long slim barrel held low on the right, its coils glowing green (white-hot as it fires).</summary>
+    static void DrawRailgun(Canvas c, bool fire)
+    {
+        int kick = fire ? 5 : 0;
+        uint body = Col.Rgb(70, 76, 84), rail = Col.Rgb(120, 128, 140), coil = fire ? Col.Rgb(230, 255, 240) : Col.Rgb(80, 230, 140);
+        c.Line(84, 80, 66, 18 + kick, 12, body);                     // the barrel, running up the screen
+        c.Line(88, 80, 70, 20 + kick, 3, rail);                      // its lit edge
+        for (int k = 0; k < 5; k++)
+        {
+            float t = 0.15f + k * 0.17f, x = 84 + (66 - 84) * t, y = 80 + (18 + kick - 80) * t;
+            c.Ellipse(x, y, 9 - k, 3, coil);                         // the coils down its length
+        }
+        c.Rect(88, 58 + kick, 14, 22, Col.Rgb(56, 60, 66));          // the stock
+        c.Glow(66, 18 + kick, fire ? 12 : 6, coil);
+        Arm(c, 118, 80, 96, 70, Col.Rgb(90, 90, 100), Col.Rgb(200, 150, 110));
     }
 
     /// <summary>The rocket launcher: a heavy square tube held low in the middle, its muzzle a dark hole (flame when it fires).</summary>
