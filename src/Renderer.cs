@@ -49,6 +49,7 @@ public sealed class Renderer
         DrawWeapon(g);
         DrawScreenTint(g);
         DrawCrosshair(g);
+        DrawChargeMeter(g);
         if (g.Vars.Hud != HudStyle.Off && !g.ShowMap) DrawStrafeHelper(g);
         if (g.ShowMap) DrawAutomap(g);
         DrawHud(g);
@@ -1157,6 +1158,18 @@ public sealed class Renderer
     /// The aiming mark, where your shots go: the centre of the view, on the horizon, so it follows vertical look.
     /// Light with a dark outline so it reads on any wall. The cockpit has its own gunsight.
     /// </summary>
+    /// <summary>A Charged mod building up: a short bar under the middle of the view, filling as you hold Fire.</summary>
+    void DrawChargeMeter(Game g)
+    {
+        var p = g.P;
+        if (!p.Charging || p.Charge <= 0 || g.ShowMap) return;
+        int w = 30, x = W / 2 - w / 2, y = (int)MathF.Round(ViewH / 2f + p.Pitch) + 10;
+        if (y < 0 || y + 4 >= ViewH) return;
+        Rect(x - 1, y - 1, w + 2, 5, Col.Rgb(20, 16, 16));
+        uint c = p.Charge >= 1 ? Col.Rgb(255, 255, 255) : WeaponMods.Colour(WeaponMod.Charged);
+        Rect(x, y, (int)(w * p.Charge), 3, c);
+    }
+
     void DrawCrosshair(Game g)
     {
         var style = g.Vars.Crosshair;
@@ -1765,6 +1778,8 @@ public sealed class Renderer
         int bx = 8 + Font.Width(lv);
         Bar(bx, y + 2, 48, 3, pr.Level >= Profile.MaxLevel ? 1f : pr.Xp / (float)Profile.XpToNext(pr.Level), Col.Rgb(230, 190, 80));
         if (pr.Points > 0) Text(bx + 52, y, "+", Col.Rgb(120, 255, 140));
+        // the weapon in hand's mod, if it has one
+        if (g.ModOf(g.P.Weapon) is var mod && mod != WeaponMod.None) Text(bx + 60, y, WeaponMods.Tag(mod), WeaponMods.Colour(mod));
         if (g.XpPopupTime > 0) Text(4, y - 10, $"+{g.XpPopup} XP", Col.Rgb(255, 230, 120));
     }
 

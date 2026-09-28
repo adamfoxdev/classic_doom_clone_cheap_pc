@@ -62,7 +62,7 @@ public sealed class Decor : Thing
 
 // ---------------------------------------------------------------- pickups
 
-public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic, Jetpack, Upgrade }
+public enum PickupKind { Vial, Flask, Urn, BlueMana, GreenMana, SteelKey, FireKey, Armor, Weapon2, Weapon3, Relic, Jetpack, Upgrade, Mod }
 
 public sealed class Pickup : Thing
 {
@@ -72,9 +72,11 @@ public sealed class Pickup : Thing
     public Pickup(PickupKind kind, float size = 0.4f, int variant = 0)
     {
         Kind = kind; Variant = variant; SpriteW = size; SpriteH = size;
-        FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.Relic or PickupKind.Upgrade;
+        FullBright = kind is PickupKind.BlueMana or PickupKind.GreenMana or PickupKind.Weapon2 or PickupKind.Weapon3 or PickupKind.Relic or PickupKind.Upgrade or PickupKind.Mod;
     }
-    public override Tex Sprite(float time) => Kind == PickupKind.Upgrade ? Art.Upgrade[(int)(time * 6) % Art.Upgrade.Length] : Art.PickupSprite(Kind, Variant);
+    public override Tex Sprite(float time) => Kind == PickupKind.Upgrade ? Art.Upgrade[(int)(time * 6) % Art.Upgrade.Length]
+        : Kind == PickupKind.Mod ? WeaponMods.SpriteFrames(Variant)[(int)(time * 6) % Art.Upgrade.Length]
+        : Art.PickupSprite(Kind, Variant);
 }
 
 // ---------------------------------------------------------------- monsters
@@ -120,6 +122,8 @@ public sealed class Monster : Thing
     /// <summary>Out of reach: a Dark Bishop's blur, or the Rock Wyrm inside the rock (unseen as well).</summary>
     public bool Blurring => BlurTime > 0 || Burrowed;
     public bool Burrowed;
+    /// <summary>Seconds left slowed by a Frost mod.</summary>
+    public float SlowTime;
     /// <summary>Its intro card has been shown (bosses only; see Game.CheckBossIntros).</summary>
     public bool Introduced;
     public override int Alpha => Burrowed ? 0 : BlurTime > 0 ? 90 : 256;
@@ -198,6 +202,9 @@ public sealed class Projectile : Thing
     public int Slot = -1;
     public float Homing;               // turn rate toward the player in radians/second (0 = flies straight)
     public float Life = 6f, ExplodeTime;
+    /// <summary>A piercing shot: how many more monsters it goes through, and those it's already been through.</summary>
+    public int Pierce;
+    public HashSet<Monster> Pierced;
     public Thing Owner;
 
     public Projectile() { Radius = 0.12f; FullBright = true; SpriteW = 0.3f; SpriteH = 0.3f; }

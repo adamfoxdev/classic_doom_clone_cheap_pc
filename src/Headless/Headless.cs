@@ -65,6 +65,8 @@ public static partial class Headless
         ArenaModeChecks(Check);
         Console.WriteLine("Save and continue:");
         SaveChecks(Check);
+        Console.WriteLine("Weapon mods:");
+        ModChecks(Check);
         Console.WriteLine("Game feel:");
         FeelChecks(Check);
         Console.WriteLine("Endless course:");

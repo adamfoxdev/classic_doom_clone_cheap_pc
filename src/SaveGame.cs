@@ -82,6 +82,7 @@ public sealed class PlayerSave
     public int[] Ore;
     public bool[] HasWeapon;
     public bool SteelKey, FireKey, HasJetpack;
+    public int[] Mods;
 }
 
 public sealed class CheckpointSave
@@ -153,7 +154,7 @@ public static class Saves
                 Health = p.Health, Armor = p.Armor, BlueMana = p.BlueMana, GreenMana = p.GreenMana, Flasks = p.Flasks, Urns = p.Urns,
                 Kills = p.Kills, ChestsOpened = p.ChestsOpened, Relics = p.Relics, LoreRead = p.LoreRead, Secrets = p.Secrets,
                 Blocks = p.Blocks, Weapon = p.PendingWeapon >= 0 ? p.PendingWeapon : p.Weapon, Ore = (int[])p.Ore.Clone(),
-                HasWeapon = (bool[])p.HasWeapon.Clone(), SteelKey = p.SteelKey, FireKey = p.FireKey, HasJetpack = p.HasJetpack,
+                HasWeapon = (bool[])p.HasWeapon.Clone(), Mods = p.Mods.Select(m => (int)m).ToArray(), SteelKey = p.SteelKey, FireKey = p.FireKey, HasJetpack = p.HasJetpack,
             },
         };
         if (g.Checkpoint is { } c)

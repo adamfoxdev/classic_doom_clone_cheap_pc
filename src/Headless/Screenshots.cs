@@ -632,6 +632,23 @@ public static partial class Headless
             g.Level.Things.RemoveAll(t => t is Monster);
             g.Arcade.Floaters.Clear();
 
+            // weapon mods: the four lying in the hall, one fitted (its tag by the level bar) and a charge building
+            g.Warp(0);
+            g.Level.Things.RemoveAll(t => t is Monster or Pickup);
+            PlaceCam(10.5f, 5.5f, g.Level.FloorAt(10.5f, 5.5f), 0, 0, 0);
+            foreach (var (m, k) in WeaponMods.All.Select((m, k) => (m, k)))
+            {
+                var pk = Game.MakeMod(m, 13.2f + k * 0.2f, 4.1f + k * 0.95f);
+                pk.Level = g.Level;
+                g.Level.Things.Add(pk);
+            }
+            var had = g.P.Mods[g.P.Weapon];
+            g.P.Mods[g.P.Weapon] = WeaponMod.Charged; g.P.Charging = true; g.P.Charge = 0.65f;
+            g.Messages.Clear();
+            Shot("121_weapon_mods");
+            g.P.Mods[g.P.Weapon] = had; g.P.Charging = false; g.P.Charge = 0;
+            g.Level.Things.RemoveAll(t => t is Pickup { Kind: PickupKind.Mod });
+
             // Options > Effects
             g.Paused = true;
             g.Menu.Show(MenuPage.Options);

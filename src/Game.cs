@@ -86,6 +86,7 @@ public sealed class Player
     {
         var p = (Player)MemberwiseClone();
         p.HasWeapon = (bool[])HasWeapon.Clone();
+        p.Mods = (WeaponMod[])Mods.Clone();
         return p;
     }
 
@@ -104,6 +105,10 @@ public sealed class Player
     /// <summary>Arsenal upgrades picked up in the arena (0 to Arsenal.MaxTier); they power up every weapon there.</summary>
     public int ArenaTier;
     public bool[] HasWeapon = { true, false, false };
+    /// <summary>Each weapon's mod (see WeaponMods), and a Charged mod's charge building while Fire is held.</summary>
+    public WeaponMod[] Mods = new WeaponMod[3];
+    public float Charge;
+    public bool Charging;
     public int Weapon, PendingWeapon = -1;
     public float Cooldown, FireAnim, Raise, Bob, BobAmount;
     public float DamageFlash, PickupFlash, TeleportFlash;
@@ -791,6 +796,7 @@ public sealed partial class Game
         Arcade.Reset();
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
+        _modRng = new Random((FixedSeed ?? Environment.TickCount) + 17);
         if (ArenaMode && DailyMode) cls = Daily.For(DailyDate).cls; // the day's class, every attempt
         else if (ArenaMode && (ArenaMods & ArenaMod.RandomClass) != 0) cls = (PClass)_loot.Next(3); // a fresh roll every run
         ChestsTotal = 0;
@@ -1311,7 +1317,7 @@ public sealed partial class Game
 
         p.Cooldown -= dt;
         p.FireAnim = MathF.Max(0, p.FireAnim - dt);
-        if (inp.Fire && !Relaxed && !StoryMode && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
+        if (!ChargeTrigger(inp, dt) && inp.Fire && !Relaxed && !StoryMode && p.Cooldown <= 0 && p.PendingWeapon < 0 && p.Raise < 0.2f) Fire();
     }
 
     void SelectWeapon(int w)
@@ -1329,10 +1335,12 @@ public sealed partial class Game
     int ManaCost(WeaponDef w) => Vars.InfiniteMana ? 0 : (int)MathF.Ceiling(w.Cost * Vars.ManaCost * Profile.ManaMult);
     bool HasMana(WeaponDef w) => w.Mana == 0 || (w.Mana == 1 ? P.BlueMana : P.GreenMana) >= ManaCost(w);
 
-    void Fire()
+    /// <summary>Fires the weapon in hand; `power` multiplies its damage (a Charged mod's charged shot).</summary>
+    void Fire(float power = 1)
     {
         var p = P;
         var w = p.CurWeapon;
+        var mod = ModOf(p.Weapon);
         bool powered = HasMana(w);
         if (!powered && !w.ManaOptional)
         {
@@ -1366,9 +1374,9 @@ public sealed partial class Game
             }
             if (hits.Count > 0)
             {
-                foreach (var (best, _) in hits.OrderBy(h => h.d).Take(Arsenal.Cleave(tier)))
+                foreach (var (best, _) in hits.OrderBy(h => h.d).Take(Arsenal.Cleave(tier) + (mod == WeaponMod.Piercing ? 1 : 0)))
                 {
-                    int dmg = (int)MathF.Round(Rand(w.DmgMin, w.DmgMax) * PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier));
+                    int dmg = (int)MathF.Round(Rand(w.DmgMin, w.DmgMax) * PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power);
                     if (!powered) dmg /= 2;
                     float bz = Level.FloorAt(best.X, best.Y) + best.Z + best.SpriteH * 0.5f;
                     if (tier > 0) SpawnPuff(Art.Lightning[1], best.X, best.Y, bz, 0.35f + 0.08f * tier);
@@ -1389,7 +1397,7 @@ public sealed partial class Game
 
         float launchZ = p.FloorZ + p.Z + 0.32f;
         float? vz = VerticalAim(launchZ, w.Speed);
-        float mult = PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier);
+        float mult = PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power;
         // upgrades add shots to the volley, fanned out either side of your aim
         int count = w.Count + Arsenal.ExtraShots(tier);
         float spread = w.Spread > 0 ? w.Spread : 0.07f;
@@ -1405,6 +1413,8 @@ public sealed partial class Game
                 VZ = vz ?? 0f, Aimed = vz != null,
             };
             if (w.Proj == ProjKind.Hammer || w.Proj == ProjKind.Flame) { pr.SpriteW = pr.SpriteH = 0.4f; }
+            if (power > 1.2f) { pr.SpriteW *= 1 + (power - 1) * 0.4f; pr.SpriteH = pr.SpriteW; } // a charged shot is bigger
+            if (mod == WeaponMod.Piercing) pr.Pierce = WeaponMods.Pierce;
             Level.Things.Add(pr);
         }
     }
@@ -1682,13 +1692,13 @@ public sealed partial class Game
         // spill loot toward the player so it's easy to grab
         float dx = P.X - c.X, dy = P.Y - c.Y, l = MathF.Max(0.01f, MathF.Sqrt(dx * dx + dy * dy));
         dx /= l; dy /= l;
-        var loot = Chests.RollLoot(_loot, P);
+        var loot = Chests.RollLoot(_loot, P, WeaponMods.ChestWeight(NgTier));
         for (int i = 0; i < loot.Count; i++)
         {
             float side = (i - (loot.Count - 1) / 2f) * 0.35f;
             float x = c.X + dx * 0.6f - dy * side, y = c.Y + dy * 0.6f + dx * side;
             if (Level.BlocksPoint(x, y)) { x = c.X + dx * 0.5f; y = c.Y + dy * 0.5f; }
-            var t = ThingFactory.Create(loot[i], x, y);
+            var t = loot[i] == 'm' ? MakeMod(RandomMod(), x, y) : ThingFactory.Create(loot[i], x, y);
             t.Level = Level;
             Level.Things.Add(t);
         }
@@ -1943,6 +1953,14 @@ public sealed partial class Game
                 pk.Removed = true;
                 p.PickupFlash = 1;
                 PlaySound(Sfx.Relic, 1);
+                Say(msg);
+                return;
+            case PickupKind.Mod:
+                if (!FitMod((WeaponMod)pk.Variant, out msg)) return;
+                pk.Removed = true;
+                p.PickupFlash = 1;
+                PlaySound(Sfx.Item, 1);
+                PlaySound(Sfx.Magic, 0.6f);
                 Say(msg);
                 return;
             case PickupKind.Upgrade:
@@ -2208,6 +2226,7 @@ public sealed partial class Game
     void UpdateMonster(Monster m, float dt)
     {
         m.StateTime += dt;
+        m.SlowTime = MathF.Max(0, m.SlowTime - dt);
         float dist = Dist(m.X, m.Y, P.X, P.Y);
         bool playerAlive = Mode != GameMode.Dead;
 
@@ -2281,7 +2300,7 @@ public sealed partial class Game
 
     void ChaseMove(Monster m, float dt, bool wander)
     {
-        float step = m.Def.Speed * m.SpeedMult * Vars.MonsterSpeed * dt;
+        float step = m.Def.Speed * m.SpeedMult * Vars.MonsterSpeed * dt * (m.SlowTime > 0 ? WeaponMods.FrostSlow : 1);
         float dx, dy;
         if (m.StuckTime > 0)
         {
@@ -2435,10 +2454,19 @@ public sealed partial class Game
                         Explode(pr, null);
                         return;
                     }
-                foreach (var t in Level.Things)
-                    if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius)
+                foreach (var t in Level.Things.ToList())
+                    if (t is Monster m && m.Alive && !m.Blurring && Dist(m.X, m.Y, pr.X, pr.Y) < m.Radius + pr.Radius && !(pr.Pierced?.Contains(m) ?? false))
                     {
                         DamageMonster(m, Rand(pr.DmgMin, pr.DmgMax), pr.Slot);
+                        if (pr.Pierce > 0)
+                        {
+                            // a piercing shot goes on through, into the next
+                            pr.Pierce--;
+                            (pr.Pierced ??= new()).Add(m);
+                            SpawnPuff(pr.Frames[1], pr.X, pr.Y, pr.Z, 0.3f);
+                            Sound(Sfx.Hit, pr.X, pr.Y);
+                            continue;
+                        }
                         Explode(pr, m);
                         return;
                     }
@@ -2632,6 +2660,7 @@ public sealed partial class Game
         if (slot >= 0)
             Arcade.Hit(m.X, m.Y, Level.FloorAt(m.X, m.Y) + m.Z + m.SpriteH, dealt, slot, m.Health <= 0, m.Def.Health, m.Def.Boss, !P.OnGround);
         if (slot >= 0) FeelHit(m, dealt, m.Health <= 0);
+        if (slot >= 0) ModHit(m, dealt, slot);
         if (m.State == AiState.Idle) Wake(m);
         if (m.Health <= 0)
         {

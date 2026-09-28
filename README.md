@@ -86,6 +86,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   1–3 random items (health, mana, armor, flasks, rarely an urn or a weapon piece you're missing). Watch out,
   roughly one in eight is a trap and a monster bursts out. Seen chests show on the automap, and the victory
   screen tallies how many you opened.
+- **Weapon mods** turn up in about one chest in 25. See [Weapon mods](#weapon-mods).
 - **Jumping and sliding.** Jump over low missiles and melee swings; slide for a burst of speed and to duck
   under missiles.
 - **Deepdelve Quarry** (the **Asteroid Mine** in sci-fi): an optional dig-your-way-through level, through portal
@@ -526,6 +527,29 @@ highest tier you've opened.
   Feeling**.
 - **Only the campaign:** the relaxed style, practice, the arena and Story mode don't have tiers.
 - **Saving:** a New Game+ campaign saves and continues like any other; the title's Continue line names the tier.
+- **Weapon mods** are commoner in New Game+ chests, and every New Game+ mini-boss drops one. See
+  [Weapon mods](#weapon-mods).
+
+## Weapon mods
+
+Rare attachments that change how a weapon behaves. There are four, each a glowing emblem in its own colour:
+
+| Mod (fantasy / sci-fi) | What it does |
+|---|---|
+| **Rune of Piercing** / **Piercing Core** (gold) | Shots go on through two more monsters after the first; melee blows cleave one more. |
+| **Storm Rune** / **Arc Coil** (blue) | A third of your hits arc on to the two nearest monsters within 4 cells, for half the damage. |
+| **Rune of Gathering** / **Capacitor** (pink) | Hold Fire to charge (a bar fills under the crosshair, full in 0.8 s); let go to fire for up to 2.5x damage, and a bigger shot. A tap still fires as usual. |
+| **Frost Rune** / **Cryo Emitter** (pale blue) | A hit slows the monster to half speed for 2.5 seconds. |
+
+- **Where they come from:** chests, rarely (about one in 25 in a first campaign), and more often in New Game+
+  (about one in 12 at tier 1 and one in 6 at tier 2). In New Game+ every mini-boss drops one too.
+- **Fitting one:** walk over it and it fits the weapon in your hand, replacing that weapon's mod if it had one. Each
+  weapon carries one mod at most, so switch to the weapon you want it on before you pick it up. One your weapon
+  already has stays on the floor.
+- **On the HUD:** the weapon in hand's mod shows by the level bar, in its colour.
+- **Saving:** your weapons' mods are kept in the save, for the rest of the campaign.
+
+![Weapon mods in the hall, and a Capacitor charging](docs/weapon_mods.png)
 
 ## Walkthrough (spoilers)
 
@@ -1011,6 +1035,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
 | `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
+| `src/WeaponMods.cs` | Weapon mods: the four, their chest odds, fitting them, and piercing, chain, charge and frost |
 | `src/NewGamePlus.cs` | New Game+: what each tier does to the hub, and going round again |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
 | `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |
@@ -1021,7 +1046,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

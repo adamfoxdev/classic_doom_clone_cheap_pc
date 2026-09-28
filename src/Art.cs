@@ -77,6 +77,7 @@ public static class Art
         BuildVoid(style == ArtStyle.SciFi);
         BuildTown();
         Upgrade = Enumerable.Range(0, 4).Select(UpgradeFrame).ToArray();
+        WeaponMods.BuildArt(); // from the upgrade's emblem
         PillarFrames = new[] { Pillar };
         TreeFrames = new[] { Tree };
         Version++;
