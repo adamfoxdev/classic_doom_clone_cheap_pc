@@ -45,6 +45,8 @@ public sealed class Profile
     public int ChestsOpened { get; set; }
     /// <summary>The mini-bosses you've beaten (their ids), for the achievement.</summary>
     public List<string> MiniBosses { get; set; } = new();
+    /// <summary>Your kills of each monster, by its art id, for the codex.</summary>
+    public Dictionary<string, int> KillsBy { get; set; } = new();
     /// <summary>Unlocked achievements, by id, with when.</summary>
     public Dictionary<string, DateTime> Achievements { get; set; } = new();
     /// <summary>Best practice course times by class, from before the leaderboard; folded into CourseRuns when read.</summary>
@@ -232,6 +234,7 @@ public sealed class Profile
             p.MiniBosses ??= new();
             p.DailyRuns ??= new();
             p.EndlessRuns ??= new();
+            p.KillsBy ??= new();
             p.Achievements ??= new();
             // runs saved before scores: 100 a wave, as a run with no modifiers scores
             foreach (var board in p.ArenaRuns.Values)

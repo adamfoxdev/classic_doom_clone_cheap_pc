@@ -841,6 +841,12 @@ public static partial class Headless
             g.Menu.Update(new Input { Confirm = true }, 1f / 35f);
             g.Menu.Cursor = 1;
             Shot("100_achievements");
+            // the codex: a good few found, the Siege Strider picked out
+            foreach (var (id, n) in new[] { ("ettin", 96), ("afrit", 71), ("centaur", 28), ("slaughtaur", 9), ("bishop", 7), ("warden", 1), ("thornmother", 1) })
+                g.Profile.KillsBy[id] = n;
+            g.Menu.Show(MenuPage.Codex);
+            g.Menu.Cursor = Array.IndexOf(Codex.All, Codex.Find("slaughtaur"));
+            Shot("122_codex");
             g.Menu.Close(); g.Paused = false;
             // the banner as one unlocks
             g.Messages.Clear();

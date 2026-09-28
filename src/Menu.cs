@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements, Effects }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements, Effects, Codex }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -83,7 +83,8 @@ public sealed class MenuSystem
         MenuPage.Leaderboard => new[] { "Back" },
         MenuPage.Courses => Courses.All.Select(c => c.Name).Append("Back").ToArray(),
         MenuPage.ArenaSetup => ArenaModInfo.All.Select(ArenaModInfo.Name).Append("Start").Append("Daily challenge").Append("Back").ToArray(),
-        MenuPage.Character => Profile.Skills.Select(SkillName).Append("Achievements").Append("Back").ToArray(),
+        MenuPage.Character => Profile.Skills.Select(SkillName).Append("Achievements").Append("Codex").Append("Back").ToArray(),
+        MenuPage.Codex => HexenSharp.Codex.All.Select(e => HexenSharp.Codex.Unlocked(_g.Profile, e) ? e.Def.Name : "???").Append("Back").ToArray(),
         MenuPage.Achievements => HexenSharp.Achievements.All.Select(a => a.Name).Append("Back").ToArray(),
         MenuPage.Style => new[] { "Classic", "Relaxed", "Back" },
         MenuPage.Options => new[] { "Key bindings", "Mouse sensitivity", "Invert mouse", "Field of view", "Show FPS", "Visual style", "Rendered art", "HUD style", "Crosshair", "Movement", "Practice ghost", "Strafe helper", "Arcade mode", "Difficulty", "Music volume", "Effects", "Back" },
@@ -153,6 +154,12 @@ public sealed class MenuSystem
         if (inp.Up) { Cursor = (Cursor + items.Length - 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
         if (inp.Down) { Cursor = (Cursor + 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
 
+        if (Page == MenuPage.Codex)
+        {
+            if (inp.Confirm && Cursor == items.Length - 1) Back();
+            return;
+        }
+
         if (Page == MenuPage.Achievements)
         {
             if (Cursor < Scroll) Scroll = Cursor;
@@ -187,7 +194,7 @@ public sealed class MenuSystem
         {
             if (Cursor >= Profile.Skills.Length)
             {
-                if (inp.Confirm) { if (items[Cursor] == "Achievements") Show(MenuPage.Achievements); else Back(); }
+                if (inp.Confirm) { if (items[Cursor] == "Achievements") Show(MenuPage.Achievements); else if (items[Cursor] == "Codex") Show(MenuPage.Codex); else Back(); }
                 return;
             }
             var skill = Profile.Skills[Cursor];

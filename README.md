@@ -807,6 +807,18 @@ you've got and when, and how far along you are with the ones that build up.
 - **Saving:** they're kept in your profile.
 
 ![Achievements](docs/achievements.png)
+
+**Codex:** **Character → Codex** is a bestiary of all 12 monsters: the six regulars, the Heresiarch and the six
+mini-bosses.
+- **Locked entries:** each shows as `???`, with the monster as a black silhouette, until you first kill one.
+  The game tells you when a new entry opens.
+- **An open entry** shows the monster, how many you've killed, its health, a line of lore in the style you're
+  playing, and how to beat it.
+- **What counts:** your kills with your own weapons, in the campaign and the arena, not on practice courses or
+  play-tested maps. A mini-boss you beat before the codex existed is already in it.
+- **Saving:** your kills of each are kept in your profile.
+
+![The codex](docs/codex.png)
 ![An achievement unlocking](docs/achievement_banner.png)
 
 ## Options and key bindings
@@ -1035,6 +1047,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop and a tension layer per theme in both styles, and the mixer that loops, layers and crossfades them |
 | `src/GameFeel.cs` | Game feel: hit-stop, screen shake, boss intro cards, and how much of the music's tension layer to play |
+| `src/Codex.cs` | The monster codex: each monster's lore and how to beat it, and your kills of each |
 | `src/WeaponMods.cs` | Weapon mods: the four, their chest odds, fitting them, and piercing, chain, charge and frost |
 | `src/NewGamePlus.cs` | New Game+: what each tier does to the hub, and going round again |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
@@ -1046,7 +1059,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course, game feel, weapon mods, the codex |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

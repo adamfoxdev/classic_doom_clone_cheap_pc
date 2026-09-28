@@ -2667,6 +2667,7 @@ public sealed partial class Game
             SetState(m, AiState.Dying);
             Sound(Sfx.Death, m.X, m.Y);
             P.Kills++;
+            if (slot >= 0) CodexKill(m);
             if (slot >= 0) KilledWith(m, slot);
             if (m.Def.MiniBoss != null) MiniBossDown(m);
             int blood = PerkRank(Perk.Bloodthirst);

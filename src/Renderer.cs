@@ -93,7 +93,7 @@ public sealed class Renderer
         var m = g.Menu;
         var page = m.Page.Value;
         var items = m.Items(page);
-        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard or MenuPage.Achievements ? 246 : 230);
+        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard or MenuPage.Achievements or MenuPage.Codex ? 246 : 230);
 
         switch (page)
         {
@@ -144,6 +144,10 @@ public sealed class Renderer
                 DrawCharacter(g);
                 break;
 
+            case MenuPage.Codex:
+                DrawCodex(g);
+                break;
+
             case MenuPage.Achievements:
                 DrawAchievements(g);
                 break;
@@ -174,7 +178,7 @@ public sealed class Renderer
                 break;
         }
 
-        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.Effects or MenuPage.ArenaSetup or MenuPage.Achievements))
+        if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.Effects or MenuPage.ArenaSetup or MenuPage.Achievements or MenuPage.Codex))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
     }
 
@@ -438,7 +442,12 @@ public sealed class Renderer
             if (i >= Profile.Skills.Length)
             {
                 // Achievements (with how many you've got) and Back
-                string label = items[i] == "Achievements" ? $"ACHIEVEMENTS  {pr.Achievements.Count}/{Achievements.All.Length}" : items[i];
+                string label = items[i] switch
+                {
+                    "Achievements" => $"ACHIEVEMENTS  {pr.Achievements.Count}/{Achievements.All.Length}",
+                    "Codex" => $"CODEX  {Codex.Found(pr)}/{Codex.All.Length}",
+                    _ => items[i],
+                };
                 MenuItem(label, y + 2, sel);
                 continue;
             }
@@ -467,6 +476,73 @@ public sealed class Renderer
         if (m.NoticeTime > 0) CenterText(m.Notice.ToUpperInvariant(), 174, Col.Rgb(120, 255, 140));
         else CenterText("ENTER: SPEND A POINT    ESC: BACK", 174, MenuDim);
         CenterText($"KILLS {pr.TotalKills}    WINS {pr.Wins}    TOTAL XP {pr.TotalXp}", 186, MenuDim);
+    }
+
+    /// <summary>
+    /// The monster codex: the list down the left (??? for those you haven't killed yet), and the highlighted one on the
+    /// right: its picture, kills and health, a line of lore, and how to beat it.
+    /// </summary>
+    void DrawCodex(Game g)
+    {
+        var m = g.Menu;
+        var pr = g.Profile;
+        var items = m.Items(MenuPage.Codex);
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255);
+        CenterText("CODEX", 6, gold, 2);
+        CenterText($"FOUND {Codex.Found(pr)}/{Codex.All.Length}", 26, blue);
+        for (int i = 0; i < items.Length; i++)
+        {
+            bool sel = i == m.Cursor, back = i == items.Length - 1;
+            int y = 40 + i * 11 + (back ? 4 : 0);
+            if (sel) Rect(10, y - 2, 112, 10, Col.Rgb(70, 40, 20));
+            string label = items[i].ToUpperInvariant();
+            Text(14, y, label.Length > 18 ? label[..18] : label, sel ? MenuSel : back ? MenuText : items[i] == "???" ? MenuDim : MenuText);
+        }
+        if (m.Cursor < Codex.All.Length)
+        {
+            var e = Codex.All[m.Cursor];
+            bool open = Codex.Unlocked(pr, e);
+            int x = 132;
+            Rect(x, 40, 50, 50, Col.Rgb(24, 20, 18));
+            if (Art.Monsters.TryGetValue(e.Def.Art, out var frames)) SpriteBox(frames[0], x + 1, 41, 48, 48, !open);
+            int tx = x + 58;
+            if (open)
+            {
+                string name = e.Def.Name.ToUpperInvariant();
+                Text(tx, 42, name.Length > 20 ? name[..20] : name, MenuSel);
+                Text(tx, 55, $"KILLS {Codex.Kills(pr, e)}", blue);
+                Text(tx, 65, $"HEALTH {e.Def.Health}", MenuText);
+                if (e.Def.MiniBoss != null) Text(tx, 75, "MINI-BOSS", gold);
+                else if (e.Def.Boss) Text(tx, 75, "BOSS", gold);
+                int y = 98;
+                foreach (var line in Wrap(e.Text.ToUpperInvariant(), 30)) { Text(x, y, line, MenuText); y += 10; }
+                y += 4;
+                Text(x, y, "HOW TO BEAT IT", gold);
+                y += 10;
+                foreach (var line in Wrap(e.Weakness.ToUpperInvariant(), 30)) { Text(x, y, line, blue); y += 10; }
+            }
+            else
+            {
+                Text(tx, 42, "???", MenuDim);
+                Text(tx, 55, "KILL ONE TO", MenuDim);
+                Text(tx, 65, "OPEN THIS ENTRY", MenuDim);
+            }
+        }
+        CenterText("UP/DOWN: BROWSE   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>Draws a sprite scaled to fit a box (keeping its shape, standing on the bottom), or as a black silhouette.</summary>
+    void SpriteBox(Tex t, int x, int y, int w, int h, bool silhouette)
+    {
+        float s = MathF.Min(w / (float)t.W, h / (float)t.H);
+        int dw = (int)(t.W * s), dh = (int)(t.H * s), ox = x + (w - dw) / 2, oy = y + h - dh;
+        for (int j = 0; j < dh; j++)
+            for (int i = 0; i < dw; i++)
+            {
+                uint c = t.Px[(int)(j / s) * t.W + (int)(i / s)];
+                if (Col.A(c) == 0 || (uint)(ox + i) >= W || (uint)(oy + j) >= H) continue;
+                Fb[(oy + j) * W + ox + i] = silhouette ? Col.Rgb(8, 6, 6) : c;
+            }
     }
 
     /// <summary>The achievements: each one's name and experience, ticked when earned, with the highlighted one's details below.</summary>
