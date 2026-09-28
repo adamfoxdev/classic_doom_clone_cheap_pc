@@ -338,20 +338,49 @@ On the timed courses:
 
 ### Chaos Arena
 
-**Arena** on the title menu, then a class, puts you in the Chaos Arena on its own (it isn't part of the hub any
-more). You start in the armoury next to the arena floor. Step on the golden altar when you're ready and the waves
+**Arena** on the title menu opens its setup page, where you can switch on modifiers; **Start**, then a class,
+puts you in the Chaos Arena on its own (it isn't part of the hub any more). You start in the armoury next to the
+arena floor. Step on the golden altar when you're ready and the waves
 begin. The run ends when you die, pick **Restart**, quit to the title or close the game.
 
-- **Leaderboard:** each class has its own board of the ten best runs. A run's score is how many waves it cleared;
-  among runs with as many waves, the quicker one ranks higher (time is counted from the altar to the last wave
-  cleared). Each run also records its kills, name and date. Open the board from the arena's pause menu or
+- **Modifiers** (on the setup page, `Enter` or `Left`/`Right` to switch; kept between runs and saved with your
+  settings). Each makes a run harder and adds to its score multiplier:
+
+  | Modifier | What it does | Score |
+  |---|---|---|
+  | Double-speed monsters (S) | monsters move twice as fast | +60% |
+  | No supplies (N) | nothing appears at the altar between waves, and the armoury is bare | +40% |
+  | Melee only (M) | only your first weapon; the others won't come out | +50% |
+  | Random class (R) | skips the class screen and rolls a class for every run | +15% |
+
+- **Perks:** after each boss wave (every fifth), the next wave waits while you pick one of three perks with `1`,
+  `2` or `3`. You can take each perk up to three times, and they last for the run. They're listed in the HUD's
+  top-right corner.
+
+  | Perk | Each rank |
+  |---|---|
+  | Rapid Fire | +20% fire rate |
+  | Regeneration | heal 1 health every 2 seconds |
+  | Chain Lightning | your hits arc to the nearest other monster within 4 units for 40% of the damage |
+  | Might | +20% damage |
+  | Swiftness | +10% speed |
+  | Vitality | +25 max health, and a full heal |
+  | Bloodthirst | heal 4 health for every kill |
+  | Mana Font | 1 blue and 1 green mana a second (never offered with Melee only) |
+
+- **Leaderboard:** each class has its own board of the ten best runs, ranked by **score**: 100 a wave cleared,
+  times the modifiers' multiplier. So nine waves with S, N and M (x2.5, 2250) beat sixteen with none (1600).
+  Ties go to more waves, then the quicker run (time is counted from the altar to the last wave cleared, not
+  counting time spent choosing perks). Each run also shows its modifiers as letters, its time, name and date,
+  and it keeps its kills. Open the board from the arena's pause menu or
   **Leaderboard** on the title menu, where `Up`/`Down` steps through the practice courses and the arena. A run
-  that doesn't clear a wave isn't recorded.
-- **Medals:** bronze for clearing wave 5, silver for 10, gold for 15, the same for every class. Each medal
+  that doesn't clear a wave isn't recorded. Runs saved before scores existed score 100 a wave.
+- **Medals:** bronze for clearing wave 5, silver for 10, gold for 15, the same for every class and whatever the
+  modifiers. Each medal
   means getting past one more round of Heresiarchs. You're told when a wave earns a new medal.
 - **HUD:** under the wave count, the top-right corner shows your best for the class and the next medal you
   don't have yet.
-- **When you die:** it tells you the run's waves, time and kills, and where it placed. Press `Enter` to go
+- **When you die:** it tells you the run's waves, time, kills and score, and where it placed. Press `Enter` to go
   again from the armoury.
 - **Always a fight:** the arena is always classic, even if your last new game was relaxed. There are no
   treasure chests, but experience and skills work as usual (20 XP × the wave number per wave cleared).
@@ -359,6 +388,8 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
 
 ![The Chaos Arena mid-wave: your best and the next medal under the wave count](docs/arena_wave.png)
 ![The arena leaderboard](docs/arena_leaderboard.png)
+![Picking a perk after a boss wave](docs/arena_perks.png)
+![The arena's setup page, with two modifiers on](docs/arena_setup.png)
 
 ## Walkthrough (spoilers)
 
@@ -545,6 +576,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|flask\|...>` | spawn something in front of you |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
+| `arenamods [letters\|-]` | show or set the arena's modifiers: `S` double-speed monsters, `N` no supplies, `M` melee only, `R` random class, `-` none |
 | `chests` | list this map's chests and how many you've opened |
 | `seed <n\|random>` | fix the chest layout (applies on `restart`) |
 | `mode <classic\|relaxed>` | start a new game in a play style |

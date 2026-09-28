@@ -210,6 +210,18 @@ public sealed class DevConsole
             _g.StartArena(n != null ? Enum.Parse<PClass>(n) : _g.P?.Class ?? PClass.Fighter);
             Open = false;
         });
+        Add("arenamods", "[letters|-]", "the arena's modifiers: S double-speed monsters, N no supplies, M melee only, R random class (- for none)", a =>
+        {
+            if (a.Length > 1)
+            {
+                var mods = ArenaMod.None;
+                foreach (char c in a[1].ToUpperInvariant())
+                    foreach (var m in ArenaModInfo.All) if (ArenaModInfo.Letter(m) == c) mods |= m;
+                _g.ArenaMods = mods;
+                _g.SaveSettings();
+            }
+            Print($"arena modifiers: {ArenaModInfo.Letters(_g.ArenaMods)} (score x{ArenaModInfo.Multiplier(_g.ArenaMods):0.00})");
+        });
         Add("demo", "", "on a practice course: watch the demo play it (1/2/3 speed, E step by step, move to take over)", a =>
         {
             if (!_g.Practicing) { Print("demo: start a practice course first (title menu > Practice)"); return; }

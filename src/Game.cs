@@ -249,6 +249,11 @@ public sealed class Game
     public bool ArenaMode;
     /// <summary>Picking a class from the class screen starts the arena rather than a new game.</summary>
     public bool PendingArena;
+    /// <summary>The modifiers for arena runs (picked on the arena's setup page; kept for Restart and between runs).</summary>
+    public ArenaMod ArenaMods;
+
+    /// <summary>A perk's rank in the arena run you're on (0 anywhere else).</summary>
+    public int PerkRank(Perk p) => ArenaMode && Level?.Arena is { } a ? a.Rank(p) : 0;
     /// <summary>The last arena run that ended, and its place on the leaderboard (0 if off it).</summary>
     public ArenaRun LastArena;
     public int LastArenaPlace;
@@ -286,10 +291,14 @@ public sealed class Game
         if (!ArenaMode || Level?.Arena is not { Started: true, Recorded: false } a || P == null) return;
         a.Recorded = true;
         if (a.BestWave == 0) { LastArena = null; LastArenaPlace = 0; return; }
-        LastArena = new ArenaRun { Waves = a.BestWave, Time = a.ClearedAt, Kills = P.Kills, Name = RunnerName, When = DateTime.Now };
+        LastArena = new ArenaRun
+        {
+            Waves = a.BestWave, Time = a.ClearedAt, Kills = P.Kills, Name = RunnerName, When = DateTime.Now,
+            Mods = (int)a.Mods, Score = ArenaModInfo.Score(a.BestWave, a.Mods),
+        };
         LastArenaPlace = Profile.AddArenaRun(P.Class, LastArena);
         SaveProfile();
-        string msg = $"Run over: {a.BestWave} wave{(a.BestWave == 1 ? "" : "s")} in {a.ClearedAt:0.0}s, {P.Kills} kills.";
+        string msg = $"Run over: {a.BestWave} wave{(a.BestWave == 1 ? "" : "s")} in {a.ClearedAt:0.0}s, {P.Kills} kills. Score {LastArena.Score}.";
         if (LastArenaPlace == 1) msg += " Your best!";
         else if (LastArenaPlace > 0) msg += $" #{LastArenaPlace} on the leaderboard.";
         Say(msg);
@@ -651,6 +660,7 @@ public sealed class Game
         EndArenaRun(); // Restart, or trying again after dying
         Hub = HubSource();
         _loot = new Random(FixedSeed ?? Environment.TickCount);
+        if (ArenaMode && (ArenaMods & ArenaMod.RandomClass) != 0) cls = (PClass)_loot.Next(3); // a fresh roll every run
         ChestsTotal = 0;
         Checkpoint = null;
         _onLift = false;
@@ -682,6 +692,11 @@ public sealed class Game
         SecretsTotal = Hub.Sum(l => l.SecretCount);
         ReadingLore = null;
         Level = Hub[0];
+        if (ArenaMode && Level.Arena != null)
+        {
+            Level.Arena.Mods = ArenaMods;
+            if ((ArenaMods & ArenaMod.NoSupplies) != 0) Level.Things.RemoveAll(t => t is Pickup);
+        }
         P = new Player { Class = cls, X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle };
         ApplyProfile();
         P.Health = P.MaxHealth;
@@ -780,6 +795,11 @@ public sealed class Game
             foreach (char c in inp.Typed) Con.FeedCheat(c);
 
         if (Practicing && Mode == GameMode.Playing && !PracticeControls(ref inp, ref dt)) return;
+        if (ArenaMode && Mode == GameMode.Playing && Level.Arena?.Offer is { } offer && inp.Slot >= 1 && inp.Slot <= offer.Length)
+        {
+            Level.Arena.Choose(this, inp.Slot - 1);
+            inp.Slot = 0;
+        }
 
         PlayTime += dt;
         UpdatePlayer(inp, dt);
@@ -847,7 +867,7 @@ public sealed class Game
     }
 
     /// <summary>Your full running speed, in map units a second.</summary>
-    public float RunSpeed => 3.6f * P.Def.Speed * Vars.Speed * Profile.SpeedMult;
+    public float RunSpeed => 3.6f * P.Def.Speed * Vars.Speed * Profile.SpeedMult * (1 + 0.1f * PerkRank(Perk.Swiftness));
 
     const float JumpBufferTime = 0.15f;
     /// <summary>Quake's stop speed and air-control cap, as fractions of your run speed (100 and 30 of its 320).</summary>
@@ -1129,6 +1149,11 @@ public sealed class Game
 
     void SelectWeapon(int w)
     {
+        if (w > 0 && ArenaMode && Level.Arena is { } a && a.Has(ArenaMod.MeleeOnly))
+        {
+            if (P.HasWeapon[w]) Say("Melee only!");
+            return;
+        }
         if (!P.HasWeapon[w] || (w == P.Weapon && P.PendingWeapon < 0)) return;
         P.PendingWeapon = w;
         Say(P.Def.Weapons[w].Name);
@@ -1152,7 +1177,7 @@ public sealed class Game
         }
         if (powered && w.Mana == 1) p.BlueMana -= ManaCost(w);
         if (powered && w.Mana == 2) p.GreenMana -= ManaCost(w);
-        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate * Profile.FireRateMult);
+        p.Cooldown = w.Cooldown / MathF.Max(0.05f, Vars.FireRate * Profile.FireRateMult * (1 + 0.2f * PerkRank(Perk.RapidFire)));
         p.FireAnim = 0.22f;
         PlaySound(w.Sound, 1);
         WakeNear(p.X, p.Y, 10f);
@@ -1616,7 +1641,7 @@ public sealed class Game
         var p = P;
         if (p == null) return;
         int oldMax = p.MaxHealth;
-        p.MaxHealth = Profile.MaxHealth;
+        p.MaxHealth = Profile.MaxHealth + 25 * PerkRank(Perk.Vitality);
         if (p.MaxHealth > oldMax) p.Health += p.MaxHealth - oldMax;
         p.Health = Math.Min(p.Health, p.MaxHealth);
         float oldFuel = p.MaxFuel;
@@ -1624,7 +1649,7 @@ public sealed class Game
         if (p.HasJetpack && p.MaxFuel > oldFuel) p.Fuel += p.MaxFuel - oldFuel;
     }
 
-    float PlayerDamageMult(int slot) => Profile.DamageMult * Profile.WeaponMult(P.Class, slot);
+    internal float PlayerDamageMult(int slot) => Profile.DamageMult * Profile.WeaponMult(P.Class, slot) * (1 + 0.2f * PerkRank(Perk.Might));
 
     /// <summary>Play-testing a custom map, or on a practice course, earns no experience; the arena does.</summary>
     bool NoXp => TestingMap && !ArenaMode;
@@ -2391,6 +2416,9 @@ public sealed class Game
             Sound(Sfx.Death, m.X, m.Y);
             P.Kills++;
             if (slot >= 0) KilledWith(m, slot);
+            int blood = PerkRank(Perk.Bloodthirst);
+            if (blood > 0 && slot >= 0) P.Health = Math.Min(P.MaxHealth, P.Health + 4 * blood);
+            if (slot >= 0) ChainLightning(m, dmg, slot);
             if (m.Def.Boss)
             {
                 Level.BossDead = true;
@@ -2399,12 +2427,32 @@ public sealed class Game
             }
             return;
         }
+        if (slot >= 0) ChainLightning(m, dmg, slot);
         if (m.Def.Blurs && m.State != AiState.Attack && RandF() < 0.4f) { StartBlur(m); return; }
         if (RandF() < m.Def.PainChance && m.State != AiState.Attack)
         {
             SetState(m, AiState.Pain);
             Sound(Sfx.Pain, m.X, m.Y);
         }
+    }
+
+    bool _chaining;
+
+    /// <summary>The Chain Lightning perk: your hit arcs on to the nearest other monster close by, for 40% of it (per rank).</summary>
+    void ChainLightning(Monster from, int dmg, int slot)
+    {
+        int rank = PerkRank(Perk.ChainLightning);
+        if (rank == 0 || _chaining) return;
+        Monster next = null;
+        float best = 4f;
+        foreach (var t in Level.Things)
+            if (t is Monster o && o != from && o.Alive && !o.Blurring && Dist(o.X, o.Y, from.X, from.Y) is var d && d < best && Level.Sight(from.X, from.Y, o.X, o.Y))
+                (next, best) = (o, d);
+        if (next == null) return;
+        _chaining = true;
+        SpawnPuff(Art.Bolt[1], next.X, next.Y, Level.FloorAt(next.X, next.Y) + next.Z + next.SpriteH * 0.5f, 0.35f);
+        DamageMonster(next, Math.Max(1, (int)(dmg * 0.4f * rank)), slot);
+        _chaining = false;
     }
 
     internal void DamagePlayer(int dmg)

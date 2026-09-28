@@ -79,13 +79,17 @@ public sealed class Profile
         return runs;
     }
 
-    /// <summary>The most waves you've cleared in the arena as `cls` (0 if none).</summary>
-    public int ArenaBestWave(PClass cls) => ArenaBoard(cls) is { Count: > 0 } b ? b[0].Waves : 0;
+    /// <summary>The most waves you've cleared in the arena as `cls` (0 if none), whatever the modifiers.</summary>
+    public int ArenaBestWave(PClass cls) => ArenaBoard(cls) is { Count: > 0 } b ? b.Max(r => r.Waves) : 0;
+
+    /// <summary>Your best arena score as `cls` (0 if none).</summary>
+    public int ArenaBestScore(PClass cls) => ArenaBoard(cls) is { Count: > 0 } b ? b[0].Score : 0;
 
     /// <summary>Puts a finished arena run on its class's leaderboard: its place (1 is the best), or 0 if it's outside the top ten.</summary>
     public int AddArenaRun(PClass cls, ArenaRun run)
     {
         var runs = ArenaBoard(cls);
+        if (run.Score == 0) run.Score = ArenaModInfo.Score(run.Waves, (ArenaMod)run.Mods);
         int place = runs.Count(r => !run.Beats(r));
         if (place >= BoardSize) return 0;
         runs.Insert(place, run);
@@ -188,6 +192,12 @@ public sealed class Profile
             p.Ranks ??= new();
             p.Weapons ??= new();
             p.ArenaRuns ??= new();
+            // runs saved before scores: 100 a wave, as a run with no modifiers scores
+            foreach (var board in p.ArenaRuns.Values)
+            {
+                foreach (var r in board) if (r.Score == 0) r.Score = ArenaModInfo.Score(r.Waves, (ArenaMod)r.Mods);
+                board.Sort((a, b) => a.Beats(b) ? -1 : b.Beats(a) ? 1 : 0);
+            }
             foreach (var w in p.Weapons.Values) w.Level = Math.Clamp(w.Level, 1, MaxWeaponLevel);
             return p;
         }
@@ -214,17 +224,22 @@ public sealed class CourseRun
     public DateTime When { get; set; }
 }
 
-/// <summary>One arena run: the waves it cleared, how long those took, its kills, and who and when.</summary>
+/// <summary>One arena run: its score, the waves it cleared, how long those took, its kills, modifiers, and who and when.</summary>
 public sealed class ArenaRun
 {
+    /// <summary>100 a wave, times the modifiers' multiplier (<see cref="ArenaModInfo.Score"/>).</summary>
+    public int Score { get; set; }
     public int Waves { get; set; }
+    /// <summary>The run's modifiers (an <see cref="ArenaMod"/> as a number, so the profile stays plain JSON).</summary>
+    public int Mods { get; set; }
     public float Time { get; set; }
     public int Kills { get; set; }
     public string Name { get; set; } = "";
     public DateTime When { get; set; }
 
-    /// <summary>Better than `other`: more waves, or as many in less time (a tie keeps the older run ahead).</summary>
-    public bool Beats(ArenaRun other) => Waves > other.Waves || (Waves == other.Waves && Time < other.Time);
+    /// <summary>Better than `other`: a higher score, then more waves, then as many in less time (a tie keeps the older run ahead).</summary>
+    public bool Beats(ArenaRun other) =>
+        Score != other.Score ? Score > other.Score : Waves != other.Waves ? Waves > other.Waves : Time < other.Time;
 }
 
 /// <summary>A saved practice-course ghost: the run's time and its path (a GhostTrack, packed as base64).</summary>
