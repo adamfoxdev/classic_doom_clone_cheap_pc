@@ -619,6 +619,7 @@ public sealed partial class Game
 
     public void GoToTitle()
     {
+        SaveNow();
         EndArenaRun();
         ArenaMode = false;
         StoryMode = false; Story = null;
@@ -935,6 +936,7 @@ public sealed partial class Game
         }
 
         PlayTime += dt;
+        AutoSaveTick(dt);
         UpdatePlayer(inp, dt);
         UpdateWorld(dt);
         Arcade.Update(dt);
@@ -1239,6 +1241,7 @@ public sealed partial class Game
             {
                 Mode = GameMode.Victory;
                 PlaySound(Sfx.Teleport, 1);
+                if (!TestingMap) DeleteSave(); // the campaign's over: nothing to continue
                 if (!TestingMap)
                 {
                     Profile.Wins++;
@@ -1450,7 +1453,7 @@ public sealed partial class Game
                     };
                 PlaySound(Sfx.Secret, 0.7f);
                 if (Practicing) Say(CourseHint(zone) + GhostSplit(zone));
-                else Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count}).");
+                else { Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count})."); SaveNow(); }
             }
         }
 
@@ -1977,6 +1980,7 @@ public sealed partial class Game
             PlaySound(Sfx.Teleport, 1);
             Say(lv.EntryMessage);
             if (lv.Flight) EnterFlight();
+            else SaveNow();
             return;
         }
     }

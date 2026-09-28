@@ -306,6 +306,21 @@ public static partial class Headless
         g.Binds.Reset();
         g.GoToTitle();
         Shot("23_title_menu");
+        // with a campaign saved: Continue heads the menu, and says where you'll pick up
+        {
+            string savePath = Path.Combine(Path.GetTempPath(), $"hexensharp-shot-save-{Environment.ProcessId}.json");
+            g.NewGame(PClass.Cleric);
+            g.Warp(2);
+            g.PlayTime = 2 * 3600 + 17 * 60 + 5;
+            g.SavePath = savePath;
+            g.SaveNow();
+            g.GoToTitle();
+            g.Menu.Cursor = 0;
+            Shot("108_title_continue");
+            g.DeleteSave();
+            g.SavePath = null;
+            g.Menu.Show(MenuPage.Main);
+        }
 
         // relaxed mode: HUD, a lore stone, reading it, and a secret nook
         g.Style = GameStyle.Relaxed;

@@ -396,7 +396,7 @@ public static partial class Headless
               "the pause menu's items all fit above its footer");
         check(Renderer.OptionsTop + (opts - 1) * Renderer.OptionsRow + 9 < Renderer.OptionsFooter && Renderer.OptionsFooter + 8 <= Renderer.H,
               $"so do all {opts} Options items");
-        int main = g.Menu.Items(MenuPage.Main).Length;
+        int main = g.Menu.Items(MenuPage.Main).Length + (g.Menu.Items(MenuPage.Main).Contains("Continue") ? 0 : 1); // with Continue, when there's a save
         check(Renderer.TitleTop + (main - 1) * Renderer.TitleRow + 9 < Renderer.TitleFooter && Renderer.TitleFooter + 8 <= Renderer.H,
               $"and all {main} title menu items");
     }

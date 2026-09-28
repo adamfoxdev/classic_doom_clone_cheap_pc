@@ -72,7 +72,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int TitleTop = 118, TitleRow = 9, TitleFooter = 192, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 26, OptionsRow = 10, OptionsFooter = 188;
+    public const int TitleTop = 108, TitleRow = 9, TitleFooter = 190, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 26, OptionsRow = 10, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected)
     {
@@ -129,6 +129,7 @@ public sealed class Renderer
                     _ => Array.Empty<string>(),
                 };
                 for (int i = 0; i < about.Length; i++) CenterText(about[i], 128 + i * 10, Col.Rgb(170, 200, 255));
+                if (g.SavedGame != null) CenterText("A NEW GAME REPLACES YOUR SAVED ONE.", 170, Col.Rgb(255, 170, 90));
                 CenterText("ARROWS + ENTER    ESC: BACK", 186, MenuDim);
                 break;
 
@@ -1800,15 +1801,18 @@ public sealed class Renderer
     {
         StoneBackdrop(g.Time);
         CenterText("HEXEN SHARP", 28, Col.Rgb(230, 170, 50), 4);
-        CenterText(Words.T("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#"), 64, Col.Rgb(210, 200, 180));
+        CenterText(Words.T("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#"), 62, Col.Rgb(210, 200, 180));
         // a few monsters for show
         var e = Art.Monsters["ettin"][(int)(g.Time * 2) % 2];
         var a = Art.Monsters["afrit"][(int)(g.Time * 3) % 2];
         var c = Art.Monsters["centaur"][(int)(g.Time * 2) % 2];
-        Icon(e, 56, 74, 48); Icon(c, 136, 74, 48); Icon(a, 216, 72, 48);
+        Icon(e, 64, 72, 34); Icon(c, 144, 72, 34); Icon(a, 224, 71, 34);
         var items = g.Menu.Items(MenuPage.Main);
         for (int i = 0; i < items.Length; i++) MenuItem(items[i], TitleTop + i * TitleRow, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
-        CenterText("ARROWS + ENTER.  CONTROLS ARE IN OPTIONS.", TitleFooter, Col.Rgb(150, 140, 120));
+        // on Continue, where you'll pick up; otherwise the usual hint
+        bool onContinue = g.Menu.Page == MenuPage.Main && g.Menu.Cursor < items.Length && items[g.Menu.Cursor] == "Continue";
+        if (onContinue && g.SavedGame is { } s) CenterText(s.Summary(), TitleFooter, Col.Rgb(120, 255, 140));
+        else CenterText("ARROWS + ENTER.  CONTROLS ARE IN OPTIONS.", TitleFooter, Col.Rgb(150, 140, 120));
     }
 
     void DrawClassSelect(Game g)

@@ -62,6 +62,8 @@ public static partial class Headless
         StoryChecks(Check);
         Console.WriteLine("Arena mode:");
         ArenaModeChecks(Check);
+        Console.WriteLine("Save and continue:");
+        SaveChecks(Check);
         Console.WriteLine("Achievements:");
         AchievementChecks(Check);
         Console.WriteLine("Music:");

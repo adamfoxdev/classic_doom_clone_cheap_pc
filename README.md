@@ -167,6 +167,8 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   around in. See [Quake movement](#quake-movement).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
+- **Save and continue:** the campaign saves itself, and **Continue** on the title menu picks it up where you left
+  off. See [Saving](#saving).
 - **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
 - **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
   invert mouse, field of view and FPS display. Settings are saved between sessions.
@@ -416,6 +418,29 @@ begin. The run ends when you die, pick **Restart**, quit to the title or close t
 ![The arena leaderboard](docs/arena_leaderboard.png)
 ![Picking a perk after a boss wave](docs/arena_perks.png)
 ![The arena's setup page, with two modifiers on](docs/arena_setup.png)
+
+## Saving
+
+The campaign saves itself to `save.json`, next to your profile. **Continue** heads the title menu whenever there's a
+saved game, with your class, map and play time under it.
+
+![Continue on the title menu](docs/title_continue.png)
+
+- **When it saves:** as you arrive in each map, at every checkpoint, every two minutes of play, when you quit to the
+  title, and when you close the game.
+- **What's kept:** the whole hub as you left it.
+  - **Maps:** opened doors, pulled levers, broken rubble, moved blocks, dug floors and ceilings, found secrets, lit
+    checkpoints and the automap.
+  - **Things:** every monster (alive, hurt or dead), pickup, chest and lore stone, and the ship's repairs.
+  - **You:** health, armor, mana, items, weapons, keys, ore, the jetpack, your checkpoint and play time.
+- **What isn't saved:**
+  - practice, the arena, Story mode and play-tested maps;
+  - the moment you're dead;
+  - flying through the Void Crossing. Quit mid-flight and you go back to your last save, on the Barren World.
+- **Ending a campaign:** winning deletes the save, so there's nothing left to continue. Starting a **New game**
+  replaces it; the style screen warns you when there's one.
+- **Damaged saves:** a damaged save is ignored. So is one made before the maps changed shape, and it isn't
+  overwritten either.
 
 ## Walkthrough (spoilers)
 
@@ -878,6 +903,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
+| `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |
 | `src/Achievements.cs` | The achievements: what each takes, its experience, and the checks that unlock them |
 | `src/Gamepad.cs` | Gamepad layout: sticks, triggers and buttons turned into game input |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |

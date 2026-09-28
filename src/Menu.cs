@@ -63,7 +63,9 @@ public sealed class MenuSystem
 
     public string[] Items(MenuPage p) => p switch
     {
-        MenuPage.Main => new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" },
+        // Continue heads the list when there's a saved campaign to pick up
+        MenuPage.Main => (_g.CheckSave() != null ? new[] { "Continue" } : Array.Empty<string>())
+            .Concat(new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
         MenuPage.Pause => _g.Practicing
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : _g.ArenaMode
@@ -287,6 +289,10 @@ public sealed class MenuSystem
         {
             switch (items[Cursor])
             {
+                case "Continue":
+                    Close();
+                    if (_g.Continue()) _g.PlaySound(Sfx.Teleport, 1);
+                    break;
                 case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
                 case "Story": Close(); _g.StartStory(0); break;
                 case "Practice": Show(MenuPage.Courses); break;
