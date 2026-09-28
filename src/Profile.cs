@@ -38,6 +38,9 @@ public sealed class Profile
     public int FlawlessWins { get; set; }
     public int NightmareWins { get; set; }
     public int StoryWins { get; set; }
+    /// <summary>The highest New Game+ tier opened (0 until the campaign's been won), and the highest one won.</summary>
+    public int NgUnlocked { get; set; }
+    public int NgBest { get; set; }
     public List<string> ClassWins { get; set; } = new();
     public int ChestsOpened { get; set; }
     /// <summary>The mini-bosses you've beaten (their ids), for the achievement.</summary>
@@ -77,6 +80,24 @@ public sealed class Profile
         runs.Insert(place, new CourseRun { Time = time, Name = name, When = when });
         if (runs.Count > BoardSize) runs.RemoveAt(runs.Count - 1);
         return place + 1;
+    }
+
+    /// <summary>Endless course runs, the best ten for each class (most platforms, then quickest).</summary>
+    public List<EndlessRun> EndlessRuns { get; set; } = new();
+
+    public List<EndlessRun> EndlessBoard(PClass cls) =>
+        EndlessRuns.Where(r => r.Class == cls.ToString()).OrderByDescending(r => r.Platforms).ThenBy(r => r.Time).Take(BoardSize).ToList();
+
+    public int EndlessBest(PClass cls) => EndlessRuns.Where(r => r.Class == cls.ToString()).Select(r => r.Platforms).DefaultIfEmpty(0).Max();
+
+    /// <summary>Adds a run; its place on the class's board, or 0 if it didn't make the ten.</summary>
+    public int AddEndlessRun(EndlessRun run)
+    {
+        EndlessRuns.Add(run);
+        var cls = Enum.Parse<PClass>(run.Class);
+        var board = EndlessBoard(cls);
+        EndlessRuns.RemoveAll(r => r.Class == run.Class && !board.Contains(r));
+        return board.IndexOf(run) + 1;
     }
 
     /// <summary>Scored daily challenge runs: one per name per day, the first they finished.</summary>
@@ -210,6 +231,7 @@ public sealed class Profile
             p.ClassWins ??= new();
             p.MiniBosses ??= new();
             p.DailyRuns ??= new();
+            p.EndlessRuns ??= new();
             p.Achievements ??= new();
             // runs saved before scores: 100 a wave, as a run with no modifiers scores
             foreach (var board in p.ArenaRuns.Values)

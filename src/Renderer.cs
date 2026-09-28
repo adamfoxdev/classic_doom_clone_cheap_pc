@@ -155,12 +155,17 @@ public sealed class Renderer
 
             case MenuPage.Courses:
                 CenterText("PRACTICE", 14, Col.Rgb(230, 190, 80), 2);
-                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 44 + i * 14, i == m.Cursor);
+                for (int i = 0; i < items.Length; i++) MenuItem(items[i], 40 + i * 12, i == m.Cursor);
                 if (m.Cursor < Courses.All.Length)
                 {
                     var course = Courses.All[m.Cursor];
                     foreach (var (line, k) in Wrap(course.About, 50).Select((l, k) => (l, k))) CenterText(line, 116 + k * 10, Col.Rgb(170, 200, 255));
                     if (course.Timed) DrawMedalTable(g, course, 140);
+                    if (course.Endless)
+                    {
+                        var bests = Enum.GetValues<PClass>().Select(c => $"{ClassDef.All[(int)c].Name.ToUpperInvariant()} {g.Profile.EndlessBest(c)}");
+                        CenterText("BEST: " + string.Join("   ", bests), 146, Col.Rgb(230, 190, 80));
+                    }
                 }
                 CenterText("ARROWS + ENTER    ESC: BACK", 186, MenuDim);
                 break;
@@ -180,6 +185,7 @@ public sealed class Renderer
         var def = ClassDef.All[(int)m.BoardClass];
         if (m.BoardArena) { DrawArenaBoard(g, def); return; }
         if (m.BoardDaily) { DrawDailyBoard(g); return; }
+        if (m.BoardEndless) { DrawEndlessBoard(g, def); return; }
         CenterText($"{m.BoardCourse.Name.ToUpperInvariant()}   < {def.Name.ToUpperInvariant()} >", 26, blue);
         var (tg, ts, tb) = m.BoardCourse.MedalTimes(m.BoardClass);
         string targets = $"GOLD {tg:0.0}   SILVER {ts:0.0}   BRONZE {tb:0.0}";
@@ -210,6 +216,41 @@ public sealed class Renderer
             }
         }
         CenterText($"NAME: {g.RunnerName}  (CHANGE WITH 'NAME' IN THE CONSOLE)", 172, MenuDim);
+        CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
+    }
+
+    /// <summary>The endless course's board for one class: the runs that reached the most platforms, then the quickest.</summary>
+    void DrawEndlessBoard(Game g, ClassDef def)
+    {
+        var m = g.Menu;
+        uint gold = Col.Rgb(230, 190, 80), blue = Col.Rgb(170, 200, 255), fresh = Col.Rgb(120, 255, 140);
+        CenterText($"ENDLESS   < {def.Name.ToUpperInvariant()} >", 26, blue);
+        CenterText($"PLATFORMS REACHED, OF {Endless.Count - 1}", 36, gold);
+        var runs = g.Profile.EndlessBoard(m.BoardClass);
+        if (runs.Count == 0)
+        {
+            CenterText("NO RUNS YET.", 70, MenuText);
+            CenterText("PICK PRACTICE > ENDLESS ON THE TITLE MENU.", 82, MenuDim);
+        }
+        else
+        {
+            var latest = runs.MaxBy(r => r.When);
+            Text(18, 48, "#", MenuDim); Text(40, 48, "PLAT", MenuDim); Text(80, 48, "SEED", MenuDim); Text(130, 48, "TIME", MenuDim);
+            Text(172, 48, "NAME", MenuDim); Text(250, 48, "DATE", MenuDim);
+            for (int i = 0; i < runs.Count; i++)
+            {
+                var r = runs[i];
+                int y = 59 + i * 11;
+                uint c = r == latest && r.When != default ? fresh : i == 0 ? gold : MenuText;
+                Text(18, y, $"{i + 1,2}", c);
+                Text(40, y, $"{r.Platforms,3}", c);
+                Text(80, y, $"{r.Seed}", c);
+                Text(130, y, $"{r.Time:0.0}", c);
+                Text(172, y, r.Name, c);
+                Text(250, y, r.When == default ? "-" : r.When.ToString("yyyy-MM-dd"), c);
+            }
+        }
+        CenterText("REPLAY A SEED WITH 'ENDLESS <SEED>' IN THE CONSOLE", 172, MenuDim);
         CenterText("LEFT/RIGHT: CLASS   UP/DOWN: BOARD   ESC: BACK", 186, MenuDim);
     }
 
@@ -469,7 +510,7 @@ public sealed class Renderer
         int w = 144, x = (W - w) / 2, y = ViewH - 22; // clear of the level bar in the corner
         Darken(x - 4, y - 3, w + 8, 20, 170);
         CenterText(name, y, Col.Rgb(255, 210, 120));
-        Bar(x, y + 11, w, 4, b.Health / (float)b.Def.Health, Col.Rgb(220, 50, 40));
+        Bar(x, y + 11, w, 4, b.Health / (float)b.MaxHealth, Col.Rgb(220, 50, 40));
     }
 
     /// <summary>A freshly unlocked achievement, for a few seconds under the top of the view.</summary>
@@ -1475,6 +1516,7 @@ public sealed class Renderer
         }
         DrawSpeed(g);
         if (g.Practicing && g.Course.Timed && style != HudStyle.Off) DrawRunClock(g);
+        if (g.OnEndless && style != HudStyle.Off) DrawEndlessHud(g);
         if (g.Practicing) DrawDemoBanner(g);
         switch (style)
         {
@@ -1534,6 +1576,17 @@ public sealed class Renderer
             Text(W - 4 - Font.Width(next) - 9, ny, next, Medals.Colour(medal));
             MedalDot(W - 9, ny + 1, medal);
         }
+    }
+
+    /// <summary>On the endless course: the platform you're on out of the course's, your best, and the seed.</summary>
+    void DrawEndlessHud(Game g)
+    {
+        int best = g.Profile.EndlessBest(g.P.Class);
+        string at = $"PLATFORM {g.EndlessReached}/{g.Course.Platforms.Length - 1}", top = $"BEST {best}", seed = $"SEED {g.Course.Seed}";
+        int y = g.Vars.ShowFps ? 12 : 3;
+        Text(W - 4 - Font.Width(at), y, at, g.RunStarted ? Col.Rgb(240, 236, 220) : Col.Rgb(150, 150, 160));
+        if (best > 0) Text(W - 4 - Font.Width(top), y + 10, top, Col.Rgb(255, 220, 90));
+        Text(W - 4 - Font.Width(seed), y + (best > 0 ? 20 : 10), seed, Col.Rgb(150, 150, 160));
     }
 
     /// <summary>A little medal: a coloured disc with a dark rim (grey and hollow for none).</summary>
@@ -1867,6 +1920,7 @@ public sealed class Renderer
         CenterText("CHOOSE YOUR CLASS", 10, Col.Rgb(230, 170, 50), 2);
         if (g.PendingArena) CenterText(Words.T("THE CHAOS ARENA: SURVIVE THE WAVES"), 28, Col.Rgb(230, 120, 255));
         else if (g.PendingPractice) CenterText($"PRACTICE: {g.PendingCourse.Name.ToUpperInvariant()}", 28, Col.Rgb(170, 200, 255));
+        else if (g.NgTier > 0) CenterText($"{NgPlus.Name(g.NgTier)}: {NgPlus.Short(g.NgTier)}", 28, Col.Rgb(255, 120, 90));
         else CenterText(g.Relaxed ? "RELAXED MODE" : "CLASSIC MODE", 28, g.Relaxed ? Col.Rgb(120, 255, 140) : Col.Rgb(200, 150, 120));
         // the difficulty, under the classes (relaxed mode has no fighting, so none to show)
         if (!g.Relaxed && !g.PendingPractice)
@@ -1926,13 +1980,18 @@ public sealed class Renderer
         }
         else
         {
-            CenterText(Words.T("THE HERESIARCH HAS FALLEN."), 80, Col.Rgb(230, 220, 200));
+            CenterText(Words.T("THE HERESIARCH HAS FALLEN.") + (g.NgTier > 0 ? $" ({NgPlus.Name(g.NgTier)})" : ""), 80, Col.Rgb(230, 220, 200));
             CenterText($"THE {p.Def.Name.ToUpperInvariant()} STEPS THROUGH THE PORTAL...", 94, Col.Rgb(230, 220, 200));
             CenterText($"KILLS: {p.Kills}    CHESTS: {p.ChestsOpened}/{g.ChestsTotal}    TIME: {t / 60}:{t % 60:00}", 116, stat);
             CenterText($"SECRETS: {p.Secrets}/{g.SecretsTotal}    LORE: {p.LoreRead}/{g.LoreTotal}", 128, stat);
         }
         if (!g.TestingMap)
             CenterText($"LEVEL {g.Profile.Level}    +{g.RunXp} XP THIS RUN", 144, g.Profile.Points > 0 ? Col.Rgb(120, 255, 140) : Col.Rgb(230, 190, 80));
-        CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
+        if (g.OffersNgPlus)
+        {
+            CenterText($"ENTER: {NgPlus.Name(g.NgTier + 1)}", 158, Col.Rgb(255, 230, 120), 2);
+            CenterText("TOUGHER FOES, REMIXED LOOT.  ESC: TITLE", 178, Col.Rgb(200, 190, 170));
+        }
+        else CenterText("PRESS ENTER", 160, Col.Rgb(255, 230, 120), 2);
     }
 }

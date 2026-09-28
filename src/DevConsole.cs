@@ -315,6 +315,16 @@ public sealed class DevConsole
             _g.StartDemo();
             Open = false;
         });
+        Add("endless", "[seed]", "the endless practice course: a new seed, or the one you name", a =>
+        {
+            int seed = 0;
+            if (a.Length > 1 && (!int.TryParse(a[1], out seed) || seed <= 0)) { Print("endless: the seed is a whole number above 0"); return; }
+            var cls = _g.P?.Class ?? PClass.Fighter;
+            _g.Style = GameStyle.Classic;
+            _g.StartEndless(cls, seed);
+            Print($"endless course, seed {_g.Course.Seed}");
+            Open = false;
+        });
         Add("name", "[name]", "the name your practice course times go on the leaderboard under", a =>
         {
             if (a.Length < 2) { Print($"name = {_g.RunnerName}"); return; }

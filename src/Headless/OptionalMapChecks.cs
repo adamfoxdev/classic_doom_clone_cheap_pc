@@ -294,6 +294,7 @@ public static partial class Headless
         g.NewGame(PClass.Fighter);
         g.Warp(di);
         var d = g.Level;
+        d.Things.RemoveAll(t => t is Monster); // the Rock Wyrm has its own checks
         var p = g.P;
         var (ax, ay) = d.ArrivalCell();
         int here = ay * d.W + ax, e = here + 1;
@@ -397,7 +398,7 @@ public static partial class Headless
         {
             var lv = hub.First(l => l.RawName == map);
             var m = lv.Things.OfType<Monster>().SingleOrDefault(t => t.Def == def);
-            check(m != null && !lv.BlocksCircle(m.X, m.Y, def.Radius) && m.State == AiState.Idle, $"the {def.Name} waits in the {map}");
+            check(m != null && (m.Burrowed || !lv.BlocksCircle(m.X, m.Y, def.Radius)) && m.State == AiState.Idle, $"the {def.Name} waits in the {map}");
         }
         foreach (var style in new[] { ArtStyle.Fantasy, ArtStyle.SciFi })
         {
@@ -491,6 +492,56 @@ public static partial class Headless
         check(Game.Dist(kx, ky, kp.X, kp.Y) > 2 && Game.Dist(kp.X, kp.Y, g.P.X, g.P.Y) >= 5 && g.Level.FloorAt(kp.X, kp.Y) > 0,
               $"the Drowned Keeper blinks away when hurt, up onto a ledge ({g.Level.FloorAt(kp.X, kp.Y)} up)");
 
+        // the Rock Wyrm swims through the rock, untouchable, bursts out beside you, and dives back in
+        g = Fresh("Bedrock Depths", 12.5f, 12.5f);
+        var wy = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Wyrm);
+        g.Vars.God = true;
+        check(wy.Burrowed && wy.Alpha == 0 && !wy.Solid, "the Rock Wyrm starts inside the rock, unseen");
+        int wh = wy.Health;
+        g.DamageMonster(wy, 100, 0);
+        check(wy.Health == wh, "and while it's in there, nothing can touch it");
+        int rock0 = g.Level.Cells.Count(c => c == Level.Rubble);
+        Run(g, 35 * 20, () => !wy.Burrowed);
+        float wd = Game.Dist(wy.X, wy.Y, g.P.X, g.P.Y);
+        check(!wy.Burrowed && wy.Solid && wd < 2f && g.Level.Cells.Count(c => c == Level.Rubble) < rock0 && !g.Level.BlocksPoint(wy.X, wy.Y),
+              $"it swims through the stone to you and bursts out beside you ({wd:0.0} away)");
+        g.DamageMonster(wy, 50, 0);
+        check(wy.Health == wh - 50, "out in the open it can be hurt");
+        Run(g, (int)(35 * (Game.SurfaceTime + 0.5f)), () => wy.Burrowed);
+        check(wy.Burrowed, $"and after {Game.SurfaceTime:0} seconds it dives back into the rock");
+        var wsave = Saves.Capture(g);
+        var g2 = Fresh("Bedrock Depths", 12.5f, 12.5f);
+        Saves.RestoreLevel(g2.Level, wsave.Levels[Array.IndexOf(g.Hub, g.Level)]);
+        check(g2.Level.Things.OfType<Monster>().Any(m => m.Def == MiniBosses.Wyrm && m.Burrowed && !m.Solid), "(a save remembers it's in the rock)");
+        g.Vars.God = false;
+
+        // the Storm Leviathan waits near the end of the Void Crossing, then keeps pace ahead of your ship, firing back
+        g = new Game { FixedSeed = 1, AchievementsOn = false };
+        g.NewGame(PClass.Fighter);
+        g.Warp(Array.FindIndex(g.Hub, l => l.Flight));
+        g.Level.Things.RemoveAll(t => t is Monster { Def.MiniBoss: null } or Asteroid);
+        var dn = g.Level.Things.OfType<Monster>().Single(t => t.Def == MiniBosses.Dreadnought);
+        g.Vars.God = true;
+        Run(g, 35);
+        check(dn.State == AiState.Idle && g.Level.Flight, "the Storm Leviathan lies in wait near the end of the Void Crossing");
+        int shots0 = 0;
+        for (int f = 0; f < 35 * 8; f++)
+        {
+            g.P.X = 74f; // holding station short of the portal home
+            g.Update(default, 1f / 35f);
+            shots0 += g.Level.Things.Count(t => t is Projectile pr && pr.Owner == dn && pr.Life > 5.95f);
+        }
+        float lead = dn.X - g.P.X;
+        check(dn.State != AiState.Idle && lead > 4f && lead < 9f && dn.Y > 1 && dn.Y < g.Level.H - 1 && dn.Z > 0.2f && dn.Z < 2.8f,
+              $"once you're close it keeps a few lengths ahead of you, in the lane ({lead:0.0} ahead)");
+        check(shots0 > 0, $"and fires volleys back at you ({shots0} shots)");
+        for (int f = 0; f < 35 * 3; f++) { g.P.X = g.Level.W - 9f; g.Update(default, 1f / 35f); }
+        check(dn.X <= g.Level.W - 7.9f && g.Level.Flight, "it never parks on the portal home");
+        g.DamageMonster(dn, 100000, 0);
+        var loot = g.Level.Things.OfType<Pickup>().Where(pk => Game.Dist(pk.X, pk.Y, dn.X, dn.Y) < 1).ToList();
+        check(!dn.Alive && loot.Count == 2 && loot.All(pk => pk.Z > 0.1f), "its loot hangs in the lane, for the ship to fly through");
+        g.Vars.God = false;
+
         // relaxed: they're as peaceful as the rest
         var rel = new Game { FixedSeed = 1, Style = GameStyle.Relaxed };
         rel.NewGame(PClass.Fighter);
@@ -501,6 +552,9 @@ public static partial class Headless
         check(rel.Level.Cells.Count(c => c == Level.Rubble) == rr, "in the relaxed style they leave you (and the rock) alone");
 
         // all four: Big Game Hunter; and the console can summon them
+        var partial = new Game { FixedSeed = 1, Profile = new Profile { MiniBosses = MiniBosses.All.Take(4).Select(d => d.MiniBoss).ToList() } };
+        Achievements.Check(partial);
+        check(!partial.Profile.Achievements.ContainsKey("big_game") && MiniBosses.All.Length == 6, "Big Game Hunter takes all six now");
         var hunter = new Game { FixedSeed = 1, Profile = new Profile { MiniBosses = MiniBosses.All.Select(d => d.MiniBoss).ToList() } };
         Achievements.Check(hunter);
         check(hunter.Profile.Achievements.ContainsKey("big_game"), "beating all four is Big Game Hunter");

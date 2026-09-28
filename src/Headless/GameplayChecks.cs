@@ -700,7 +700,7 @@ public static partial class Headless
                 var cells = lv.Things.OfType<Chest>().Select(c => (int)c.Y * lv.W + (int)c.X).ToHashSet();
                 if (lv.Reachable(sx, sy).Count(r => r) - cells.Count != lv.Reachable(sx, sy, cells).Count(r => r)) bad++;
                 foreach (var c in lv.Things.OfType<Chest>())
-                    if (lv.Things.Any(t => t != c && Game.Dist(t.X, t.Y, c.X, c.Y) < 0.9f)) bad++;
+                    if (lv.Things.Any(t => t != c && t is not Monster { Burrowed: true } && Game.Dist(t.X, t.Y, c.X, c.Y) < 0.9f)) bad++;
             }
         }
         check(bad == 0, $"100 random layouts: no blocked paths or overlaps ({min}-{max} chests per game)");

@@ -73,7 +73,7 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   pushes a block one cell, `Shift+E` pulls it toward you, so a block can never get permanently stuck. A map's
   gates open once all its levers are pulled *and* all its plates are covered. Lift a block off a plate and the
   gate drops again.
-- **Mini-bosses** on four of the optional maps, each with a trick of its own. See [Mini-bosses](#mini-bosses).
+- **Mini-bosses** on six of the optional maps, each with a trick of its own. See [Mini-bosses](#mini-bosses).
 - **Chaos Arena** (**Arena** on the title menu): endless wave survival, with its own leaderboard and medals.
   Step on the golden altar to start. Each wave has more monsters and tougher types (Afrits from wave 2,
   Centaurs from 3, Slaughtaurs from 5). Monster health, damage and speed scale up every wave, and every fifth
@@ -163,12 +163,15 @@ see [Rendered art pack](#rendered-art-pack-blender)).
   climbing, and recharges whenever you're on the ground. Run dry in mid-air and you'll drop, and it won't
   relight until you let go of `Q` and press it again.
 - **Strafe-jumping practice** (**Practice** on the title menu): three timed courses (the Velocity Hangar, Descent
-  and the Circuit), each with a leaderboard, medals, a ghost of your best run and a demo run to watch, and Free Roam, an empty field to move
+  and the Circuit), each with a leaderboard, medals, a ghost of your best run and a demo run to watch; Endless, a seeded
+  run of gaps that gets harder until you fall; and Free Roam, an empty field to move
   around in. See [Quake movement](#quake-movement).
 - **Map editor** in the browser (`tools/editor/index.html`): paint your own maps with every wall, door, puzzle
   piece, monster and item in the game, then play them with `--play`, which reloads each time you save.
 - **Save and continue:** the campaign saves itself, and **Continue** on the title menu picks it up where you left
   off. See [Saving](#saving).
+- **New Game+:** beat the campaign in the classic style and go round again with tougher monsters and remixed loot,
+  keeping your level. See [New Game+](#new-game).
 - **Character progression** that carries over between games: see [Levels, skills and weapon levels](#levels-skills-and-weapon-levels).
 - **Options menu** (from the title screen or `Esc` in game): rebind every control, set mouse sensitivity,
   invert mouse, field of view and FPS display. Settings are saved between sessions.
@@ -268,6 +271,7 @@ Switch to the old direct movement with **Options → Movement** or `quakemove 0`
 | **Velocity Hangar** | A straight hangar of raised platforms, 9 wide, over gaps of 2, 4, 5 and 6 cells. |
 | **Descent** | Platforms dropping away (6 units up to 1) over gaps of 3 to 7 cells: each fall buys the hang time for a wider gap. As the Marine the last needs about 195%, as the Psion 225%. |
 | **Circuit** | One clockwise lap of an 8-wide loop round a walled island, through a checkpoint on each side and back over the finish line behind the start. Strafe into the corners to carry your speed round them. |
+| **Endless** | 50 platforms over gaps, built from a seed, that get harder as you go. There's no clock to beat: you score the platforms you reach before you fall. See [The endless course](#the-endless-course). |
 | **Free Roam** | A 64-by-64 field under the night sky with nothing in it: no clock, no exit, no ghost, and a jetpack. The speed readout and strafe helper are there as usual. |
 
 On the timed courses:
@@ -357,6 +361,38 @@ On the timed courses:
 ![The Circuit's first corner](docs/circuit.png)
 ![Free Roam](docs/free_roam.png)
 ![The practice course leaderboard](docs/leaderboard.png)
+
+#### The endless course
+
+**Practice → Endless** builds a fresh course from a random seed each time you pick it. It's a run of platforms,
+9 wide, over gaps with lift pads below, like the Velocity Hangar, but 50 platforms long and harder the further you get.
+
+- **How it ramps:**
+  - The first few gaps take a plain running jump.
+  - After that the gaps widen, from about 2 cells to about 8.
+  - The platforms shrink from 12 cells to 3.
+  - From the fifth platform the floor starts dropping, more at a time the further you go, or rising a step. A drop
+    buys hang time, so its gap is a cell wider; a rise costs some, so its gap is narrower.
+  - By the last stretch the gaps need more than the top strafe-jumping speed (300% of your run), so nobody reaches
+    the end. On seed 1234 as the Marine, strafe jumping gets you to platform 39.
+- **One fall ends the run.** Falling onto a lift pad scores the platforms you reached past the first, puts the run
+  on your class's endless board, and starts you again from the top on the same seed.
+- **While you run:** the top-right corner shows the platform you're on out of 49, your best and the seed. Each
+  platform tells you how fast you'll need to be for the next gap, as on the other gap courses.
+- **What counts:**
+  - Your first landing past the start starts the clock. The time only breaks ties between runs that reached the
+    same platform.
+  - Falling at the first gap isn't recorded.
+  - Neither are runs at 50% or 25% speed, or the demo's.
+- **Seeds:** Restart keeps the seed. `endless 1234` in the console plays seed 1234, and `endless` alone rolls a new
+  one. The board lists each run's seed, so you can race a friend on theirs.
+- **The board:** **Leaderboard** has an Endless page, between the timed courses and the arena. It keeps each class's
+  ten furthest runs, the quickest first among equals.
+- **The demo** plays it too. On seed 1234 it gets past platform 30 before the gaps outgrow it.
+- **Into the Unknown:** reaching platform 25 earns the achievement.
+
+![The endless course, five platforms in](docs/endless.png)
+![The endless board](docs/endless_board.png)
 
 ### Chaos Arena
 
@@ -460,6 +496,35 @@ saved game, with your class, map and play time under it.
 - **Damaged saves:** a damaged save is ignored. So is one made before the maps changed shape, and it isn't
   overwritten either.
 
+## New Game+
+
+Beat the campaign in the classic style and the victory screen offers **New Game+**: press `Enter` to go round again
+as the same class, or `Esc` for the title. From then on **New Game+** is on the title menu too, and starts the
+highest tier you've opened.
+
+![The victory screen offering the next tier](docs/ng_plus_victory.png)
+![Choosing a class for New Game+ 2](docs/ng_plus_class.png)
+
+- **What you keep:** your level, skill points, skills and weapon levels, as always, since they live in your profile.
+- **What changes at each tier:**
+
+  | | Per tier | Tier 1 | Tier 2 | Tier 3 |
+  |---|---|---|---|---|
+  | Monster health | +50% | x1.5 | x2 | x2.5 |
+  | Monster damage | +25% | x1.25 | x1.5 | x1.75 |
+  | Monster speed | +8%, at most +40% | x1.08 | x1.16 | x1.24 |
+  | Chests | +25% | x1.25 | x1.5 | x1.75 |
+  | XP a kill | +25% | x1.25 | x1.5 | x1.75 |
+
+- **Remixed loot:** the vials, flasks, urns, mana and armor on each map swap places, so a remembered route finds
+  different things, and some vials have grown into flasks (15% a tier, at most half). Keys, weapons, relics and the
+  jetpack stay where they are. Chests roll their loot fresh, as they always do.
+- **Mini-bosses and the Heresiarch** are toughened like everything else; their health bars show the bigger health.
+- **Tiers:** winning a tier opens the next, up to New Game+9. Your first New Game+ win earns **Once More, With
+  Feeling**.
+- **Only the campaign:** the relaxed style, practice, the arena and Story mode don't have tiers.
+- **Saving:** a New Game+ campaign saves and continues like any other; the title's Continue line names the tier.
+
 ## Walkthrough (spoilers)
 
 Names here are the fantasy ones. In the sci-fi style: Winnowing Hall = Hab Ring, Frozen Keep = Cryo Labs,
@@ -530,7 +595,7 @@ north-east ledge, at the east end of the quarry's strongroom, and in the Hanging
 
 ### Mini-bosses
 
-Four of the optional maps each have a mini-boss. It's a bigger, recoloured version of one of the usual monsters,
+Six of the optional maps each have a mini-boss. It's a bigger, recoloured version of one of the usual monsters,
 with a trick of its own; a health bar shows low in the view while you fight it.
 
 | Mini-boss (sci-fi) | Where | Its trick |
@@ -539,15 +604,19 @@ with a trick of its own; a health bar shows low in the view while you fight it.
 | **Dust Stalker** (Rogue Harvester) | The Barren World's southern plain | Lowers its head, then charges in a straight line for 28 and a shove. Sidestep and if it hits rock it's stunned for a moment and takes double damage. |
 | **Thornmother** (Hive Queen) | The Verdant Moon's meadow | Floats, fires seekers, and every 8 seconds calls two of her brood, four at most. They fall when she does. |
 | **Drowned Keeper** (Coolant Wraith) | The Hanging Cisterns' floor | Flings fireballs, and each time it loses a fifth of its health it vanishes and reappears somewhere else, usually up on a ledge, so bring the jetpack. |
+| **Rock Wyrm** (Borer Drone) | The Bedrock Depths' tunnels | Swims unseen through the rock around you: you'll see dust where it passes but can't hurt it. It bursts out of the wall beside you, breaking the rubble, bites, and after four seconds dives back in. Hit it while it's out. |
+| **Storm Leviathan** (Void Dreadnought) | The Void Crossing, in flight | Drops out of the dark ahead as you fly, keeps a few lengths in front of you, weaving across the lane, and turns to fire volleys of three. Its loot hangs in the air where it falls. |
 
 - **Loot:** each drops a Mystic Urn and armor and pays 250 XP on top of the kill.
-- **Big Game Hunter:** beating all four earns the achievement, and your profile remembers which you've beaten.
+- **Big Game Hunter:** beating all six earns the achievement, and your profile remembers which you've beaten.
 - **Relaxed style:** they're as peaceful as everything else.
-- **Console:** `summon warden`, `summon stalker`, `summon thornmother` or `summon keeper` brings one to you.
+- **Console:** `summon warden`, `summon stalker`, `summon thornmother`, `summon keeper`, `summon wyrm` or `summon dreadnought` brings one to you.
 
 ![The Quarry Warden, burrowed out into its gallery](docs/quarry_warden.png)
 ![The Dust Stalker](docs/dust_stalker.png)
 ![The Thornmother](docs/thornmother.png)
+![The Rock Wyrm, surfaced in the Depths](docs/rock_wyrm.png)
+![The Storm Leviathan over the Void Crossing](docs/storm_leviathan.png)
 ![The Drowned Keeper](docs/drowned_keeper.png)
 
 ## Story mode
@@ -670,7 +739,7 @@ points with `Enter`. Every skill has 10 ranks:
 harder per level. The game announces each level-up, and the character screen shows every weapon's level and
 progress.
 
-**Achievements:** there are 22, listed under **Character → Achievements**. Each pays experience once, when it
+**Achievements:** there are 24, listed under **Character → Achievements**. Each pays experience once, when it
 unlocks, with a banner and a message; this works anywhere, practice and the arena included. The list shows which
 you've got and when, and how far along you are with the ones that build up.
 
@@ -684,6 +753,8 @@ you've got and when, and how far along you are with the ones that build up.
 | Heresiarch Slain | Win the game in the classic style | 300 |
 | Untouchable | Win in the classic style without dying once | 500 |
 | Nightmare Walker | Win on Nightmare, start to finish | 750 |
+| Once More, With Feeling | Win a New Game+ campaign | 400 |
+| Into the Unknown | Reach platform 25 on the endless course | 300 |
 | Pilgrim | Win in the relaxed style: find every relic | 300 |
 | Jack of All Trades | Win as all three classes | 500 |
 | On the Podium | Earn a medal on a practice course | 50 |
@@ -787,7 +858,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `reset` | restore default settings |
 | `god`, `noclip`, `notarget`, `freeze` | toggles |
 | `give all\|health\|mana\|weapons\|keys\|items\|armor\|jetpack` | give yourself things |
-| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|flask\|...>` | spawn something in front of you (the last four are the mini-bosses) |
+| `summon <ettin\|afrit\|centaur\|slaughtaur\|bishop\|heresiarch\|warden\|stalker\|thornmother\|keeper\|wyrm\|dreadnought\|flask\|...>` | spawn something in front of you (warden to dreadnought are the mini-bosses) |
 | `map <number\|name>` | warp to a hub map (`map 4` = Windspire, `map 5` = Deepdelve Quarry, `map 6` = Bedrock Depths, `map 7` = Barren World, `map 8` = Void Crossing, `map 9` = Verdant Moon, `map 10` = Hanging Cisterns) |
 | `arena [class]` | start a run in the Chaos Arena (as your current class unless you name one) |
 | `difficulty [easy\|normal\|nightmare]` | show or set the difficulty |
@@ -804,6 +875,7 @@ Press `~` to open the console (the game pauses). `Tab` completes names, `Up`/`Do
 | `profile [reset]` | show your level, skills and totals, or start your progress over |
 | `name [name]` | show or set the name your practice course times go on the leaderboard under |
 | `demo` | on a practice course, start the demo run from the beginning |
+| `endless [seed]` | play the endless practice course on a new seed, or on the one you name |
 | `kill`, `reveal`, `pos`, `tp x y`, `class <name>`, `restart`, `quit` | misc |
 
 Settings: `speed`, `sens`, `invertmouse`, `damage`, `monsterdamage`, `monsterspeed`, `firerate`, `manacost`, `fog`, `fov`,
@@ -909,6 +981,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Arcade.cs` | Arcade mode: damage numbers, score and the style rank |
 | `src/MapDoc.cs` | Map files (.hxm): parsing, saving, the glyphs a map can use, and the checks |
 | `src/Practice.cs` | The practice courses: Velocity Hangar, Descent, Circuit and Free Roam |
+| `src/Endless.cs` | The endless practice course: its seeded platforms, falling, and its board |
 | `src/Discovery.cs` | Relaxed mode: relics and their placement, lore stones and text, exploration tracking |
 | `src/Chests.cs` | Chest placement (never blocking paths) and loot table |
 | `src/Bindings.cs` | Rebindable actions, key names, turning key state into game input |
@@ -922,6 +995,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Profile.cs` | Character progression: levels, skills, weapon levels, saving profile.json |
 | `src/Sounds.cs` | Procedural sound effects: the fantasy and sci-fi banks, WAV export |
 | `src/Music.cs` | Procedural music: a loop per theme in both styles, and the mixer that loops and crossfades them |
+| `src/NewGamePlus.cs` | New Game+: what each tier does to the hub, and going round again |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
 | `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |
 | `src/Achievements.cs` | The achievements: what each takes, its experience, and the checks that unlock them |
@@ -931,7 +1005,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |
 | `src/Gfx.cs` | Colour helpers, drawing canvas, bitmap font, PNG writer and reader |
 | `src/Headless/Headless.cs` | `--selftest` (the runner, in the order the checks run) and `--sounds` |
-| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation |
+| `src/Headless/*Checks.cs` | The self-test's checks, a file per area: maps, gameplay, optional maps, practice, arena, progression, presentation, saving, New Game+, the endless course |
 | `src/Headless/Screenshots.cs` | `--shots`: the scripted screenshot tour and the art review sheets |
 | `src/MapFiles.cs` | `--play` (with reload on save), `--check-map`, `--export-maps`, the HTML editor's built-in maps |
 | `tools/editor/index.html` | The HTML map editor (single file); `builtin-maps.js` is generated, `test_editor.cjs` tests it |

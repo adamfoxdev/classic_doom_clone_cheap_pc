@@ -262,6 +262,27 @@ public static partial class Headless
             Shot("110_daily_board");
             g.Menu.Close();
             g.GoToTitle();
+
+            // the endless course: a few platforms in, looking on down the gaps; then its board
+            g.StartEndless(PClass.Fighter, 1234);
+            var ep = g.Course.Platforms;
+            foreach (int k in new[] { 1, 2, 3, 4, 5 })
+            {
+                g.P.X = (ep[k].x0 + ep[k].x1) / 2f; g.P.Y = 5.5f; g.P.FloorZ = ep[k].floor; g.P.Z = 0;
+                Tick(default, 2);
+            }
+            g.P.X = ep[5].x1 - 0.5f; g.P.Y = 4.2f; g.P.Angle = 0.12f; g.P.Pitch = -6f;
+            g.Messages.RemoveAll(m => !m.text.StartsWith("Platform 6"));
+            Tick(default);
+            Shot("115_endless");
+            foreach (var (n, pl, seed, t) in new[] { (g.RunnerName, 27, 1234, 88.4f), ("ACE-1", 24, 90210, 71.2f), (g.RunnerName, 19, 555, 60.9f), ("NOVA", 12, 1234, 41.5f) })
+                g.Profile.AddEndlessRun(new EndlessRun { Name = n, Class = "Fighter", Platforms = pl, Seed = seed, Time = t, When = new DateTime(2026, 9, 20 + pl % 7) });
+            g.Menu.Show(MenuPage.Leaderboard);
+            g.Menu.BoardEndless = true; g.Menu.BoardDaily = g.Menu.BoardArena = false; g.Menu.BoardClass = PClass.Fighter;
+            Shot("116_endless_board");
+            g.Menu.Close();
+            g.Profile.EndlessRuns.Clear();
+            g.GoToTitle();
         }
 
         // a chest, closed then opened
@@ -535,6 +556,42 @@ public static partial class Headless
             Shot(name);
             g.Vars.Freeze = false;
         }
+        {
+            // the Rock Wyrm, just burst out of the rock beside you in the Bedrock Depths
+            g.Warp(Array.FindIndex(g.Hub, l => l.RawName == "Bedrock Depths"));
+            var d = g.Level;
+            var wyrm = d.Things.OfType<Monster>().FirstOrDefault(t => t.Def == MiniBosses.Wyrm);
+            if (wyrm == null) { MiniBosses.Place(d); wyrm = d.Things.OfType<Monster>().First(t => t.Def == MiniBosses.Wyrm); }
+            var (ax, ay) = d.ArrivalCell();
+            float fl = g.P.FloorZ;
+            foreach (var (bx, by) in new[] { (ax + 1, ay), (ax + 2, ay), (ax + 3, ay), (ax + 3, ay - 1), (ax + 3, ay + 1), (ax + 4, ay) })
+                d.DamageBlock(bx, by, 100000, Level.Face.Wall, fl);
+            wyrm.X = ax + 3.5f; wyrm.Y = ay + 0.5f; wyrm.Burrowed = false; wyrm.Solid = true; wyrm.State = AiState.Chase; wyrm.Health = 300;
+            g.Vars.Freeze = true;
+            PlaceCam(ax + 0.5f, ay + 0.5f, fl, 0, 0, 0);
+            Tick(default, 2);
+            PlaceCam(ax + 0.5f, ay + 0.5f, fl, 0, 0, 0);
+            g.Messages.Clear();
+            Shot("111_rock_wyrm");
+            g.Vars.Freeze = false;
+
+            // the Storm Leviathan, weaving ahead of your ship near the end of the Void Crossing
+            g.Warp(Array.FindIndex(g.Hub, l => l.Flight));
+            var lane = g.Level;
+            lane.Things.RemoveAll(t => t is Monster { Def.MiniBoss: null });
+            var ship = lane.Things.OfType<Monster>().FirstOrDefault(t => t.Def == MiniBosses.Dreadnought);
+            if (ship == null) { MiniBosses.Place(lane); ship = lane.Things.OfType<Monster>().First(t => t.Def == MiniBosses.Dreadnought); }
+            g.Vars.Freeze = true;
+            for (int k = 0; k < 3; k++)
+            {
+                g.P.X = 80f; g.P.Y = 6.5f; g.P.Z = 1.1f; g.P.Angle = 0.05f; g.P.Pitch = 4;
+                ship.X = 86.5f; ship.Y = 7.2f; ship.Z = 1.0f; ship.State = AiState.Chase; ship.Health = 420;
+                Tick(default, 1);
+            }
+            g.Messages.Clear();
+            Shot("112_storm_leviathan");
+            g.Vars.Freeze = false;
+        }
 
         // the Blender-rendered art pack (Options > Rendered art): a review sheet, then the Hab Ring with it on
         RenderedArtSheet(Path.Combine(dir, "52_rendered_sheet.png"), SheetItems, 8);
@@ -625,6 +682,8 @@ public static partial class Headless
         g.GoToTitle();
         g.Menu.Show(MenuPage.Courses); g.Menu.Cursor = 1;
         Shot("90_practice_courses");
+        g.Menu.Cursor = Array.IndexOf(Courses.All, Endless.Pick);
+        Shot("117_practice_endless");
         g.Menu.Close();
         foreach (var (course, name, cam) in new[]
         {
@@ -889,6 +948,12 @@ public static partial class Headless
         // victory screen
         g.Mode = GameMode.Victory;
         Shot("12_victory");
+
+        // New Game+: the victory screen offering the next tier, and the class choice for it
+        g.Profile.NgUnlocked = 2; g.NgTier = 1;
+        Shot("113_ng_plus_victory");
+        g.Mode = GameMode.ClassSelect; g.NgTier = 2; g.MenuIndex = 0;
+        Shot("114_ng_plus_class");
         return 0;
     }
 }

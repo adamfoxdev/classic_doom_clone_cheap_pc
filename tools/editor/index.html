@@ -938,7 +938,8 @@ function cycleBrush(dir) {
   st.brush[st.layer] = list[(i + dir + list.length) % list.length];
   buildPalette(); status();
 }
-window.addEventListener("beforeunload", e => { if (st.dirty) { autosave(); } });
+// save the draft on the way out if it has changed, or if a save is still waiting for the next frame (opening a map)
+window.addEventListener("beforeunload", e => { if (st.dirty || checkQueued) { autosave(); } });
 
 // start with the last draft, if any
 try {

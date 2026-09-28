@@ -235,6 +235,7 @@ public sealed partial class Game
     public void StartPractice(PClass cls, Course course = null)
     {
         Course = course ?? Courses.Hangar;
+        if (Course.Endless && Course.Seed <= 0) Course = Endless.For(Endless.NewSeed()); // picked from the menu: a fresh seed
         var c = Course;
         HubSource = () => new[] { c.Map().Build() };
         TestingMap = true;
@@ -430,7 +431,7 @@ public sealed partial class Game
     /// </summary>
     public int GapSpeedPercent(int cells, float drop = 0)
     {
-        float j = Vars.JumpPower, air = (j + MathF.Sqrt(j * j + 2 * Vars.Gravity * drop)) / Vars.Gravity;
+        float j = Vars.JumpPower, air = (j + MathF.Sqrt(MathF.Max(0, j * j + 2 * Vars.Gravity * drop))) / Vars.Gravity;
         float need = (cells - 2 * P.Radius) / air;
         return (int)(MathF.Ceiling(need / RunSpeed * 20) * 5);
     }
@@ -450,12 +451,13 @@ public sealed partial class Game
         if (zone >= plats.Length - 1) return "Made it! Step into the exit to finish the run.";
         int gap = plats[zone + 1].x0 - plats[zone].x1 - 1;
         string zig = zone == 2 ? " Zig-zag: switch strafe keys and turn the other way each hop." : "";
-        return $"Platform {zone + 1}. The next gap is {gap} wide: hit about {GapSpeedPercent(gap, plats[zone].floor - plats[zone + 1].floor)}% speed.{zig}";
+        return $"Platform {(Course.Endless ? zone : zone + 1)}. The next gap is {gap} wide: hit about {GapSpeedPercent(gap, plats[zone].floor - plats[zone + 1].floor)}% speed.{zig}";
     }
 
     /// <summary>Crossed the finish: report the time and its place on your class's leaderboard, and start the run over.</summary>
     void FinishRun()
     {
+        if (OnEndless) { EndEndlessRun(true); return; }
         if (Demo)
         {
             Recording.Record(RunTime, P.X, P.Y, P.FloorZ + P.Z);
@@ -518,7 +520,7 @@ public sealed partial class Game
     /// <summary>Back to the start line: the clock at zero, a fresh recording, and the ghost waiting beside you.</summary>
     void ResetRun()
     {
-        RunTime = 0; RunStarted = false;
+        RunTime = 0; RunStarted = false; EndlessReached = 0;
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         Recording = new GhostTrack();
@@ -802,7 +804,7 @@ public sealed partial class Game
         string NextName() => names[nameIndex++ % names.Count];
         foreach (var lv in Hub)
         {
-            if (!Practicing && !ArenaMode && !StoryMode) Chests.Scatter(lv, _loot, Vars.Chests); // practice courses, the arena and cases stay clear
+            if (!Practicing && !ArenaMode && !StoryMode) Chests.Scatter(lv, _loot, Vars.Chests * NgPlus.Chests(NgEligible ? NgTier : 0)); // practice courses, the arena and cases stay clear
             ChestsTotal += lv.Things.Count(t => t is Chest);
 
             // treasure in secret nooks: a relic when relaxed, a Mystic Urn in classic
@@ -817,6 +819,7 @@ public sealed partial class Game
                 foreach (var m in lv.Things.OfType<Monster>()) { m.State = AiState.Idle; m.StrafeTime = RandF() * 3; }
             }
         }
+        ApplyNgPlus();
         RelicsTotal = Hub.Sum(l => l.Things.Count(t => t is Pickup { Kind: PickupKind.Relic }));
         LoreTotal = Hub.Sum(l => l.Things.Count(t => t is LoreStone));
         SecretsTotal = Hub.Sum(l => l.SecretCount);
@@ -916,7 +919,9 @@ public sealed partial class Game
                 return;
             case GameMode.Victory:
                 // a play-tested map starts over, so you can keep iterating; the hub goes back to the title
-                if (inp.Confirm) { if (StoryMode) GoToTitle(); else if (TestingMap) NewGame(P.Class); else GoToTitle(); }
+                // a classic campaign win offers the next New Game+ tier on Enter; Esc goes back to the title
+                if (inp.Confirm && OffersNgPlus) { StartNewGamePlus(P.Class, NgTier + 1); PlaySound(Sfx.Teleport, 1); }
+                else if (inp.Confirm || (inp.Pause && OffersNgPlus)) { if (StoryMode) GoToTitle(); else if (TestingMap) NewGame(P.Class); else GoToTitle(); }
                 return;
         }
 
@@ -1208,7 +1213,7 @@ public sealed partial class Game
         if (Practicing)
         {
             // the clock starts when you leave the spot you started on
-            if (!RunStarted && Course.Timed && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
+            if (!RunStarted && Course.Timed && !Course.Endless && Dist(p.X, p.Y, Level.StartX, Level.StartY) > 0.3f) RunStarted = true;
             if (RunStarted)
             {
                 RunTime += dt;
@@ -1260,6 +1265,7 @@ public sealed partial class Game
                         if (RunDeaths == 0) Profile.FlawlessWins++;
                         if (_nightmareThroughout && Difficulties.Of(Vars) == Difficulty.Nightmare) Profile.NightmareWins++;
                         if (!Profile.ClassWins.Contains(P.Class.ToString())) Profile.ClassWins.Add(P.Class.ToString());
+                        NgPlusWon();
                     }
                     GainXp(Xp.Victory);
                     Achievements.Check(this);
@@ -1460,6 +1466,7 @@ public sealed partial class Game
                         Health = Math.Max(p.Health, 50), Armor = p.Armor,
                     };
                 PlaySound(Sfx.Secret, 0.7f);
+                if (OnEndless) EndlessPlatform(zone);
                 if (Practicing) Say(CourseHint(zone) + GhostSplit(zone));
                 else { Say($"Checkpoint reached ({lv.CheckpointsReached.Count} of {lv.Checkpoints.Count})."); SaveNow(); }
             }
@@ -1469,7 +1476,8 @@ public sealed partial class Game
         bool onLift = lv.Marks[cell] == '=' && p.OnGround && MathF.Abs(p.FloorZ - lv.Floors[cell]) < 0.01f;
         if (onLift && !_onLift)
         {
-            if (Checkpoint != null && Checkpoint.Level == lv)
+            if (OnEndless) { EndEndlessRun(false); onLift = false; } // on the endless course a fall ends the run
+            else if (Checkpoint != null && Checkpoint.Level == lv)
             {
                 MoveTo(Checkpoint.X, Checkpoint.Y, Checkpoint.Angle);
                 PlaySound(Sfx.Teleport, 1);
@@ -1867,7 +1875,7 @@ public sealed partial class Game
     void KilledWith(Monster m, int slot)
     {
         if (NoXp) return;
-        int xp = Xp.Kill(m.Def);
+        int xp = (int)(Xp.Kill(m.Def) * NgPlus.Xp(NgTier));
         Profile.TotalKills++;
         GainXp(xp);
         if (Profile.AddWeaponXp(P.Class, slot, xp))
@@ -2203,7 +2211,7 @@ public sealed partial class Game
         if (Relaxed && m.Alive) { Wander(m, dt, dist); return; }
 
         // Dark Bishop blur: dart sideways, see-through and untouchable
-        if (m.Blurring)
+        if (m.BlurTime > 0)
         {
             m.BlurTime -= dt;
             float s = 6f * m.SpeedMult * Vars.MonsterSpeed * dt;
@@ -2738,7 +2746,7 @@ public sealed partial class Game
     public Monster SpawnMonster(MonsterDef def, float x, float y, float healthMult, float damageMult, float speedMult)
     {
         var m = new Monster(def) { X = x, Y = y, Level = Level, DamageMult = damageMult, SpeedMult = speedMult };
-        m.Health = (int)(def.Health * healthMult);
+        m.Health = m.MaxHealth = (int)(def.Health * healthMult);
         Level.Things.Add(m);
         SpawnPuff(Art.BossBall[1], x, y, Level.FloorAt(x, y) + 0.5f, 0.8f);
         Sound(Sfx.Teleport, x, y);

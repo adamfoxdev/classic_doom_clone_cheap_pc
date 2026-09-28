@@ -105,7 +105,7 @@ public sealed class MonsterDef
 public sealed class Monster : Thing
 {
     public readonly MonsterDef Def;
-    public int Health;
+    public int Health, MaxHealth;                   // MaxHealth: raised by New Game+, for the health bar
     public AiState State = AiState.Idle;
     public float StateTime, AttackCd, Anim, StuckTime, StrafeTime;
     public float StuckDX, StuckDY, StrafeSign = 1;
@@ -117,12 +117,14 @@ public sealed class Monster : Thing
     public float SpecialCd, SpecialTime, DashX, DashY;
     public int SpecialPhase, NextBlinkHp;
     public Monster Summoner;
-    public bool Blurring => BlurTime > 0;
-    public override int Alpha => Blurring ? 90 : 256;
+    /// <summary>Out of reach: a Dark Bishop's blur, or the Rock Wyrm inside the rock (unseen as well).</summary>
+    public bool Blurring => BlurTime > 0 || Burrowed;
+    public bool Burrowed;
+    public override int Alpha => Burrowed ? 0 : BlurTime > 0 ? 90 : 256;
 
     public Monster(MonsterDef def)
     {
-        Def = def; Health = def.Health; Radius = def.Radius; SpriteW = def.Width; SpriteH = def.Height; Z = def.FlyZ;
+        Def = def; Health = MaxHealth = def.Health; Radius = def.Radius; SpriteW = def.Width; SpriteH = def.Height; Z = def.FlyZ;
         Solid = true;
     }
 

@@ -25,6 +25,8 @@ public sealed class MenuSystem
     public bool BoardArena;
     /// <summary>The Leaderboard page shows the daily challenge's board, for the day BoardDay back from today.</summary>
     public bool BoardDaily;
+    /// <summary>The Leaderboard page shows the endless course's board.</summary>
+    public bool BoardEndless;
     public int BoardDay;
 
     public MenuSystem(Game g) { _g = g; }
@@ -41,6 +43,7 @@ public sealed class MenuSystem
             BoardCourse = _g.Practicing && _g.Course.Timed ? _g.Course : Courses.Hangar;
             BoardArena = _g.ArenaMode && !_g.DailyMode;
             BoardDaily = _g.DailyMode;
+            BoardEndless = _g.OnEndless;
             BoardDay = 0;
         }
     }
@@ -70,7 +73,8 @@ public sealed class MenuSystem
     {
         // Continue heads the list when there's a saved campaign to pick up
         MenuPage.Main => (_g.CheckSave() != null ? new[] { "Continue" } : Array.Empty<string>())
-            .Concat(new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
+            .Concat(new[] { "New game" }).Concat(_g.Profile.NgUnlocked > 0 ? new[] { "New Game+" } : Array.Empty<string>())
+            .Concat(new[] { "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
         MenuPage.Pause => _g.Practicing
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : _g.ArenaMode
@@ -193,12 +197,14 @@ public sealed class MenuSystem
             }
             if (inp.Up || inp.Down)
             {
-                // the timed courses, then the arena, then the daily challenge, round and round
+                // the timed courses, then the endless course, the arena and the daily challenge, round and round
                 var timed = Courses.Timed;
-                int n = timed.Length + 2, i = BoardDaily ? timed.Length + 1 : BoardArena ? timed.Length : Array.IndexOf(timed, BoardCourse);
+                int n = timed.Length + 3;
+                int i = BoardEndless ? timed.Length : BoardArena ? timed.Length + 1 : BoardDaily ? timed.Length + 2 : Array.IndexOf(timed, BoardCourse);
                 i = (i + (inp.Up ? n - 1 : 1)) % n;
-                BoardArena = i == timed.Length;
-                BoardDaily = i == timed.Length + 1;
+                BoardEndless = i == timed.Length;
+                BoardArena = i == timed.Length + 1;
+                BoardDaily = i == timed.Length + 2;
                 if (i < timed.Length) BoardCourse = timed[i];
                 BoardDay = 0;
                 _g.PlaySound(Sfx.Swing, 0.5f);
@@ -312,6 +318,11 @@ public sealed class MenuSystem
                     if (_g.Continue()) _g.PlaySound(Sfx.Teleport, 1);
                     break;
                 case "New game": Show(MenuPage.Style); Cursor = (int)_g.Style; break;
+                case "New Game+":
+                    // the highest tier you've opened, in classic style; pick a class and go
+                    _g.Style = GameStyle.Classic; _g.NgTier = _g.Profile.NgUnlocked; _g.PendingPractice = _g.PendingArena = false;
+                    Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
+                    break;
                 case "Story": Close(); _g.StartStory(0); break;
                 case "Practice": Show(MenuPage.Courses); break;
                 case "Arena": Show(MenuPage.ArenaSetup); Cursor = ArenaModInfo.All.Length; break;
@@ -324,7 +335,7 @@ public sealed class MenuSystem
         }
         switch (Page, Cursor)
         {
-            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.PendingPractice = _g.PendingArena = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
+            case (MenuPage.Style, 0 or 1): _g.Style = (GameStyle)Cursor; _g.NgTier = 0; _g.PendingPractice = _g.PendingArena = false; Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0; break;
             case (MenuPage.Courses, var c) when c < Courses.All.Length:
                 _g.Style = GameStyle.Classic; _g.PendingPractice = true; _g.PendingArena = false; _g.PendingCourse = Courses.All[c];
                 Close(); _g.Mode = GameMode.ClassSelect; _g.MenuIndex = 0;
