@@ -326,6 +326,29 @@ public sealed class DevConsole
             _g.StartDemo();
             Open = false;
         });
+        void Colour(Game.MapSurface what, string cmd, string[] a)
+        {
+            if (a.Length < 2) { Print(_g.MapColourReport()); return; }
+            var words = a.Skip(1).ToArray();
+            bool flat = words.Length > 1 && words[^1].Equals("flat", StringComparison.OrdinalIgnoreCase);
+            if (flat) words = words[..^1];
+            if (words.Length == 1 && words[0].ToLowerInvariant() is "off" or "reset")
+            {
+                Print(_g.SetMapColour(what, null));
+                return;
+            }
+            if (!MapColors.TryParse(words, out uint col))
+            {
+                Print($"usage: {cmd} <#rrggbb | r g b | name | off>{(what == Game.MapSurface.Fog ? "" : " [flat]")}");
+                Print("  names: " + string.Join(" ", MapColors.ColourNames));
+                return;
+            }
+            Print(_g.SetMapColour(what, col, flat));
+        }
+        Add("floorcolor", "[colour|off] [flat]", "recolour this map's floor (#rrggbb, r g b, or a name; 'flat' for one solid colour, 'off' for its own)", a => Colour(Game.MapSurface.Floor, "floorcolor", a));
+        Add("ceilcolor", "[colour|off] [flat]", "recolour this map's ceiling and sky, as floorcolor", a => Colour(Game.MapSurface.Ceiling, "ceilcolor", a));
+        Add("fogcolor", "[colour|off]", "recolour this map's fog (what the far floor and walls fade to)", a => Colour(Game.MapSurface.Fog, "fogcolor", a));
+        Add("mapcolors", "", "this map's floor, ceiling, sky and fog colours", _ => Print(_g.MapColourReport()));
         Add("tower", "[seed]", "the endless rocket tower: a new seed, or the one you name", a =>
         {
             int seed = 0;
