@@ -12,10 +12,10 @@ public static partial class Headless
         g = new Game { FixedSeed = 1, AchievementsOn = false };
         g.StartPractice(PClass.Cleric, ShootingRange.Course);
         var p = g.P;
-        check(g.OnRange && p.Weapons.Length == 11 && p.HasWeapon.Count(h => h) == 1 && p.CurWeapon == ClassDef.All[1].Weapons[0],
+        check(g.OnRange && p.Weapons.Length == 12 && p.HasWeapon.Count(h => h) == 1 && p.CurWeapon == ClassDef.All[1].Weapons[0],
             "on the shooting range, every weapon in the game is there to take, starting with your class's first in hand");
         var rack = g.Level.Things.OfType<Pickup>().Where(k => k.Kind == PickupKind.Arms).ToList();
-        check(rack.Count == 11 && rack.Select(k => k.Variant).Distinct().Count() == 11, "the rack holds all eleven: three for each class, the rocket launcher and the railgun");
+        check(rack.Count == 12 && rack.Select(k => k.Variant).Distinct().Count() == 12, "the rack holds all twelve: three for each class, the rocket launcher, the railgun and the grenade launcher");
         foreach (var pk in rack) { p.X = pk.X; p.Y = pk.Y; p.FloorZ = 0; Tick(new Input()); }
         check(p.HasWeapon.All(h => h) && rack.All(k => !k.Removed), "walking along the rack takes every weapon, and the rack stays full");
         Tick(new Input { Slot = 10 }); Tick(new Input(), 10);
@@ -183,6 +183,78 @@ public static partial class Headless
         Tick(new Input { Fire = true }, 35);
         check(line[0].Health == before, $"it reloads for a second and a half between shots ({before - line[0].Health} in the next second)");
         g.Vars.Freeze = false;
+
+        // the grenade launcher: an arc, bounces, a fuse, a monster sets it off, and grenade jumps
+        g = new Game { FixedSeed = 1, AchievementsOn = false };
+        g.StartPractice(PClass.Cleric, ShootingRange.Course);
+        g.Level.Things.RemoveAll(t => t is Monster);
+        p = g.P;
+        int gl = Array.FindIndex(p.Weapons, w => w.Grenade);
+        p.HasWeapon[gl] = true;
+        Tick(new Input { Slot = gl + 1 }); Tick(new Input(), 30);
+        check(p.CurWeapon.Grenade && ShootingRange.KeyFor(gl) == "=", "= takes up the grenade launcher on the range");
+        p.Pitch = 0;
+        Tick(new Input { LookY = -5000 });
+        float up = p.Pitch;
+        Tick(new Input { LookY = 5000 });
+        check(up == Rockets.LookDown && p.Pitch == -Rockets.LookDown, $"with the grenade launcher you can look {Rockets.LookDown:0} px up (to lob) as well as down");
+        p.X = 20.5f; p.Y = 22.5f; p.Angle = -MathF.PI / 2; p.Pitch = 0; p.Cooldown = 0;
+        var marker = g.RocketLanding();
+        Tick(new Input { Fire = true });
+        var nade = g.Level.Things.OfType<Projectile>().Single(t => t.Kind == ProjKind.Grenade);
+        float peak = 0, firstDown = 0; int bounces = 0; float lastVz = nade.VZ; bool rested = false;
+        for (int k = 0; k < 35 * 3 && !nade.Removed; k++)
+        {
+            Tick(new Input());
+            peak = MathF.Max(peak, nade.Z);
+            if (lastVz < 0 && nade.VZ > 0) { bounces++; if (firstDown == 0) firstDown = 22.5f - nade.Y; }
+            lastVz = nade.VZ;
+            if (!nade.Removed && nade.VZ == 0 && MathF.Abs(nade.VX) + MathF.Abs(nade.VY) < 0.01f) rested = true;
+        }
+        check(peak > 0.5f && bounces >= 1 && rested, $"a grenade arcs ({peak:0.00} high), bounces ({bounces}) and comes to rest");
+        check(marker is { } mk && MathF.Abs(mk.dist - firstDown) < 0.6f, $"the ring marks where it first comes down ({marker?.dist:0.0} cells, it came down at {firstDown:0.0})");
+        check(nade.Removed && g.Level.Things.OfType<Puff>().Any(), "and goes off after its fuse");
+        var victim = new Monster(Monster.Slaughtaur) { X = 20.5f, Y = 19.5f, Level = g.Level, State = AiState.Idle };
+        victim.Health = victim.MaxHealth = 5000;
+        g.Level.Things.Add(victim);
+        g.Vars.Freeze = true;
+        p.X = 20.5f; p.Y = 22.5f; p.Angle = -MathF.PI / 2; p.Pitch = 0; p.Cooldown = 0;
+        Tick(new Input { Fire = true });
+        int ticks = 0;
+        while (victim.Health == 5000 && ticks < 35 * 3) { Tick(new Input()); ticks++; }
+        check(victim.Health < 5000 && ticks < 35, $"one that touches a monster goes off at once ({5000 - victim.Health} after {ticks / 35f:0.00}s)");
+        g.Vars.Freeze = false;
+        g.Level.Things.Remove(victim);
+        // a grenade jump: a grenade dropped at your feet, stand just past it and jump as it goes off
+        p.X = 20.5f; p.Y = 22.5f; p.Angle = MathF.PI; p.Pitch = -Rockets.LookDown; p.Cooldown = 0; p.Health = p.MaxHealth;
+        Tick(new Input { Fire = true });
+        nade = g.Level.Things.OfType<Projectile>().Last(t => t.Kind == ProjKind.Grenade);
+        check(MathF.Abs(nade.X - p.X) < 0.6f, "looking right down, a grenade drops at your feet");
+        while (!nade.Removed && nade.Life > 0.06f) { p.X = nade.X + 0.45f; p.Y = nade.Y; Tick(new Input()); }
+        float top = 0;
+        Tick(new Input { Jump = true });
+        for (int k = 0; k < 60; k++) { Tick(new Input()); top = MathF.Max(top, p.FloorZ + p.Z); }
+        check(top > 2f, $"stand just past it and jump as it goes off: a grenade jump, {top:0.0} cells up");
+
+        // the grenade course: every target down, then up to the exit; the demo gets round
+        g = new Game { FixedSeed = 1, AchievementsOn = false };
+        g.StartPractice(PClass.Fighter, GrenadeCourse.Course);
+        p = g.P;
+        check(g.Course.Timed && p.Weapons.Length == 1 && p.CurWeapon.Grenade && g.CourseTargetsLeft == 3,
+            "on the grenade course the grenade launcher is your only weapon, and there are three targets to knock down");
+        var exitAt = g.Level.FindMark('E')!.Value;
+        foreach (var k in Enumerable.Range(0, g.Level.Checkpoints.Count)) g.Level.CheckpointsReached.Add(k);
+        g.Messages.Clear();
+        p.X = exitAt.x; p.Y = exitAt.y; p.FloorZ = GrenadeCourse.Ledge2;
+        Tick(new Input());
+        check(g.Messages.Any(m => m.text.Contains("every target")) && !g.Messages.Any(m => m.text.Contains("made it")), "the exit stays shut while a target stands");
+        g.StartDemo();
+        int low = p.Health;
+        for (int k = 0; k < 35 * 60 && g.Demo; k++) { g.Update(new Input(), 1f / 35f); low = Math.Min(low, p.Health); }
+        var (_, gSilver, _) = GrenadeCourse.Course.MedalTimes(PClass.Fighter);
+        check(!g.Demo && g.DemoTime > 0 && g.DemoTime <= gSilver && low >= 1,
+            $"the demo lobs down all three and grenade jumps up both ledges in {g.DemoTime:0.00}s (silver is {gSilver:0.0}; lowest health {low})");
+        check(g.CourseTargetsLeft == 3, "and the targets stand back up for your go");
 
         // a borrowed rocket launcher isn't saved with the campaign
         string dir = Path.Combine(Path.GetTempPath(), $"hexensharp-range-{Environment.ProcessId}");

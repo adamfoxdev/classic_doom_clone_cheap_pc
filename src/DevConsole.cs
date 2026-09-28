@@ -205,7 +205,7 @@ public sealed class DevConsole
         Add("noclip", "", "toggle walking through walls", _ => Toggle("noclip"));
         Add("notarget", "", "toggle monsters ignoring you", _ => Toggle("notarget"));
         Add("freeze", "", "toggle frozen monsters", _ => Toggle("freeze"));
-        Add("give", "<all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun>", "give yourself things", a => Give(a.Length > 1 ? a[1] : "all"));
+        Add("give", "<all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun|grenadelauncher>", "give yourself things", a => Give(a.Length > 1 ? a[1] : "all"));
         Add("kill", "", "kill every monster on this map", _ =>
         {
             if (!InGame()) return;
@@ -582,7 +582,8 @@ public sealed class DevConsole
         if (all || what == "jetpack") { p.HasJetpack = true; p.Fuel = p.MaxFuel; any = true; }
         if (what == "rocketlauncher") { _g.GiveRocketLauncher(); any = true; }
         if (what == "railgun") { _g.GiveExtra(Railgun.Gun); any = true; }
-        if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun>"); return; }
+        if (what == "grenadelauncher") { _g.GiveExtra(Grenades.Launcher); any = true; }
+        if (!any) { Print("usage: give <all|health|mana|weapons|keys|items|armor|jetpack|rocketlauncher|railgun|grenadelauncher>"); return; }
         Print($"given: {what}");
         _g.Say($"Cheater! ({what})");
         _g.PlaySound(Sfx.Item, 1);

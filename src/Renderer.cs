@@ -1337,7 +1337,7 @@ public sealed class Renderer
     {
         var style = g.Vars.Crosshair;
         if (g.Level.Flight || g.ShowMap || g.Mode == GameMode.Dead) return;
-        if (g.P.CurWeapon.Rocket) DrawRocketMarker(g); // the landing ring shows even with the crosshair off
+        if (g.P.CurWeapon.LooksDown) DrawRocketMarker(g); // the landing ring shows even with the crosshair off
         if (style == CrosshairStyle.Off) return;
         int cx = W / 2, cy = (int)MathF.Round(ViewH / 2f + g.P.Pitch);
         if (g.P.CurWeapon.Rocket)
@@ -1345,7 +1345,7 @@ public sealed class Renderer
             // the rocket launcher's mark is where the rocket goes (it aims along the view, not the horizon)
             cy = (int)MathF.Round(Math.Clamp(_horizon - MathF.Tan(g.RocketAim()) * Proj, 6, ViewH - 7));
         }
-        else if (g.P.CurWeapon.Rail) cy = (int)MathF.Round(Math.Clamp(_horizon - MathF.Tan(g.RailAim()) * Proj, 6, ViewH - 7)); // the slug goes where you look
+        else if (g.P.CurWeapon.Rail || g.P.CurWeapon.Grenade) cy = (int)MathF.Round(Math.Clamp(_horizon - MathF.Tan(g.RailAim()) * Proj, 6, ViewH - 7)); // the slug goes where you look
         var pts = new List<(int x, int y)>();
         switch (style)
         {

@@ -27,8 +27,8 @@ public static class ShootingRange
 
     public enum Kind { Still, Moving, High }
 
-    /// <summary>The key for a weapon on the rack: 1 to 9, then 0 (the rocket launcher) and - (the railgun).</summary>
-    public static string KeyFor(int slot) => slot < 9 ? (slot + 1).ToString() : slot == 9 ? "0" : "-";
+    /// <summary>The key for a weapon on the rack: 1 to 9, then 0 (the rocket launcher), - (the railgun) and = (the grenade launcher).</summary>
+    public static string KeyFor(int slot) => slot < 9 ? (slot + 1).ToString() : slot == 9 ? "0" : slot == 10 ? "-" : "=";
 
     public static int Points(Kind k) => k switch { Kind.Moving => 150, Kind.High => 200, _ => 100 };
 
@@ -121,7 +121,7 @@ public sealed partial class Game
     /// <summary>
     /// The range and the rocket-jump course: mana never runs out, health comes back, and your own rockets can't kill you.
     /// </summary>
-    public bool SafeRockets => Practicing && (Course.Range || Course.Rockets);
+    public bool SafeRockets => Practicing && (Course.Range || Course.Rockets || Course.Grenades);
 
     /// <summary>On a fresh range: the full loadout (your class's first weapon in hand), the rack, and the dummies.</summary>
     void SetUpRange()
@@ -158,7 +158,8 @@ public sealed partial class Game
         PlaySound(Sfx.Item, 1);
         var w = p.Loadout[pk.Variant];
         Say($"{w.Name}! (key {ShootingRange.KeyFor(pk.Variant)})" + (w.Rocket ? " Fire at your feet as you jump to rocket jump."
-            : w.Rail ? " One slug goes through everything in its line." : ""));
+            : w.Rail ? " One slug goes through everything in its line."
+            : w.Grenade ? " Grenades bounce, and go off after two and a half seconds or on a monster." : ""));
         SelectWeapon(pk.Variant);
     }
 
@@ -220,6 +221,7 @@ public sealed partial class Game
     {
         if (!down) { m.State = AiState.Pain; m.StateTime = 0; return; }
         m.Target.DownFor = 0;
+        if (Course.Grenades) { GrenadeTargetDown(); return; }
         if (!Drilling) return;
         int pts = ShootingRange.Points(m.Target.Kind);
         DrillScore += pts; DrillKills++;

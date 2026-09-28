@@ -33,7 +33,9 @@ public sealed class WeaponDef
     public Sfx Sound;
     /// <summary>Its art in Art.Weapons (class * 3 + slot for the classes' own), and whether it's the rocket launcher.</summary>
     public int ArtIndex;
-    public bool Rocket, Rail;
+    public bool Rocket, Rail, Grenade;
+    /// <summary>Lets you look right down at the floor (the rocket and grenade launchers, for jumps).</summary>
+    public bool LooksDown => Rocket || Grenade;
 }
 
 public sealed class ClassDef
@@ -452,6 +454,7 @@ public sealed partial class Game
         if (Course.Jetpack) { P.HasJetpack = true; P.Fuel = P.MaxFuel; }
         if (Course.Range) SetUpRange();
         if (Course.Rockets) SetUpRocketCourse();
+        if (Course.Grenades) SetUpGrenadeCourse();
         ResetRun();
     }
 
@@ -475,6 +478,9 @@ public sealed partial class Game
     {
         var plats = Course.Platforms;
         int reached = Level.CheckpointsReached.Count, total = Level.Checkpoints.Count;
+        if (Course.Grenades)
+            return reached <= 1 ? Course.Intro
+                : $"Checkpoint {reached} of {total}." + (CourseTargetsLeft > 0 ? $" {CourseTargetsLeft} target{(CourseTargetsLeft == 1 ? "" : "s")} still standing." : " Every target down: on to the exit.");
         if (plats == null)
             return reached <= 1 ? Course.Intro
                 : reached >= total ? "Every checkpoint! Cross the line to finish." : $"Checkpoint {reached} of {total}.";
@@ -554,6 +560,7 @@ public sealed partial class Game
     void ResetRun()
     {
         RunTime = 0; RunStarted = false; EndlessReached = 0;
+        if (Practicing && Course.Grenades) ResetCourseTargets();
         Level.CheckpointsReached.Clear();
         Checkpoint = null;
         Recording = new GhostTrack();
@@ -1165,10 +1172,13 @@ public sealed partial class Game
         // look
         float angle0 = p.Angle;
         p.Angle += inp.LookX * 0.0025f * Vars.Sens + inp.Turn * 2.6f * dt;
-        // looking down stops at the limit (further with the rocket launcher); past it, having just put the launcher
-        // away, you can't go further, and PitchLimit eases you back
-        float lookDown = p.CurWeapon.Rocket && p.PendingWeapon < 0 ? Rockets.LookDown : Rockets.NormalPitch;
-        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), MathF.Min(p.Pitch, -lookDown), Rockets.NormalPitch);
+        // looking up and down stops at the limit (further down with the rocket and grenade launchers, and further up
+        // with the grenade launcher, to lob); past it, having just put one away, you can't go further, and PitchLimit
+        // eases you back
+        bool ready = p.PendingWeapon < 0;
+        float lookDown = p.CurWeapon.LooksDown && ready ? Rockets.LookDown : Rockets.NormalPitch;
+        float lookUp = p.CurWeapon.Grenade && ready ? Rockets.LookDown : Rockets.NormalPitch;
+        p.Pitch = Math.Clamp(p.Pitch - inp.LookY * 0.35f * Vars.Sens * (Vars.InvertMouse ? -1 : 1), MathF.Min(p.Pitch, -lookDown), MathF.Max(p.Pitch, lookUp));
         PitchLimit(p, dt);
 
         // move
@@ -1317,7 +1327,13 @@ public sealed partial class Game
         if (mark == 'E' && Practicing)
         {
             // a practice exit finishes the run once you've been through every checkpoint (no cutting the lap short)
-            if (Level.CheckpointsReached.Count >= Level.Checkpoints.Count) { FinishRun(); return; }
+            int targetsLeft = CourseTargetsLeft;
+            if (Level.CheckpointsReached.Count >= Level.Checkpoints.Count && targetsLeft == 0) { FinishRun(); return; }
+            if (targetsLeft > 0 && _exitMsgCd <= 0)
+            {
+                Say($"The exit opens once every target is down ({targetsLeft} left).");
+                _exitMsgCd = 3;
+            }
             if (_exitMsgCd <= 0)
             {
                 Say($"Reach every checkpoint first ({Level.CheckpointsReached.Count} of {Level.Checkpoints.Count}).");
@@ -1471,6 +1487,7 @@ public sealed partial class Game
         float launchZ = p.FloorZ + p.Z + 0.32f;
         if (w.Rocket) { FireRocket(w, launchZ, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
         if (w.Rail) { FireRail(w, PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power); return; }
+        if (w.Grenade) { FireGrenade(w, launchZ); return; }
         float? vz = VerticalAim(launchZ, w.Speed);
         float mult = PlayerDamageMult(p.Weapon) * Arsenal.Damage(tier) * power;
         // upgrades add shots to the volley, fanned out either side of your aim
@@ -1945,7 +1962,7 @@ public sealed partial class Game
     {
         if (P.Loadout == null) return Profile.WeaponMult(P.Class, slot);
         var w = slot >= 0 && slot < P.Loadout.Length ? P.Loadout[slot] : null;
-        if (w == null || w.Rocket || w.Rail || w.ArtIndex >= 9) return 1f;
+        if (w == null || w.Rocket || w.Rail || w.Grenade || w.ArtIndex >= 9) return 1f;
         return Profile.WeaponMult((PClass)(w.ArtIndex / 3), w.ArtIndex % 3);
     }
     /// <summary>Your arsenal upgrades, which only count in the arena they were won in.</summary>
@@ -2501,6 +2518,7 @@ public sealed partial class Game
     void UpdateProjectile(Projectile pr, float dt)
     {
         pr.Life -= dt;
+        if (pr.Kind == ProjKind.Grenade) { UpdateGrenade(pr, dt); return; }
         if (pr.Life <= 0) { pr.Removed = true; return; }
         RocketTrail(pr, dt);
         // aim player shots gently toward eye-level as they fly
@@ -2590,7 +2608,7 @@ public sealed partial class Game
         Sound(pr.Splash > 0 ? Sfx.Explode : Sfx.Hit, pr.X, pr.Y);
         if (pr.Splash <= 0) return;
         float splash = pr.Splash;
-        if (pr.Kind == ProjKind.Rocket) { RocketBlast(pr, direct); splash = 1.2f; } // Quake's blast; it only chips the rubble close by
+        if (pr.Kind is ProjKind.Rocket or ProjKind.Grenade) { RocketBlast(pr, direct); splash = 1.2f; } // Quake's blast; it only chips the rubble close by
         else
             foreach (var t in Level.Things.ToList())
                 if (t is Monster m && m != direct && m.Alive)
