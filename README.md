@@ -201,7 +201,11 @@ see [Rendered art pack](#rendered-art-pack-blender)).
 
 ## Running
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download). Windowing, input and audio come from
+**Download:** each [release](https://github.com/adamfoxdev/classic_doom_clone_cheap_pc/releases) has a zip for Windows
+(`win-x64`) and one for Linux (`linux-x64`). Each holds a single self-contained executable (no .NET install needed),
+this README and the map editor (`editor/index.html`). Unzip it and run `HexenSharp.exe` or `./HexenSharp`.
+
+**From source:** requires the [.NET 8 SDK](https://dotnet.microsoft.com/download). Windowing, input and audio come from
 [Raylib-cs](https://github.com/ChrisDill/Raylib-cs), which NuGet fetches with native binaries for
 Windows, Linux and macOS.
 
@@ -1035,6 +1039,7 @@ dotnet run -c Release -- --shots shots    # renders scripted screenshots headles
 dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styles, as WAV files into ./sounds
 dotnet run -c Release -- --bench [frames] # times the renderer on fixed views, from rooms to the tall open maps
 dotnet run -c Release -- --bench-compare 1.25 base.txt -- head.txt   # fails if head's --bench is >25% slower
+dotnet run -c Release -- --version        # prints the version (a release build's tag, else "dev")
 dotnet run -c Release -- --play map.hxm   # play-tests a map file, reloading it whenever it's saved
 dotnet run -c Release -- --check-map map.hxm   # prints the editor's checks for a map (exit code 1 if unplayable)
 dotnet run -c Release -- --export-maps maps    # writes every built-in hub map as a .hxm file
@@ -1063,6 +1068,14 @@ Cisterns, a few hundred times each, on one thread and then on all of them. It pr
 **CI:** `.github/workflows/tests.yml` runs on every pull request and every push to `main`. It builds, runs the
 self-test and the editor test (installing Playwright and Chromium), then renders the screenshot tour and uploads it as
 a `screenshots` artifact, so each PR's screenshots can be looked through. Any failed check fails the run.
+
+**Releases:** `.github/workflows/release.yml` runs when a tag like `v1.2.0` is pushed.
+- **What it does:** it runs the self-test, then publishes self-contained single-file builds for Windows and Linux,
+  compressed, about 31 MB zipped. It stamps the version from the tag (`--version` prints it) and zips each with the
+  README and the editor.
+- **Where they go:** they're attached to a GitHub release for the tag, with generated release notes.
+- **By hand:** running the workflow manually (Actions → Release → Run workflow) builds the same zips as an artifact,
+  without making a release.
 
 **Performance check:** on a pull request a second job, `perf`, benchmarks the branch against the base it's merging
 into.

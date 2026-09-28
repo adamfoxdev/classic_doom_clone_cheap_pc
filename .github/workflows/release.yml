@@ -1,0 +1,63 @@
+# Release builds: pushing a tag like v1.2.0 tests the game, publishes self-contained single-file builds for Windows and
+# Linux (no .NET install needed), zips each with the README and the map editor, and attaches them to a GitHub
+# release for the tag. Run it by hand (workflow_dispatch) to get the zips as an artifact without making a release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-dev.${GITHUB_SHA::7}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: |
+          dotnet build -c Release
+          dotnet run -c Release --no-build -- --selftest
+
+      - name: Publish and zip
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          for rid in win-x64 linux-x64; do
+            dotnet publish -c Release -r "$rid" --self-contained true \
+              -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
+              -p:DebugType=none -p:Version="$v" -o "out/$rid"
+            cp README.md "out/$rid/"
+            mkdir -p "out/$rid/editor"
+            cp tools/editor/index.html tools/editor/builtin-maps.js "out/$rid/editor/"
+            (cd "out/$rid" && zip -qr "../../HexenSharp-$v-$rid.zip" .)
+          done
+          ./out/linux-x64/HexenSharp --version
+          ls -la HexenSharp-*.zip
+
+      - name: Upload the zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexensharp-${{ steps.version.outputs.version }}
+          path: HexenSharp-*.zip
+          retention-days: 30
+
+      - name: Make the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: HexenSharp-*.zip
+          generate_release_notes: true

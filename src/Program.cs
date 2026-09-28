@@ -5,8 +5,14 @@ namespace HexenSharp;
 
 public static class Program
 {
+    /// <summary>The version: set by release builds (-p:Version=), "dev" otherwise.</summary>
+    public static string Version =>
+        typeof(Program).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion.Split('+')[0] is { } v && v != "1.0.0" ? v : "dev";
+
     public static int Main(string[] args)
     {
+        if (args.Contains("--version")) { Console.WriteLine($"Hexen Sharp {Version}"); return 0; }
         Art.Init();
         if (args.Contains("--selftest")) return Headless.SelfTest();
         if (args.Contains("--shots")) return Headless.Screenshots(args.SkipWhile(a => a != "--shots").Skip(1).FirstOrDefault() ?? "shots");
@@ -35,7 +41,7 @@ public static class Program
     static int Usage()
     {
         Console.WriteLine("usage: HexenSharp [--play map.hxm [--class fighter|cleric|mage] [--relaxed]] | --check-map map.hxm |");
-        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --shots dir | --sounds dir | --bench [frames] | --bench-compare limit base.txt... -- head.txt...");
+        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --shots dir | --sounds dir | --version | --bench [frames] | --bench-compare limit base.txt... -- head.txt...");
         return 2;
     }
 
