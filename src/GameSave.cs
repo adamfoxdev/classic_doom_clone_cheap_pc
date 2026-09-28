@@ -80,7 +80,9 @@ public sealed partial class Game
         p.Health = ps.Health; p.Armor = ps.Armor; p.BlueMana = ps.BlueMana; p.GreenMana = ps.GreenMana; p.Flasks = ps.Flasks; p.Urns = ps.Urns;
         p.Kills = ps.Kills; p.ChestsOpened = ps.ChestsOpened; p.Relics = ps.Relics; p.LoreRead = ps.LoreRead; p.Secrets = ps.Secrets;
         p.Blocks = ps.Blocks; ps.Ore?.CopyTo(p.Ore, 0); p.HasWeapon = (bool[])ps.HasWeapon.Clone();
-        if (ps.Mods is { Length: 3 }) p.Mods = ps.Mods.Select(m => Enum.IsDefined((WeaponMod)m) ? (WeaponMod)m : WeaponMod.None).ToArray();
+        static WeaponMod[] ModsFrom(int[] a) => a is { Length: 3 } ? a.Select(m => Enum.IsDefined((WeaponMod)m) ? (WeaponMod)m : WeaponMod.None).ToArray() : new WeaponMod[3];
+        static int[] RanksFrom(int[] a) => a is { Length: 3 } ? a.Select(r => Math.Clamp(r, 0, WeaponMods.MaxRank)).ToArray() : new int[3];
+        p.Mods = ModsFrom(ps.Mods); p.Mods2 = ModsFrom(ps.Mods2); p.ModRanks = RanksFrom(ps.ModRanks); p.ModRanks2 = RanksFrom(ps.ModRanks2);
         p.Weapon = p.HasWeapon[ps.Weapon] ? ps.Weapon : 0; p.PendingWeapon = -1;
         p.SteelKey = ps.SteelKey; p.FireKey = ps.FireKey; p.HasJetpack = ps.HasJetpack; p.Fuel = ps.Fuel;
         // standing on the portal you arrived by: it waits until you step off

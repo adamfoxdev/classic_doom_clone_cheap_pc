@@ -576,11 +576,34 @@ Rare attachments that change how a weapon behaves. There are four, each a glowin
 
 - **Where they come from:** chests, rarely (about one in 25 in a first campaign), and more often in New Game+
   (about one in 10 at tier 1 and one in 6 at tier 2). In New Game+ every mini-boss drops one too.
-- **Fitting one:** walk over it and it fits the weapon in your hand, replacing that weapon's mod if it had one. Each
-  weapon carries one mod at most, so switch to the weapon you want it on before you pick it up. One your weapon
-  already has stays on the floor.
-- **On the HUD:** the weapon in hand's mod shows by the level bar, in its colour.
-- **Saving:** your weapons' mods are kept in the save, for the rest of the campaign.
+- **Fitting one:** walk over it and it fits the weapon in your hand, so switch to the weapon you want it on before
+  you pick it up. Each weapon carries two different mods.
+  - **A second kind** joins the first and makes a combo (below).
+  - **A third kind** replaces the older of the two.
+  - **One the weapon already has** goes up a rank, to III. Past III it stays on the floor.
+- **Ranks:**
+
+  | Mod | I | II | III |
+  |---|---|---|---|
+  | Piercing | through 2 more, cleaves 1 more | 4, 2 | 6, 3 |
+  | Chain | 33% of hits arc to 2 | 43% to 3 | 53% to 4 |
+  | Charged | up to 2.5x, full in 0.8 s | 3x in 0.7 s | 3.5x in 0.6 s |
+  | Frost | half speed for 2.5 s | 40% for 3.5 s | 30% for 4.5 s |
+
+- **Combos:** each of the six pairs has one. A *charged hit* is one from a shot charged past double damage.
+
+  | Combo | Mods | What it adds |
+  |---|---|---|
+  | **Frozen Arc** | Chain + Frost | Arcs chill what they hit. |
+  | **Lance** | Piercing + Charged | A charged shot goes through everything in its path. |
+  | **Deep Freeze** | Charged + Frost | A charged hit freezes the monster solid for 1.5 s: it can't move or attack. |
+  | **Shatter** | Piercing + Frost | Chilled monsters take 50% more damage from this weapon. |
+  | **Thunderclap** | Chain + Charged | A charged hit always arcs, to twice as many. |
+  | **Storm Lance** | Piercing + Chain | Arcs leap on once more from each monster they hit. |
+
+- **On the HUD:** by the level bar. A combo shows as its name in gold; otherwise the weapon in hand's mods and ranks
+  show in the mod's colour.
+- **Saving:** your weapons' mods and their ranks are kept in the save, for the rest of the campaign.
 
 ![Weapon mods in the hall, and a Capacitor charging](docs/weapon_mods.png)
 
@@ -1105,7 +1128,7 @@ in both looks (`76_…`, `77_…`).
 | `src/Hazards.cs` | New Game+ hazards: the Depths' crumbling floors, the Windspire's gusts and the Cisterns' floods |
 | `src/Rematch.cs` | Mini-boss rematches: starting one, the clock, and each boss's board |
 | `src/Codex.cs` | The monster codex: each monster's lore and how to beat it, and your kills of each |
-| `src/WeaponMods.cs` | Weapon mods: the four, their chest odds, fitting them, and piercing, chain, charge and frost |
+| `src/WeaponMods.cs` | Weapon mods: the four, their ranks and combos, chest odds, fitting them, and what each does |
 | `src/NewGamePlus.cs` | New Game+: what each tier does to the hub, and going round again |
 | `src/MiniBoss.cs` | The optional maps' mini-bosses: their looks, where they wait, and their tricks |
 | `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |

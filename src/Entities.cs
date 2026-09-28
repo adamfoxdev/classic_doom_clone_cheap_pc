@@ -123,7 +123,9 @@ public sealed class Monster : Thing
     public bool Blurring => BlurTime > 0 || Burrowed;
     public bool Burrowed;
     /// <summary>Seconds left slowed by a Frost mod.</summary>
-    public float SlowTime;
+    public float SlowTime, SlowFactor = 0.5f;
+    /// <summary>Seconds left frozen solid by a Deep Freeze: it can't move or attack.</summary>
+    public float FrozenTime;
     /// <summary>Its intro card has been shown (bosses only; see Game.CheckBossIntros).</summary>
     public bool Introduced;
     public override int Alpha => Burrowed ? 0 : BlurTime > 0 ? 90 : 256;
@@ -204,6 +206,8 @@ public sealed class Projectile : Thing
     public float Life = 6f, ExplodeTime;
     /// <summary>A piercing shot: how many more monsters it goes through, and those it's already been through.</summary>
     public int Pierce;
+    /// <summary>The charge behind the shot (1 for an ordinary one), for the charged mod combos.</summary>
+    public float Power = 1;
     public HashSet<Monster> Pierced;
     public Thing Owner;
 

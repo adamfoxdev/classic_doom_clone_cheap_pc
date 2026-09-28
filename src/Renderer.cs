@@ -1947,7 +1947,8 @@ public sealed class Renderer
         Bar(bx, y + 2, 48, 3, pr.Level >= Profile.MaxLevel ? 1f : pr.Xp / (float)Profile.XpToNext(pr.Level), Col.Rgb(230, 190, 80));
         if (pr.Points > 0) Text(bx + 52, y, "+", Col.Rgb(120, 255, 140));
         // the weapon in hand's mod, if it has one
-        if (g.ModOf(g.P.Weapon) is var mod && mod != WeaponMod.None) Text(bx + 60, y, WeaponMods.Tag(mod), WeaponMods.Colour(mod));
+        if (g.ModLabel(g.P.Weapon) is { } modLabel)
+            Text(bx + 60, y, modLabel, g.ComboOn(g.P.Weapon) != WeaponMods.Combo.None ? Col.Rgb(255, 215, 90) : WeaponMods.Colour(g.ModOf(g.P.Weapon)));
         if (g.XpPopupTime > 0) Text(4, y - 10, $"+{g.XpPopup} XP", Col.Rgb(255, 230, 120));
     }
 
