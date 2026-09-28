@@ -48,8 +48,11 @@ public static class Art
     // HUD
     public static Tex HudBack;
     // First-person weapons, indexed [class*3 + slot][frame], then the rocket launcher (9)
-    public static Tex[][] Weapons = new Tex[12][];
-    public const int RocketLauncherArt = 9, RailgunArt = 10, GrenadeLauncherArt = 11;
+    public static Tex[][] Weapons = new Tex[14][];
+    public const int RocketLauncherArt = 9, RailgunArt = 10, GrenadeLauncherArt = 11, ShotgunArt = 12, LightningGunArt = 13;
+    /// <summary>The Quake ammo boxes (by AmmoKind; 0 unused), and a pellet's mark on a wall.</summary>
+    public static Tex[] AmmoBox = new Tex[QuakeAmmo.Kinds];
+    public static Tex PelletMark;
     /// <summary>The railgun's beam: its white core and the blue spiral round it.</summary>
     public static Tex RailCore, RailSpiral;
 
@@ -103,7 +106,8 @@ public static class Art
         PickupKind.Weapon3 => WeaponPiece3,
         PickupKind.Jetpack => Jetpack,
         PickupKind.Upgrade => Upgrade[0],
-        PickupKind.Arms => Weapons[variant % Weapons.Length][0], // the range's rack: the weapon itself
+        PickupKind.Arms => Weapons[Rockets.AllWeapons()[variant % Rockets.AllWeapons().Length].ArtIndex][0], // the weapon itself
+        PickupKind.Ammo => AmmoBox[variant % AmmoBox.Length],
         _ => Relics[variant % Relics.Length],
     };
 
@@ -840,6 +844,7 @@ public static class Art
         Lightning = new[] { LightningTex(1), LightningTex(2) };
         Hammer = new[] { HammerTex(0), HammerTex(1) };
         Smoke = Orb(Col.Rgb(110, 108, 104), Col.Rgb(190, 186, 180), 2);
+        BuildAmmo();
         RailCore = Orb(Col.Rgb(200, 255, 230), Col.Rgb(255, 255, 255), 0);
         RailSpiral = Orb(Col.Rgb(60, 140, 255), Col.Rgb(160, 210, 255), 0);
         Grenade = new[] { Orb(Col.Rgb(70, 86, 60), Col.Rgb(140, 160, 110), 0), Orb(Col.Rgb(70, 86, 60), Col.Rgb(255, 80, 60), 0) };
@@ -1368,6 +1373,77 @@ public static class Art
             gl[f] = c.T;
         }
         Weapons[GrenadeLauncherArt] = gl;
+        foreach (var (index, draw, seed) in new (int, Action<Canvas, bool>, uint)[] { (ShotgunArt, DrawSuperShotgun, 101), (LightningGunArt, DrawLightningGun, 103) })
+        {
+            var frames = new Tex[2];
+            for (int f = 0; f < 2; f++)
+            {
+                var c = new Canvas(WW, WH);
+                draw(c, f == 1);
+                c.Noise(new Rng(seed + (uint)f), 8);
+                c.Outline(Dark);
+                frames[f] = c.T;
+            }
+            Weapons[index] = frames;
+        }
+    }
+
+    /// <summary>The super shotgun: two short barrels side by side up the middle, over a wooden stock; a flash from both.</summary>
+    static void DrawSuperShotgun(Canvas c, bool fire)
+    {
+        int kick = fire ? 9 : 0;
+        uint steel = Col.Rgb(96, 100, 108), dark = Col.Rgb(28, 28, 32), wood = Col.Rgb(120, 76, 40);
+        c.Rect(50, 58 + kick, 30, 22, wood);                          // the stock
+        c.Rect(51, 24 + kick, 13, 40, steel); c.Rect(65, 24 + kick, 13, 40, steel);
+        c.Rect(51, 24 + kick, 3, 40, Col.Shade(steel, 160)); c.Rect(65, 24 + kick, 3, 40, Col.Shade(steel, 160));
+        c.Ellipse(57.5f, 25 + kick, 4.5f, 2.5f, dark); c.Ellipse(71.5f, 25 + kick, 4.5f, 2.5f, dark);
+        c.Rect(50, 50 + kick, 30, 4, Col.Rgb(70, 72, 78));            // the band
+        if (fire) { c.Glow(64, 20 + kick, 24, Col.Rgb(255, 200, 90)); c.Glow(64, 22 + kick, 12, Col.Rgb(255, 250, 210)); }
+        Arm(c, 118, 80, 92, 72, Col.Rgb(90, 90, 100), Col.Rgb(200, 150, 110));
+    }
+
+    /// <summary>The lightning gun: a squat body with a coil round its barrel, a spark at the muzzle (a bright arc as it fires).</summary>
+    static void DrawLightningGun(Canvas c, bool fire)
+    {
+        uint body = Col.Rgb(80, 84, 96), coil = Col.Rgb(190, 150, 70), arc = Col.Rgb(170, 200, 255);
+        c.Rect(54, 44, 22, 36, body);
+        c.Rect(58, 26, 14, 20, Col.Shade(body, 120));
+        for (int k = 0; k < 4; k++) c.Rect(56, 28 + k * 5, 18, 2, coil);
+        c.Rect(54, 44, 3, 36, Col.Shade(body, 160));
+        var r = new Rng(fire ? 5u : 11u);
+        float x = 65, y = 24;
+        for (int i = 0; i < (fire ? 6 : 2); i++) { float nx = x + r.Range(-6, 6), ny = y - 4; c.Line(x, y, nx, ny, fire ? 2 : 1, arc); x = nx; y = ny; }
+        c.Glow(65, 24, fire ? 20 : 7, arc);
+        Arm(c, 118, 80, 92, 72, Col.Rgb(90, 90, 100), Col.Rgb(200, 150, 110));
+    }
+
+    /// <summary>The Quake ammo boxes: shells (red), rockets (a crate with warheads), cells (a glowing battery) and slugs (green).</summary>
+    static void BuildAmmo()
+    {
+        AmmoBox[0] = Vial;
+        AmmoBox[(int)AmmoKind.Shells] = Item(c =>
+        {
+            c.Rect(12, 30, 40, 26, Col.Rgb(150, 40, 30)); c.Rect(12, 30, 40, 5, Col.Rgb(200, 70, 50));
+            for (int k = 0; k < 5; k++) { c.Rect(15 + k * 7, 20, 5, 12, Col.Rgb(190, 50, 40)); c.Rect(15 + k * 7, 28, 5, 4, Col.Rgb(210, 180, 80)); }
+        }, 31);
+        AmmoBox[(int)AmmoKind.Rockets] = Item(c =>
+        {
+            c.Rect(10, 32, 44, 24, Col.Rgb(90, 80, 60)); c.Rect(10, 32, 44, 4, Col.Rgb(130, 115, 85));
+            for (int k = 0; k < 3; k++) { c.Rect(16 + k * 12, 16, 8, 18, Col.Rgb(120, 120, 110)); c.Tri(16 + k * 12, 16, 24 + k * 12, 16, 20 + k * 12, 9, Col.Rgb(200, 60, 40)); }
+        }, 33);
+        AmmoBox[(int)AmmoKind.Cells] = Item(c =>
+        {
+            c.Rect(16, 22, 32, 34, Col.Rgb(50, 60, 80)); c.Rect(22, 16, 20, 6, Col.Rgb(90, 100, 120));
+            c.Glow(32, 38, 14, Col.Rgb(110, 180, 255)); c.Rect(22, 30, 20, 16, Col.Rgb(140, 200, 255));
+        }, 35);
+        AmmoBox[(int)AmmoKind.Slugs] = Item(c =>
+        {
+            c.Rect(12, 30, 40, 26, Col.Rgb(40, 90, 50)); c.Rect(12, 30, 40, 5, Col.Rgb(70, 140, 80));
+            for (int k = 0; k < 4; k++) c.Rect(16 + k * 9, 16, 5, 16, Col.Rgb(170, 220, 180));
+        }, 37);
+        var m = new Canvas(16, 16);
+        m.Circle(8, 8, 5, Col.Rgb(20, 18, 16)); m.Circle(8, 8, 3, Col.Rgb(8, 6, 6));
+        PelletMark = m.T;
     }
 
     /// <summary>The grenade launcher: a stubby wide barrel over a round drum, held low in the middle.</summary>

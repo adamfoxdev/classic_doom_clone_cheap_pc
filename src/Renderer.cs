@@ -1949,8 +1949,13 @@ public sealed class Renderer
         if (p.Loadout != null)
         {
             // a practice loadout (the range's rack, the rocket course's launcher): the weapon in hand's key, and how many you hold
-            Text(202, by + 12, ShootingRange.KeyFor(p.Weapon), Col.Rgb(255, 220, 90));
-            Text(212, by + 12, $"x{p.HasWeapon.Count(h => h)}", Col.Rgb(200, 190, 170));
+            var cw = p.CurWeapon;
+            if (cw.Quick) Text(202, by + 12, QuakeAmmo.Short(cw.Ammo) + p.Ammo[(int)cw.Ammo], QuakeAmmo.Colour(cw.Ammo)); // a Quake weapon: its ammo
+            else
+            {
+                Text(202, by + 12, ShootingRange.KeyFor(p.Weapon), Col.Rgb(255, 220, 90));
+                Text(212, by + 12, $"x{p.HasWeapon.Count(h => h)}", Col.Rgb(200, 190, 170));
+            }
         }
         else
             for (int i = 0; i < 3; i++)
@@ -2037,7 +2042,12 @@ public sealed class Renderer
             Cross(4, y);
             Text(14, y, p.Health.ToString(), HealthColour(p));
             var w = p.CurWeapon;
-            if (w.Mana > 0)
+            if (w.Quick)
+            {
+                string ammo = QuakeAmmo.Short(w.Ammo) + p.Ammo[(int)w.Ammo];
+                Text(W - 4 - Font.Width(ammo), y, ammo, QuakeAmmo.Colour(w.Ammo));
+            }
+            else if (w.Mana > 0)
             {
                 string ammo = (w.Mana == 1 ? p.BlueMana : p.GreenMana).ToString();
                 Text(W - 4 - Font.Width(ammo), y, ammo, w.Mana == 1 ? BlueCol : GreenCol);

@@ -28,12 +28,13 @@ public static class Rockets
 
     public static readonly WeaponDef Launcher = new()
     {
-        Name = "Rocket Launcher", Proj = ProjKind.Rocket, DmgMin = 100, DmgMax = 120, Cooldown = 0.8f, Mana = 2, Cost = 2,
+        Name = "Rocket Launcher", Proj = ProjKind.Rocket, DmgMin = 100, DmgMax = 120, Cooldown = 0.8f, Ammo = AmmoKind.Rockets, Cost = 1,
         Speed = 12.5f, Splash = SplashRadius, Rocket = true, ArtIndex = 9, Sound = Sfx.Explode,
     };
 
-    /// <summary>Every weapon in the game: each class's three, then the rocket launcher, the railgun and the grenade launcher.</summary>
-    public static WeaponDef[] AllWeapons() => ClassDef.All.SelectMany(c => c.Weapons).Append(Launcher).Append(Railgun.Gun).Append(Grenades.Launcher).ToArray();
+    /// <summary>Every weapon in the game: each class's three, then the Quake weapons (QuakeArms.All).</summary>
+    public static WeaponDef[] AllWeapons() => _all ??= ClassDef.All.SelectMany(c => c.Weapons).Concat(QuakeArms.All).ToArray();
+    static WeaponDef[] _all;
 
     /// <summary>The rocket's climb angle (radians, up positive) for a view pitch, with `proj` the view's projection distance.</summary>
     public static float AimAngle(float pitch, float proj)
@@ -201,7 +202,7 @@ public sealed partial class Game
             had.CopyTo(p.HasWeapon, 0);
         }
         p.HasWeapon[i] = true;
-        p.BlueMana = Math.Max(p.BlueMana, 200); p.GreenMana = Math.Max(p.GreenMana, 200);
+        p.Ammo[(int)weapon.Ammo] = QuakeAmmo.Max(weapon.Ammo);
         SelectWeapon(i);
     }
 }

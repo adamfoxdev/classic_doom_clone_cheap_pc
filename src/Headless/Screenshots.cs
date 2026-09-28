@@ -377,6 +377,46 @@ public static partial class Headless
             Shot("136_rocket_course_demo");
             g.EndDemo();
 
+            // the lightning gun and super shotgun on the range's dummies; a stash in the campaign
+            g.StartPractice(PClass.Fighter, ShootingRange.Course);
+            foreach (var pk in g.Level.Things.OfType<Pickup>().Where(k => k.Kind == PickupKind.Arms).ToList()) { g.P.X = pk.X; g.P.Y = pk.Y; Tick(default); }
+            foreach (var m in g.Level.Things.OfType<Monster>()) m.Health = m.MaxHealth = 5000;
+            g.P.X = 14.5f; g.P.Y = 18f; g.P.Angle = -MathF.PI / 2; g.P.Pitch = 2f;
+            Tick(new Input { Slot = 14 }); Tick(default, 20);
+            g.Messages.Clear(); g.Say("Lightning gun: hold Fire, 30 ten times a second.");
+            Tick(new Input { Fire = true }, 6);
+            Shot("142_lightning_gun");
+            Tick(new Input { Slot = 13 }); Tick(default, 20);
+            g.P.X = 13.2f; g.P.Y = 16.5f; g.P.Angle = -MathF.PI / 2 - 0.45f; g.P.Cooldown = 0;
+            g.Messages.Clear(); g.Say("Super shotgun: 14 pellets, strong up close.");
+            Tick(new Input { Fire = true });
+            Tick(default, 3);
+            Shot("143_super_shotgun");
+            g.GoToTitle();
+            g.NewGame(PClass.Fighter);
+            {
+                var s0 = g.StashPlaces[0];
+                g.Warp(s0.Map);
+                var lv = g.Level;
+                g.Level.Things.RemoveAll(t => t is Monster);
+                // back across the room from it, as far as the floor runs
+                float bx = s0.X + 1, by = s0.Y + 1;
+                foreach (var (dx, dy) in new[] { (-1f, 1f), (1f, 1f), (-1f, -1f), (1f, -1f), (0f, 1f), (-1f, 0f) })
+                {
+                    float d = 2.5f;
+                    while (d < 6f && !lv.BlocksCircle(s0.X + 1 + dx * (d + 0.5f), s0.Y + 1 + dy * (d + 0.5f), 0.3f)) d += 0.5f;
+                    if (d >= 4f) { (bx, by) = (s0.X + 1 + dx * d, s0.Y + 1 + dy * d); break; }
+                }
+                g.P.X = bx; g.P.Y = by; g.P.FloorZ = lv.FloorAt(bx, by);
+                g.P.Angle = MathF.Atan2(s0.Y + 1 - by, s0.X + 1 - bx); g.P.Pitch = 16f;
+                g.Messages.Clear(); g.Say("Something up on that plinth...");
+                Tick(default, 40);
+                g.P.TeleportFlash = 0;
+                Tick(default);
+                Shot("144_quake_stash");
+            }
+            g.GoToTitle();
+
             // the grenade course: the yard and the low wall; a lob in the air over it; a grenade jump up the first ledge
             g.StartPractice(PClass.Cleric, GrenadeCourse.Course);
             g.P.X = 6.5f; g.P.Y = 6.5f; g.P.Angle = -0.12f; g.P.Pitch = 10f;

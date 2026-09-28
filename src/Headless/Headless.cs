@@ -87,6 +87,8 @@ public static partial class Headless
         ModChecks(Check);
         Console.WriteLine("Rocket launcher and shooting range:");
         RangeChecks(Check);
+        Console.WriteLine("Quake weapons in the campaign:");
+        QuakeArmsChecks(Check);
         Console.WriteLine("Game feel:");
         FeelChecks(Check);
         Console.WriteLine("Endless course:");
