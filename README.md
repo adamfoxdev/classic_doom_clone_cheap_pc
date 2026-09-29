@@ -262,6 +262,35 @@ dotnet run
 For players outside your network, publish the service behind an HTTPS reverse proxy, then set
 `HEXEN_MATCHMAKER_URL` to its public HTTPS address. Lobby state is held in memory and resets when the service restarts.
 
+#### Deploying the matchmaker to Fly.io
+
+`server/Matchmaker` has a `Dockerfile` and a `fly.toml`. With the [Fly CLI](https://fly.io/docs/flyctl/install/)
+installed and signed in (`fly auth login`), deploy from that folder:
+
+```sh
+cd server/Matchmaker
+fly launch --copy-config --no-deploy   # choose your app name and a region near your players
+fly deploy --ha=false
+fly scale count 1
+```
+
+Then point the game at it (`https`: the game switches to secure WebSockets itself):
+
+```sh
+HEXEN_MATCHMAKER_URL=https://<your-app>.fly.dev/ dotnet run
+```
+
+- **One machine only.** Rooms live in the server's memory. With two machines, players on different ones couldn't
+  see or join each other's rooms. That's why `--ha=false` and `fly scale count 1`.
+- **Always on.** `fly.toml` keeps the machine running (`auto_stop_machines = "off"`, `min_machines_running = 1`), so
+  there's no cold start, and no room is lost to a stop. A restart or redeploy clears the lobby; games in progress end.
+- **Region.** Every input and every frame passes through the server, so pick the region nearest your players
+  (`primary_region` in `fly.toml`, or `fly regions`).
+- **Size.** A shared-CPU machine with 256 MB is plenty. `fly.toml` checks `/health` every 30 seconds.
+- **Idle lobbies.** The server pings each connection every 20 seconds, so a lobby waiting for its host to start isn't
+  closed as idle.
+- Everyone needs the same game version: rooms only match their own.
+
 ## Controls
 
 These are the defaults. Change any of them in **Options → Key bindings** (see below).

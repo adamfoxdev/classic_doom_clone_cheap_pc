@@ -7,7 +7,8 @@ using System.Threading.Channels;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<RoomDirectory>();
 var app = builder.Build();
-app.UseWebSockets();
+// a ping every 20 s keeps a lobby's quiet connection from being closed as idle by a proxy (Fly.io's, say)
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/api/rooms", (RoomDirectory rooms) => Results.Ok(rooms.List()));
