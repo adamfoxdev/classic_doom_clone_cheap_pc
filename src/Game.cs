@@ -14,6 +14,7 @@ public struct Input
     public int Slot, Cycle;               // weapon slot 1..3 pressed, wheel -1/+1
     public string Typed;                  // text typed this frame (console / cheat codes)
     public bool ConsoleToggle, Backspace, Tab, PageUp, PageDown, Jump, Slide;
+    public bool Chat;                     // pressed: talk, in an online game
 }
 
 public sealed class WeaponDef
@@ -997,10 +998,14 @@ public sealed partial class Game
     public void Update(Input inp, float dt)
     {
         Matchmaker?.Tick(dt);
+        AgeChat(dt);
         if (Matchmaker?.TakeStartReady() == true) OnlineSession.Host(this);
         if (NetSession == null && NetLink is { } link && (Matchmaker == null || Matchmaker.InRoom))
             while (link.TryReceiveNetwork(out var networkMessage))
+            {
+                if (networkMessage.Type == "chat") HearChat(networkMessage); // (talk in the lobby)
                 if (networkMessage.Type == "start") { OnlineSession.Client(this, networkMessage); break; }
+            }
         if (NetSession != null) { OnlineUpdate(inp, dt); return; }
         CurrentReplay?.Frames.Add((dt, inp)); // the run's replay: every frame, as it came
         if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
@@ -1140,8 +1145,11 @@ public sealed partial class Game
     void OnlineUpdate(Input inp, float dt)
     {
         if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
-        if (Menu.Open) { Menu.Update(inp, dt); inp = new Input(); }
+        // typing a line: every key goes into it, and you stand still meanwhile (the game goes on)
+        if (Chatting) { ChatInput(inp); inp = new Input(); }
+        else if (Menu.Open) { Menu.Update(inp, dt); inp = new Input(); }
         else if (inp.Pause) { Menu.Show(MenuPage.Pause); inp = new Input(); }
+        else if (inp.Chat) { OpenChat(); inp = new Input(); }
         NetSession?.Tick(this, inp, dt);
     }
 

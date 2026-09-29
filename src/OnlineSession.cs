@@ -124,6 +124,7 @@ public sealed class OnlineSession
             while (_link.TryReceiveNetwork(out var message))
             {
                 if (message.Type == "stop") { game.EndOnlineGame("The host ended the game."); return; }
+                if (message.Type == "chat") { game.HearChat(message); continue; }
                 if (message.Type != "frame" || message.Inputs == null || message.Tick < _tick) continue; // (not a frame, or one already stepped)
                 if (message.Tick > _tick)
                 {
@@ -144,7 +145,8 @@ public sealed class OnlineSession
         while (_link.TryReceiveNetwork(out var message))
         {
             if (message.Type == "stop") { game.EndOnlineGame(); return; }
-            if (message.Type == "input" && message.PlayerId != _localId && message.Input != null && _inputs.TryGetValue(message.PlayerId, out var buffer))
+            if (message.Type == "chat") game.HearChat(message);
+            else if (message.Type == "input" && message.PlayerId != _localId && message.Input != null && _inputs.TryGetValue(message.PlayerId, out var buffer))
                 buffer.Push(message.Input);
             else if (message.Type == "peer-left" && message.PlayerId != null && _inputs.TryGetValue(message.PlayerId, out var departed))
             {

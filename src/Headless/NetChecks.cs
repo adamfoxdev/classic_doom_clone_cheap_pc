@@ -75,6 +75,35 @@ public static partial class Headless
               && said.Scores.Select(sc => sc.PlayerId).SequenceEqual(new[] { "a", "b" }) && client.NetSession != null && host.OnlineHash() == client.OnlineHash(),
             $"every two seconds (at once, too) the host sends the matchmaker's who board a status ({statuses.Count} in {host.NetSession?.TickCount} ticks: \"{said?.Status}\", each player's health and kills); the game plays on");
 
+        // chat: T opens a line, you stand still while you type, and Enter sends it beside the frames
+        (host, client, hostLink, clientLink) = Pair();
+        var sent = new List<NetworkMessage>();
+        clientLink.Drop = m => { if (m.Type == "chat") sent.Add(m); return m.Type == "chat"; }; // (the matchmaker would stamp and pass it on)
+        for (int k = 0; k < 30; k++) { host.Update(new Input(), Frame); client.Update(new Input(), Frame); }
+        var standing = (Of(host, "b").State.X, Of(host, "b").State.Y);
+        client.Update(new Input { Chat = true, Typed = "t" }, Frame); // (the T that opens it isn't typed in)
+        bool opened = client.Chatting && client.ChatDraft == "";
+        foreach (string word in new[] { "gg ", "wwww" }) { client.Update(new Input { Typed = word, Move = 1, Fire = true }, Frame); host.Update(new Input(), Frame); }
+        client.Update(new Input { Backspace = true, Move = 1 }, Frame);
+        for (int k = 0; k < 20; k++) { host.Update(new Input(), Frame); client.Update(new Input { Move = 1 }, Frame); }
+        bool stood = Game.Dist(Of(host, "b").State.X, Of(host, "b").State.Y, standing.X, standing.Y) < 0.01f;
+        string draft = client.ChatDraft;
+        client.Update(new Input { Confirm = true }, Frame);
+        check(opened && stood && draft == "gg www" && !client.Chatting && sent.Count == 1 && sent[0].Text == "gg www",
+            $"T opens chat: you stand still while you type (\"{draft}\"), and Enter sends the line");
+        // lines come back from the matchmaker with a name: a player's, or someone's on its who board
+        hostLink.SendNetwork(new NetworkMessage { Type = "chat", Name = "Riley", Text = "nice goal", From = "player" });
+        hostLink.SendNetwork(new NetworkMessage { Type = "chat", Name = "Mum", Text = "dinner in 5", From = "web" });
+        for (int k = 0; k < 5; k++) { host.Update(new Input(), Frame); client.Update(new Input(), Frame); }
+        client.Update(new Input(), 0);
+        check(client.Chat.Count == 2 && client.Chat[0].Name == "Riley" && !client.Chat[0].Web && client.Chat[1].Web && client.Chat[1].Text == "dinner in 5"
+              && client.NetSession != null && host.OnlineHash() == client.OnlineHash(),
+            "chat comes in between the frames (from a player, or from the web board) and the game plays on in step");
+        client.Update(new Input { Chat = true }, Frame);
+        client.Update(new Input { Typed = "oops" }, Frame);
+        client.Update(new Input { Pause = true }, Frame);
+        check(!client.Chatting && client.Menu.Page == null && sent.Count == 1, "Esc gives up on a line without sending it (and without opening the menu)");
+
         // mouse movement adds up between ticks: at 144 frames a second, none is lost
         (host, client, _, _) = Pair();
         float before = host.P.Angle;
@@ -158,7 +187,17 @@ public static partial class Headless
         g.Con.Execute("matchmaker default", quiet: true);
         check(g.MatchmakerUrl == Game.DefaultMatchmakerUrl && !Settings.Lines(g).Any(l => l.StartsWith("matchmaker")), "'matchmaker default' goes back to the public one");
         g.Menu.Show(MenuPage.Online);
+        bool asked = g.Menu.EditingName;
+        g.Menu.Update(new Input { Confirm = true }, Frame); // (nothing typed: it waits for a name)
+        bool stillAsking = g.Menu.EditingName && g.OnlineName == "";
+        g.Menu.Update(new Input { Typed = "  Sam  the Gunner " }, Frame);
+        g.Menu.Update(new Input { Confirm = true }, Frame);
         var online = g.Menu.Items(MenuPage.Online);
+        check(asked && stillAsking && !g.Menu.EditingName && g.OnlineName == "Sam the Gunner" && online.Contains("Name: Sam the Gunner")
+              && Settings.Lines(g).Contains("onlinename Sam the Gunner"),
+            "the first time you go Online you're asked your name (it can't be blank), and it's kept");
+        g.Menu.Close(); g.Menu.Show(MenuPage.Online);
+        check(!g.Menu.EditingName, "once you've a name, Online doesn't ask again (Name: changes it)");
         g.Menu.Cursor = Array.FindIndex(online, i => i.StartsWith("Server: "));
         g.Menu.Update(new Input { Confirm = true }, Frame);
         bool editing = g.Menu.EditingServer;

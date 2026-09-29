@@ -126,6 +126,27 @@
   .bar-track { height: 8px; margin-top: 4px; }
   .bar-fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
   footer { margin-top: 32px; color: var(--text-3); font-size: 12px; }
+  .chat-card { display: flex; flex-direction: column; gap: 12px; }
+  .chat-feed { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+  .chat-line { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+  .chat-time { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .chat-body { min-width: 0; overflow-wrap: anywhere; }
+  .chat-name { font-weight: 650; margin-right: 6px; }
+  .chat-where { color: var(--text-3); font-size: 12px; margin-left: 6px; }
+  .chat-web { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 4px; background: var(--chip); color: var(--accent); margin-right: 6px; vertical-align: 1px; }
+  .chat-empty { color: var(--text-3); }
+  form.say { display: grid; grid-template-columns: 140px 180px 1fr auto; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+  @media (max-width: 720px) { form.say { grid-template-columns: 1fr 1fr; } form.say .say-text { grid-column: 1 / -1; } form.say button { grid-column: 1 / -1; } }
+  form.say input, form.say select, form.say button {
+    font: inherit; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 10px; min-width: 0;
+  }
+  form.say input:focus, form.say select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  form.say button { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; cursor: pointer; }
+  form.say button:disabled { opacity: 0.5; cursor: default; }
+  .say-note { font-size: 12px; color: var(--text-3); min-height: 16px; }
+  .room-say { margin-top: 10px; font: inherit; font-size: 12px; color: var(--accent); background: none; border: none; padding: 0; cursor: pointer; }
+  .room-say:hover { text-decoration: underline; }
   .error { color: var(--red); }
 </style>
 </head>
@@ -149,6 +170,18 @@
 
   <h2>Rooms</h2>
   <section class="rooms" id="rooms"></section>
+
+  <h2>Chat</h2>
+  <section class="card chat-card" aria-label="Chat">
+    <div class="chat-feed" id="chat" aria-live="polite"></div>
+    <form class="say" id="say" autocomplete="off">
+      <input id="say-name" maxlength="16" placeholder="Your name" aria-label="Your name" required>
+      <select id="say-to" aria-label="Send to"><option value="all">Everyone playing</option></select>
+      <input id="say-text" class="say-text" maxlength="100" placeholder="Say something to the players…" aria-label="Message" required>
+      <button type="submit" id="say-send">Send</button>
+    </form>
+    <div class="say-note" id="say-note">Messages show in the game, marked as from the web.</div>
+  </section>
 
   <div class="two">
     <section>
@@ -220,8 +253,9 @@ function renderTiles(b) {
 }
 
 // players online: one series, so no legend; the title names it. Hover shows the minute and the count.
-let chartData = [];
+let chartData = [], chartHistory = null;
 function renderChart(history, now) {
+  chartHistory = history; // (as it came: a resize draws it again from this)
   const fresh = history.length < 2; // (the server's not been up a minute: just now, drawn flat)
   if (fresh) history = [history[0] ?? 0, history[0] ?? 0];
   const svg = $("chart");
@@ -307,9 +341,78 @@ function renderRooms(b) {
         el("span", { class: `badge ${r.state}`, text: state })),
       el("div", { class: "room-mode", text: `${mode} · ${r.players}/${r.capacity} players · v${r.version}` }),
       r.status ? el("div", { class: "room-status", text: r.status }) : null,
-      el("ul", { class: "members" }, ...r.members.map(p => member(p, r.state === "playing"))));
+      el("ul", { class: "members" }, ...r.members.map(p => member(p, r.state === "playing"))),
+      sayButton(r));
   }));
 }
+
+function sayButton(r) {
+  const b = el("button", { class: "room-say", type: "button", text: `Message ${r.host || "this"}'s game` });
+  b.addEventListener("click", () => { $("say-to").value = r.id; $("say-text").focus(); });
+  return b;
+}
+
+function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+
+let chatShown = "", roomsShown = "";
+function renderChat(b) {
+  // the room picker, rebuilt only when the rooms change (so an open list isn't shut): what's picked stays while its room does
+  const roomsKey = b.rooms.map(r => r.id + r.host).join("|");
+  if (roomsKey !== roomsShown) {
+    roomsShown = roomsKey;
+    const to = $("say-to"), picked = to.value;
+    to.replaceChildren(el("option", { value: "all", text: "Everyone playing" }),
+      ...b.rooms.map(r => el("option", { value: r.id, text: `${r.host || "?"}'s game` })));
+    to.value = b.rooms.some(r => r.id === picked) ? picked : "all";
+  }
+
+  const lines = [...b.chat].reverse(); // oldest first, newest at the bottom
+  const key = lines.map(l => l.when + l.name + l.text).join("|");
+  if (key === chatShown) return; // (nothing new: leave the feed, and its scroll, alone)
+  const feed = $("chat"), atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 24;
+  chatShown = key;
+  if (!lines.length) {
+    feed.replaceChildren(el("div", { class: "chat-empty", text: "No chat yet. Players press T in a game to talk; say hello from here." }));
+    return;
+  }
+  feed.replaceChildren(...lines.map(l => el("div", { class: "chat-line" },
+    el("span", { class: "chat-time", text: clock(l.when) }),
+    el("div", { class: "chat-body" },
+      l.from === "web" ? el("span", { class: "chat-web", text: "WEB" }) : null,
+      el("span", { class: "chat-name", text: l.name }),
+      el("span", { text: l.text }),
+      el("span", { class: "chat-where", text: `in ${l.room}` })))));
+  if (atBottom || lines.length <= 1) feed.scrollTop = feed.scrollHeight;
+}
+
+try { $("say-name").value = localStorage.getItem("hexen-board-name") || ""; } catch { }
+$("say").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const name = $("say-name").value.trim(), text = $("say-text").value.trim(), to = $("say-to").value;
+  if (!name || !text) return;
+  try { localStorage.setItem("hexen-board-name", name); } catch { }
+  $("say-send").disabled = true;
+  const note = $("say-note");
+  try {
+    const res = await fetch(`api/rooms/${encodeURIComponent(to)}/say`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, text }),
+    });
+    if (res.status === 429) { note.textContent = "Slow down: one message every few seconds."; note.classList.add("error"); }
+    else if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      note.textContent = body.error || `Couldn't send (HTTP ${res.status}).`; note.classList.add("error");
+    } else {
+      $("say-text").value = "";
+      note.textContent = "Sent."; note.classList.remove("error");
+      $("chat").scrollTop = $("chat").scrollHeight;
+      refresh();
+    }
+  } catch (e) {
+    note.textContent = `Couldn't send (${e.message}).`; note.classList.add("error");
+  } finally {
+    setTimeout(() => { $("say-send").disabled = false; }, 1500);
+  }
+});
 
 function renderRecent(b) {
   if (!b.recent.length) {
@@ -345,6 +448,7 @@ async function refresh() {
     renderTiles(b);
     renderChart(b.history, new Date(b.now));
     renderRooms(b);
+    renderChat(b);
     renderRecent(b);
     renderModes(b);
     $("footer").textContent = `${num(b.totals.framesRelayed)} frames relayed · ${bytes(b.totals.bytesRelayed)} sent to players since the server started. Refreshes every ${REFRESH_MS / 1000}s.`;
@@ -360,7 +464,7 @@ async function refresh() {
 }
 refresh();
 setInterval(refresh, REFRESH_MS);
-window.addEventListener("resize", () => { if (chartData.history) renderChart(chartData.history, chartData.now); });
+window.addEventListener("resize", () => { if (chartHistory) renderChart(chartHistory, chartData.now); });
 </script>
 </body>
 </html>

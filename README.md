@@ -218,11 +218,14 @@ dotnet run -c Release
 ### Online matchmaking
 
 The title menu's **Online** page can quick-match into an open room, host a room or join a listed room. Rooms hold up to
-four players, expire after 45 seconds without a heartbeat and only match the same game version. There are no accounts:
-you go by your leaderboard name (`name` in the console). A host-led 60 Hz input relay makes all peers simulate the same
+four players, expire after 45 seconds without a heartbeat and only match the same game version. There are no accounts.
+A host-led 60 Hz input relay makes all peers simulate the same
 players, monsters, doors, projectiles and pickups. The relay does not yet provide client prediction, host migration or
 late joining, so latency can delay visible gameplay, and the session ends if the host disconnects.
 
+- **Your name:** the first time you open the Online page it asks what to call you (up to 16 characters). Others see
+  it in the room list and in chat. **Name** on the Online page changes it; so does `onlinename <name>` in the console.
+  It's saved with your settings. Two players with the same name in a room become "Sam" and "Sam 2".
 - **The server:** out of the box the game uses the public matchmaker at
   `https://matchmaker-tranquil-fire-5888.fly.dev/`. To use another (your own, or one on your network), pick
   **Server** on the Online page and type its address:
@@ -243,6 +246,10 @@ late joining, so latency can delay visible gameplay, and the session ends if the
 
 In a session:
 
+- **Chat:** press **T** (rebindable, as **Chat**), type, and **Enter** sends it to everyone in the room; **Esc** gives
+  up, and **Tab** pastes. You stand still while you type, and the game carries on. In a room before the game starts,
+  pick **Chat (T)** on the Online page or press T. Lines show at the bottom left for ten seconds: players' names in
+  blue, messages from the who board in pink, marked **[WEB]**.
 - **Esc** opens a small menu (**Resume**, **Leave game**) while the game carries on; you stand still meanwhile. When the
   host leaves, the game ends for everyone.
 - **Settings:** the rules (speed, damage, gravity and so on) are the host's, so every copy of the game runs alike. What
@@ -324,13 +331,20 @@ refreshes every 3 seconds and shows:
   or the map and the crew's kills. Each player's health, kills and soccer team show too. Older games show only the mode
   and time.
 - **The last 20 finished games.** Who played, what mode, for how long, and how each one ended.
+- **Chat.** Everything said in the rooms, newest at the bottom. Anyone on the board can talk to the players too: type a
+  name and a message, and pick **Everyone playing** or one room (or click **Message …'s game** on its card). Board
+  messages show in the game marked as from the web, so nobody on the board can pass for a player. Each address can
+  send one message every 3 seconds, and 10 a minute; players can send 5 lines in any 5 seconds.
 - **Totals since the server started.** Games played per mode, rooms made, players joined, the peak player count, and
   frames relayed.
 
 The board is public, so it shows player names and games only, never a player's id or token. The page's data is
-`GET /api/board`. All of it lives in the server's memory, so a restart or redeploy starts the numbers again.
+`GET /api/board`, and it sends messages with `POST /api/rooms/{id}/say` (`{"name": "...", "text": "..."}`, id `all`
+for every room). Keep in mind that anyone who has the address can read the chat and write to the players. All of it lives in the server's memory, so a restart or redeploy starts the numbers again.
 
-![The who board: players online, rooms with their scores, recent games](docs/matchmaker_board.png)
+![The who board: players online, rooms with their scores, chat, recent games](docs/matchmaker_board.png)
+
+![Chat in a game of Rocket Soccer: lines from the crew and the web board, and one being typed](docs/online_chat.png)
 
 ## Controls
 
@@ -352,6 +366,7 @@ These are the defaults. Change any of them in **Options → Key bindings** (see 
 | Right click / `B` | Place a rubble block you've broken loose |
 | `Shift` | Walk |
 | `Tab` / `M` | Automap |
+| `T` | Chat, in an online game or room |
 | `Esc` | Pause menu (Resume, Options, Restart, Quit) |
 | `K` | Character screen: spend skill points, see your weapons' levels |
 | `J` | Case journal (Story mode) |

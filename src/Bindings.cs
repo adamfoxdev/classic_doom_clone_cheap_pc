@@ -5,7 +5,7 @@ public enum Act
 {
     Forward, Back, StrafeLeft, StrafeRight, TurnLeft, TurnRight, Attack, Use, Jump, Jetpack, Slide, Walk, UseItem, Place,
     Weapon1, Weapon2, Weapon3, NextWeapon, PrevWeapon, Automap, Console, Screenshot, Character, CycleHud, Journal,
-    Weapon4, Weapon5, Weapon6, Weapon7, Weapon8, Weapon9, Weapon10, Weapon11, Weapon12, Weapon13, Weapon14, Zoom,
+    Weapon4, Weapon5, Weapon6, Weapon7, Weapon8, Weapon9, Weapon10, Weapon11, Weapon12, Weapon13, Weapon14, Zoom, Chat,
 }
 
 /// <summary>Where key state comes from (Raylib in the real game, a fake in tests).</summary>
@@ -113,6 +113,7 @@ public sealed class Bindings
         new(Act.Weapon13, "weapon13", "Super shotgun (range)", Keys.LeftBracket, Keys.None),
         new(Act.Weapon14, "weapon14", "Lightning gun (range)", Keys.RightBracket, Keys.None),
         new(Act.Zoom, "zoom", "Zoom (hold)", Keys.Mouse3, Keys.Letter('Z')),
+        new(Act.Chat, "chat", "Chat (online)", Keys.Letter('T'), Keys.None),
     };
 
     readonly int[,] _keys = new int[Count, Slots];
@@ -178,6 +179,7 @@ public sealed class Bindings
         i.Journal = Pressed(k, Act.Journal);
         i.ConsoleToggle = Pressed(k, Act.Console);
         i.Screenshot = Pressed(k, Act.Screenshot);
+        i.Chat = Pressed(k, Act.Chat);
         if (Pressed(k, Act.Weapon1)) i.Slot = 1;
         if (Pressed(k, Act.Weapon2)) i.Slot = 2;
         if (Pressed(k, Act.Weapon3)) i.Slot = 3;

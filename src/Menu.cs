@@ -81,6 +81,37 @@ public sealed class MenuSystem
                 if (c > ' ' && c < 127 && ServerDraft.Length < 200) ServerDraft += c;
     }
 
+    /// <summary>Typing your online name on the Online page (asked the first time you open it): what's typed so far.</summary>
+    public bool EditingName;
+    public string NameDraft = "";
+
+    /// <summary>Typing your name: Enter keeps it (it can't be empty), Esc keeps the old one, or leaves if there isn't one yet.</summary>
+    void EditName(Input inp)
+    {
+        if (inp.Pause)
+        {
+            EditingName = false;
+            if (_g.OnlineName.Length == 0) Back();
+            return;
+        }
+        if (inp.Confirm)
+        {
+            string name = Game.CleanOnlineName(NameDraft);
+            if (name.Length == 0) { Say("Type a name first."); _g.PlaySound(Sfx.Locked, 0.8f); return; }
+            EditingName = false;
+            _g.OnlineName = name;
+            _g.SaveSettings();
+            Say($"You're {name} online.");
+            _g.PlaySound(Sfx.Item, 0.8f);
+            return;
+        }
+        if (inp.Tab && _g.PasteText?.Invoke() is { } pasted) NameDraft = Game.CleanOnlineName(pasted);
+        if (inp.Backspace && NameDraft.Length > 0) NameDraft = NameDraft[..^1];
+        if (!string.IsNullOrEmpty(inp.Typed))
+            foreach (char c in inp.Typed)
+                if (!char.IsControl(c) && NameDraft.Length < 16 && !(c == ' ' && (NameDraft.Length == 0 || NameDraft[^1] == ' '))) NameDraft += c;
+    }
+
     /// <summary>How many of the course list's items go in its left column (the rest, and Back, in the right).</summary>
     public static int CourseColumn(int items) => (items + 1) / 2;
 
@@ -90,7 +121,12 @@ public sealed class MenuSystem
     {
         if (Page != null) _back.Push((Page.Value, Cursor));
         Page = p; Cursor = 0; Column = 0; Scroll = 0; Capturing = false; NoticeTime = 0;
-        if (p == MenuPage.Online) _g.Matchmaker?.Refresh();
+        if (p == MenuPage.Online)
+        {
+            _g.Matchmaker?.Refresh();
+            // who are you? asked once, before anything else online (Name: changes it)
+            if (_g.OnlineName.Length == 0) { EditingName = true; NameDraft = ""; }
+        }
         else if (p != MenuPage.Pause) _g.OnlineNotice = null;
         if (p == MenuPage.Leaderboard)
         {
@@ -132,11 +168,12 @@ public sealed class MenuSystem
             .Concat(new[] { "Practice", "Arena", "Story", "Online", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
         MenuPage.Online => _g.Matchmaker?.InRoom == true
             ? (_g.Matchmaker.Ticket.IsHost
-                ? new[] { $"Start game ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})", "Mode: " + OnlineSession.ModeName(_g.OnlineMode), "Leave room", "Back" }
-                : new[] { $"Waiting for host ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})", "Leave room", "Back" })
+                ? new[] { $"Start game ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})", "Mode: " + OnlineSession.ModeName(_g.OnlineMode), "Chat (T)", "Leave room", "Back" }
+                : new[] { $"Waiting for host ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})", "Chat (T)", "Leave room", "Back" })
             : new[] { "Quick match", "Host a game", "Refresh games" }
                 .Concat((_g.Matchmaker?.Rooms ?? Array.Empty<MatchmakerClient.MatchRoom>())
                     .Select(r => $"Join {r.Code.ToUpperInvariant()} - {r.Host} ({r.Players}/{r.Capacity})"))
+                .Append("Name: " + (_g.OnlineName.Length > 0 ? _g.OnlineName : "?"))
                 .Append("Server: " + ServerLabel(_g.MatchmakerUrl))
                 .Append("Back").ToArray(),
         MenuPage.Pause => _g.OnlineRun ? new[] { "Resume", "Leave game" }
@@ -217,6 +254,9 @@ public sealed class MenuSystem
         }
 
         if (EditingServer && Page == MenuPage.Online) { EditServer(inp); return; }
+        if (EditingName && Page == MenuPage.Online) { EditName(inp); return; }
+        if (_g.Chatting && Page == MenuPage.Online) { _g.ChatInput(inp); return; }
+        if (inp.Chat && Page == MenuPage.Online && _g.CanChat) { _g.OpenChat(); return; }
         if (inp.Pause || (inp.Character && Page == MenuPage.Character)) { _g.PlaySound(Sfx.Swing, 0.5f); Back(); return; }
         if (inp.Up) { Cursor = (Cursor + items.Length - 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
         if (inp.Down) { Cursor = (Cursor + 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
@@ -239,12 +279,15 @@ public sealed class MenuSystem
             if (!inp.Confirm) return;
             if (item == "Back") { Back(); return; }
             if (item.StartsWith("Server: ")) { EditingServer = true; ServerDraft = _g.MatchmakerUrl; return; }
+            if (item.StartsWith("Name: ")) { EditingName = true; NameDraft = _g.OnlineName; return; }
+            if (item.StartsWith("Chat")) { _g.OpenChat(); return; }
             if (_g.Matchmaker == null) { Say("Online matchmaking is not configured."); return; }
-            _g.Matchmaker.PlayerName = _g.RunnerName;
+            if (_g.OnlineName.Length == 0) { EditingName = true; NameDraft = ""; return; }
+            _g.Matchmaker.PlayerName = _g.OnlineName;
             if (item.StartsWith("Start game")) _g.Matchmaker.RequestStart();
             else if (item == "Leave room") _g.Matchmaker.Leave();
             else if (item == "Quick match") _g.Matchmaker.QuickMatch();
-            else if (item == "Host a game") _g.Matchmaker.Host(_g.RunnerName);
+            else if (item == "Host a game") _g.Matchmaker.Host(_g.OnlineName);
             else if (item == "Refresh games") _g.Matchmaker.Refresh();
             else if (item.StartsWith("Join "))
             {
@@ -554,6 +597,7 @@ public static class Settings
         yield return "name " + g.RunnerName;
         yield return "arenamods " + ArenaModInfo.Letters(g.ArenaMods);
         if (g.SavedMatchmakerUrl != null) yield return "matchmaker " + g.SavedMatchmakerUrl;
+        if (g.OnlineName.Length > 0) yield return "onlinename " + g.OnlineName;
     }
 
     public static void Save(Game g, string path)

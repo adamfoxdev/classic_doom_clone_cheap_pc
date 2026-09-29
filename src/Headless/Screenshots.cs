@@ -529,9 +529,29 @@ public static partial class Headless
                 for (int k = 0; k < 90; k++) { h.Update(new Input { Move = k < 40 ? 1 : 0 }, 1f / 60f); c.Update(new Input { Move = k < 30 ? 1 : 0, LookY = k < 10 ? 2 : 0 }, 1f / 60f); }
                 g = c;
                 Shot("167_online_soccer");
+                // chat over the game: lines from the crew and from the web board, and one being typed
+                foreach (var (who, text, from) in new[] { ("Riley", "nice save!", "player"), ("Mum", "dinner in 10 minutes", "web"), ("Sam", "rematch after this one?", "player") })
+                    hostLink.SendNetwork(new NetworkMessage { Type = "chat", Name = who, Text = text, From = from });
+                c.Update(new Input { Chat = true }, 1f / 60f);
+                c.Update(new Input { Typed = "yes, blue wins next" }, 1f / 60f);
+                h.Update(new Input(), 1f / 60f); c.Update(new Input(), 1f / 60f);
+                c.Time = 0;
+                Shot("168_online_chat");
                 g = keep;
             }
             g.Menu.Close();
+            {
+                // the first time you go Online: what's your name?
+                string keepName = g.OnlineName;
+                g.OnlineName = "";
+                g.Menu.Show(MenuPage.Online);
+                g.Menu.Update(new Input { Typed = "Sam" }, 1f / 60f);
+                g.Time = 0;
+                Shot("169_online_name");
+                g.Menu.Close();
+                g.Menu.EditingName = false;
+                g.OnlineName = keepName;
+            }
             g.Profile.SoccerRuns.Clear();
             g.GoToTitle();
 

@@ -54,6 +54,7 @@ public sealed class Renderer
         if (g.ShowMap) DrawAutomap(g);
         DrawHud(g);
         DrawMessages(g);
+        if (g.NetSession != null) DrawChat(g, ViewH - 11, g.Chatting ? 6 : 4, g.Chatting);
         if (!g.ShowMap) DrawHazardBanner(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
@@ -233,12 +234,29 @@ public sealed class Renderer
             string text = items[i];
             if (g.Menu.EditingServer && text.StartsWith("Server: "))
                 text = "Server: " + (g.Menu.ServerDraft.Length > 38 ? "..." + g.Menu.ServerDraft[^35..] : g.Menu.ServerDraft) + ((int)(g.Time * 3) % 2 == 0 ? "_" : " ");
+            if (g.Menu.EditingName && text.StartsWith("Name: "))
+                text = "Name: " + g.Menu.NameDraft + ((int)(g.Time * 3) % 2 == 0 ? "_" : " ");
             MenuItem(text, 42 + i * 12, i == g.Menu.Cursor);
         }
         if (g.Menu.EditingServer)
         {
             CenterText("TYPE THE MATCHMAKER'S ADDRESS. EMPTY FOR THE DEFAULT.", 134, Col.Rgb(230, 190, 80));
-            CenterText("ENTER: SAVE  TAB: PASTE  BACKSPACE: DELETE  ESC: CANCEL", 190, MenuDim);
+            CenterText("ENTER: SAVE  TAB: PASTE  ESC: CANCEL", 190, MenuDim);
+            return;
+        }
+        if (g.Menu.EditingName)
+        {
+            if (g.Matchmaker?.InRoom == true || !items.Any(i => i.StartsWith("Name: ")))
+                CenterText("NAME: " + g.Menu.NameDraft + ((int)(g.Time * 3) % 2 == 0 ? "_" : " "), 120, MenuText);
+            CenterText(g.OnlineName.Length == 0 ? "WHAT'S YOUR NAME? OTHERS SEE IT IN GAMES AND CHAT." : "TYPE A NEW NAME FOR ONLINE PLAY.", 146, Col.Rgb(230, 190, 80));
+            if (g.Menu.NoticeTime > 0) CenterText(g.Menu.Notice.ToUpperInvariant(), 158, Col.Rgb(255, 120, 90));
+            CenterText("ENTER: SAVE  TAB: PASTE  ESC: CANCEL", 190, MenuDim);
+            return;
+        }
+        if (g.Matchmaker?.InRoom == true && (g.Chat.Count > 0 || g.Chatting))
+        {
+            DrawChat(g, 172, 5, true);
+            CenterText(g.Chatting ? "ENTER: SEND  ESC: CANCEL" : "T: CHAT  UP/DOWN: SELECT  ENTER: CHOOSE", 190, MenuDim);
             return;
         }
         string status = g.Matchmaker?.Status ?? "Matchmaking is not configured.";
@@ -2539,6 +2557,43 @@ public sealed class Renderer
         for (int j = y; j < y + h; j++)
             for (int i = x; i < x + w; i++)
                 if ((uint)i < W && (uint)j < H) Fb[j * W + i] = c;
+    }
+
+    /// <summary>
+    /// Online chat, bottom up from y: your line being typed (when typing), then the latest lines (in play, only the last
+    /// few seconds'; all of the last few while typing or in the lobby). Names in blue, the who board's in pink.
+    /// </summary>
+    void DrawChat(Game g, int y, int lines, bool all)
+    {
+        int max = (W - 8) / Font.CharW;
+        if (g.Chatting)
+        {
+            string draft = "SAY: " + g.ChatDraft + ((int)(g.Time * 3) % 2 == 0 ? "_" : " ");
+            if (draft.Length > max) draft = "SAY: ..." + draft[^(max - 8)..];
+            ShadowText(4, y, draft, Col.Rgb(255, 255, 255));
+            y -= 10;
+        }
+        var shown = g.Chat.Where(l => all || l.Age < Game.ChatShow).TakeLast(lines).ToList();
+        var rows = new List<(string name, string text, bool web)>();
+        foreach (var l in shown)
+        {
+            string name = (l.Web ? "[WEB] " : "") + l.Name + ": ";
+            var wrapped = Wrap(name + l.Text, max).ToList();
+            for (int i = 0; i < wrapped.Count; i++) rows.Add((i == 0 ? name : "", i == 0 ? wrapped[i][Math.Min(name.Length, wrapped[i].Length)..] : wrapped[i], l.Web));
+        }
+        foreach (var (name, text, web) in Enumerable.Reverse(rows).Take(lines + 2))
+        {
+            ShadowText(4, y, name, web ? Col.Rgb(255, 150, 210) : Col.Rgb(140, 200, 255));
+            ShadowText(4 + Font.Width(name), y, text, Col.Rgb(235, 235, 225));
+            y -= 9;
+        }
+    }
+
+    void ShadowText(int x, int y, string s, uint c)
+    {
+        if (s.Length == 0) return;
+        Text(x + 1, y + 1, s, Col.Rgb(0, 0, 0));
+        Text(x, y, s, c);
     }
 
     void DrawMessages(Game g)
