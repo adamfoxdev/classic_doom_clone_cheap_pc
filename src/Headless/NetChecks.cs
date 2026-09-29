@@ -64,6 +64,17 @@ public static partial class Headless
               && host.OnlineHash() == client.OnlineHash() && moved,
             $"after ten seconds of both playing, the two copies are still identical ({host.NetSession?.TickCount} ticks, both players moved)");
 
+        // every two seconds the host tells the matchmaker how it's going, for its who board; the client pays it no mind
+        (host, client, hostLink, _) = Pair();
+        var statuses = new List<NetworkMessage>();
+        hostLink.Drop = m => { if (m.Type == "status") statuses.Add(m); return false; };
+        for (int k = 0; k < 250; k++) { host.Update(new Input(), Frame); client.Update(new Input(), Frame); }
+        client.Update(new Input(), 0);
+        var said = statuses.LastOrDefault();
+        check(statuses.Count == 3 && said?.Status == $"{host.Level.Name}, 0 kills" && said.Scores?.Length == 2 && said.Scores.All(sc => sc.Health == 100 && sc.Team == -1 && !sc.Dead)
+              && said.Scores.Select(sc => sc.PlayerId).SequenceEqual(new[] { "a", "b" }) && client.NetSession != null && host.OnlineHash() == client.OnlineHash(),
+            $"every two seconds (at once, too) the host sends the matchmaker's who board a status ({statuses.Count} in {host.NetSession?.TickCount} ticks: \"{said?.Status}\", each player's health and kills); the game plays on");
+
         // mouse movement adds up between ticks: at 144 frames a second, none is lost
         (host, client, _, _) = Pair();
         float before = host.P.Angle;
@@ -180,6 +191,10 @@ public static partial class Headless
         Both(g2 => { var ball = g2.Ball; ball.X = Soccer.LineE - 2; ball.Y = Soccer.SpotY; ball.Z = 0; ball.Grounded = true; ball.VX = 6; ball.VY = ball.VZ = 0; });
         Run(40);
         check(host.TeamGoals[0] == 1 && client.TeamGoals[0] == 1 && host.TeamGoals[1] == 0 && host.OnlineHash() == client.OnlineHash(), "into the east goal: a goal for Blue, on both machines");
+        var board = host.OnlineStatus();
+        check(board.Status.StartsWith("Blue 1 - 0 Red, ") && board.Status.EndsWith(" left") && board.Scores.Single(sc => sc.PlayerId == "b").Team == 1
+              && board.Scores.Single(sc => sc.PlayerId == "a").Team == 0,
+            $"the who board sees the score and the teams (\"{board.Status}\")");
         // a blast shoves everyone near, but only hurts its own firer
         Both(g2 =>
         {

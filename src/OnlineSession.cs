@@ -43,6 +43,8 @@ public sealed class OnlineSession
     public const float Step = 1f / 60f;
     /// <summary>A checksum rides on every HashEvery'th frame.</summary>
     public const int HashEvery = 60;
+    /// <summary>The host tells the matchmaker how the game's going every StatusEvery ticks (two seconds).</summary>
+    public const int StatusEvery = 120;
     readonly string[] _players;
     readonly string _localId;
     readonly bool _host;
@@ -159,6 +161,8 @@ public sealed class OnlineSession
             game.StepOnline(frame, Step, _localId);
             long? hash = _tick % HashEvery == 0 ? game.OnlineHash() : null;
             _link.SendNetwork(new NetworkMessage { Type = "frame", Tick = _tick++, Inputs = frame, Hash = hash });
+            // now and then, how it's going, for the matchmaker's who board (it keeps it; nobody else is sent it)
+            if (_tick % StatusEvery == 1) _link.SendNetwork(game.OnlineStatus());
             _accumulator -= Step;
         }
     }
