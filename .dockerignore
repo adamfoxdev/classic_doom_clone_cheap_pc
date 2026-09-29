@@ -1,0 +1,12 @@
+# the matchmaker image (server/Matchmaker/Dockerfile) builds from the repo root; it needs the server, web/, src/
+# and assets/, not the build output, screenshots or tools
+**/bin/
+**/obj/
+.git/
+.github/
+shots/
+docs/
+tests/
+tools/
+*.md
+fly.toml

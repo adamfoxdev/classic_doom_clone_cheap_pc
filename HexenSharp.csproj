@@ -14,6 +14,7 @@
   <ItemGroup>
     <PackageReference Include="Raylib-cs" Version="7.0.2" />
     <Compile Remove="server/**/*.cs" />
+    <Compile Remove="web/**" />
   </ItemGroup>
 
   <!-- the optional Blender-rendered art pack (tools/blender/build_scifi_assets.py) -->

@@ -198,6 +198,12 @@ public static partial class Headless
             "the first time you go Online you're asked your name (it can't be blank), and it's kept");
         g.Menu.Close(); g.Menu.Show(MenuPage.Online);
         check(!g.Menu.EditingName, "once you've a name, Online doesn't ask again (Name: changes it)");
+        g.Menu.Cursor = Array.FindIndex(g.Menu.Items(MenuPage.Online), i => i.StartsWith("Name: "));
+        g.Menu.Update(new Input { Confirm = true }, Frame);
+        for (int k = 0; k < 20; k++) g.Menu.Update(new Input { Backspace = true }, Frame);
+        g.Menu.Update(new Input { Typed = "Bob", Confirm = true }, Frame); // (a fast typist: the last letters and Enter in one frame)
+        check(g.OnlineName == "Bob", $"letters typed in the same frame as Enter still count ({g.OnlineName})");
+        g.Con.Execute("onlinename Sam the Gunner", quiet: true);
         g.Menu.Cursor = Array.FindIndex(online, i => i.StartsWith("Server: "));
         g.Menu.Update(new Input { Confirm = true }, Frame);
         bool editing = g.Menu.EditingServer;

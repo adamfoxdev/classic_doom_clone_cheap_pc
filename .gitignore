@@ -6,3 +6,5 @@ shots/
 !assets/**/*.png
 sounds/
 assets/scifi/.render_tmp.png
+out/
+web-shots/

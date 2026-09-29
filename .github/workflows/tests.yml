@@ -1,5 +1,5 @@
-# Runs the game's self-test, the map editor's browser test and the screenshot tour on every pull request and every
-# push to main. Everything is headless: the self-test and screenshots never open a window or an audio device, and the
+# Runs the game's self-test, the map editor's browser test, the screenshot tour and the browser version's test on
+# every pull request and every push to main. Everything is headless: the self-test and screenshots never open a window or an audio device, and the
 # editor test drives tools/editor/index.html in headless Chromium through Playwright.
 name: Tests
 
@@ -51,6 +51,56 @@ jobs:
         with:
           name: screenshots
           path: shots/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The browser version: built from the same src/ as the desktop, served by the matchmaker at /play/ as it is on
+  # Fly.io, and driven in headless Chromium (tools/web/test_web.cjs): it loads, draws, takes keys, keeps its files, and
+  # a scripted two-player session comes out bit for bit the same as the desktop's (so the two can play together).
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: The desktop's cross-play probe
+        run: |
+          dotnet build -c Release
+          dotnet run -c Release --no-build -- --sync-probe > "$RUNNER_TEMP/probe.txt"
+          cat "$RUNNER_TEMP/probe.txt"
+
+      - name: Build the browser version, and the matchmaker to serve it
+        run: |
+          dotnet publish web/HexenSharp.Web.csproj -c Release -o "$RUNNER_TEMP/web"
+          dotnet publish server/Matchmaker/HexenSharp.Matchmaker.csproj -c Release -o "$RUNNER_TEMP/server"
+          cp -r "$RUNNER_TEMP/web/wwwroot" "$RUNNER_TEMP/server/wwwroot/play"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" playwright@1.56.1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Browser version test
+        run: |
+          (cd "$RUNNER_TEMP/server" && ASPNETCORE_URLS=http://127.0.0.1:5080 dotnet HexenSharp.Matchmaker.dll > "$RUNNER_TEMP/server.log" 2>&1 &)
+          for i in $(seq 30); do curl -sf http://127.0.0.1:5080/health && break; sleep 1; done
+          mkdir -p web-shots
+          NODE_PATH="$RUNNER_TEMP/pw/node_modules" node tools/web/test_web.cjs http://127.0.0.1:5080/play/ "$RUNNER_TEMP/probe.txt" web-shots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-screenshots
+          path: web-shots/
           if-no-files-found: ignore
           retention-days: 14
 

@@ -40,17 +40,17 @@ public sealed partial class Game
     {
         if (!CanChat) { Chatting = false; ChatDraft = ""; return; } // (the game or room ended as you typed)
         if (inp.Pause) { Chatting = false; ChatDraft = ""; return; }
+        // what was typed goes in before an Enter in the same frame is taken
+        if (inp.Tab && PasteText?.Invoke() is { } pasted) Type(pasted.Replace('\n', ' ').Replace('\r', ' '));
+        if (inp.Backspace && ChatDraft.Length > 0) ChatDraft = ChatDraft[..^1];
+        Type(inp.Typed);
         if (inp.Confirm)
         {
             Chatting = false;
             string text = ChatDraft.Trim();
             ChatDraft = "";
             if (text.Length > 0 && CanChat) NetLink.SendNetwork(new NetworkMessage { Type = "chat", Text = text });
-            return;
         }
-        if (inp.Tab && PasteText?.Invoke() is { } pasted) Type(pasted.Replace('\n', ' ').Replace('\r', ' '));
-        if (inp.Backspace && ChatDraft.Length > 0) ChatDraft = ChatDraft[..^1];
-        Type(inp.Typed);
 
         void Type(string typed)
         {

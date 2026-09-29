@@ -6,15 +6,14 @@ namespace HexenSharp;
 public static class Program
 {
     /// <summary>The version: set by release builds (-p:Version=), "dev" otherwise.</summary>
-    public static string Version =>
-        typeof(Program).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
-            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion.Split('+')[0] is { } v && v != "1.0.0" ? v : "dev";
+    public static string Version => Host.Version;
 
     public static int Main(string[] args)
     {
         if (args.Contains("--version")) { Console.WriteLine($"Hexen Sharp {Version}"); return 0; }
         Art.Init();
         if (args.Contains("--selftest")) return Headless.SelfTest();
+        if (args.Contains("--sync-probe")) { Console.WriteLine(Headless.SyncProbe()); return 0; }
         if (args.Contains("--shots")) return Headless.Screenshots(args.SkipWhile(a => a != "--shots").Skip(1).FirstOrDefault() ?? "shots");
         if (args.Contains("--bench-compare")) return BenchCompare.Run(args);
         if (args.Contains("--make-replays")) return Headless.MakeReplays(keepInputs: false);
@@ -44,7 +43,7 @@ public static class Program
     static int Usage()
     {
         Console.WriteLine("usage: HexenSharp [--play map.hxm [--class fighter|cleric|mage] [--relaxed]] | --check-map map.hxm |");
-        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --shots dir | --sounds dir | --version | --replay file | --bench [frames] | --bench-compare limit base.txt... -- head.txt...");
+        Console.WriteLine("       --export-maps dir | --export-editor-maps | --selftest | --sync-probe | --shots dir | --sounds dir | --version | --replay file | --bench [frames] | --bench-compare limit base.txt... -- head.txt...");
         return 2;
     }
 
@@ -74,14 +73,13 @@ public static class Program
             Console.Error.WriteLine($"HEXEN_MATCHMAKER_URL ignored: {envError}");
         game.LoadProfile();
         var keys = new RaylibKeys();
-        var pad = new Gamepad();
-        bool padSeen = false;
-        var renderer = new Renderer();
+        var host = new Host(game);
         Audio audio = null;
         if (Raylib.IsAudioDeviceReady())
         {
             audio = new Audio();
             game.PlaySound = audio.Play;
+            host.Audio = audio;
         }
 
         var img = Raylib.GenImageColor(W, H, Color.Black);
@@ -103,21 +101,14 @@ public static class Program
         }
 
         bool captured = false;
-        int skipMouse = 0, shotIndex = 0;
+        int skipMouse = 0;
 
         while (!Raylib.WindowShouldClose() && !game.QuitRequested)
         {
             var inp = ReadInput(game, keys);
             var ps = ReadPad();
-            if (ps.Connected != padSeen)
-            {
-                padSeen = ps.Connected;
-                game.Say(padSeen ? $"Gamepad connected: {Raylib.GetGamepadName_(0)}" : "Gamepad disconnected.");
-            }
-            bool inMenu = game.Menu.Open || game.Mode is GameMode.Title or GameMode.ClassSelect or GameMode.Victory;
-            if (!game.Con.Open) pad.Apply(ref inp, ps, Raylib.GetFrameTime(), inMenu, game.Vars.PadLook);
 
-            bool wantCapture = game.Mode is GameMode.Playing or GameMode.Dead && !game.Menu.Open && !game.Con.Open;
+            bool wantCapture = host.WantsMouse;
             if (wantCapture != captured)
             {
                 if (wantCapture) Raylib.DisableCursor(); else Raylib.EnableCursor();
@@ -131,21 +122,9 @@ public static class Program
                 inp.LookY = md.Y;
             }
 
-            // watching a replay, it plays instead (Esc stops it); otherwise the game takes your input
-            if (game.Watch != null) game.WatchStep(inp, Raylib.GetFrameTime());
-            else game.Update(inp, Raylib.GetFrameTime());
-            var shown = game.Watch ?? game;
-            audio?.UpdateMusic(shown.MusicTrack, game.Vars.Music, shown.MusicIntensity);
+            host.Frame(inp, ps, ps.Connected ? Raylib.GetGamepadName_(0) : null, Raylib.GetFrameTime());
             watcher?.Poll(game, Raylib.GetFrameTime());
-            renderer.Render(shown);
-            Raylib.UpdateTexture(tex, renderer.Fb);
-
-            if (inp.Screenshot)
-            {
-                string path = $"hexen_shot_{shotIndex++:000}.png";
-                Png.Save(path, renderer.Fb, W, H);
-                game.Say("Saved " + path);
-            }
+            Raylib.UpdateTexture(tex, host.Renderer.Fb);
 
             // letterbox to the framebuffer's aspect ratio
             int sw = Raylib.GetScreenWidth(), sh = Raylib.GetScreenHeight();

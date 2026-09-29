@@ -6,7 +6,7 @@ namespace HexenSharp;
 /// Plays the synthesized sound effects (see <see cref="Sounds"/>) through Raylib. Both style banks are built at
 /// startup; each sound plays from the bank matching the current visual style.
 /// </summary>
-public sealed unsafe class Audio : IDisposable
+public sealed unsafe class Audio : IDisposable, IHostAudio
 {
     const int Voices = 4;
     static readonly ArtStyle[] Styles = { ArtStyle.Fantasy, ArtStyle.SciFi };
