@@ -310,6 +310,28 @@ HEXEN_MATCHMAKER_URL=https://<your-app>.fly.dev/ dotnet run
   closed as idle.
 - Everyone needs the same game version: rooms only match their own.
 
+#### The who board
+
+Open the server's address in a browser (the default one is
+[matchmaker-tranquil-fire-5888.fly.dev](https://matchmaker-tranquil-fire-5888.fly.dev/)) to see who's on. It
+refreshes every 3 seconds and shows:
+
+- **Live numbers.** Players online, games playing, rooms open, how long the server's been up.
+- **Players online over time.** One reading a minute, for up to two hours.
+- **Every room.** The host, whether it's in the lobby or playing, the mode, and how long it's been going. Each player
+  shows as connected or not.
+- **How each game's going.** Games from this version on send a status every two seconds: the soccer score and clock,
+  or the map and the crew's kills. Each player's health, kills and soccer team show too. Older games show only the mode
+  and time.
+- **The last 20 finished games.** Who played, what mode, for how long, and how each one ended.
+- **Totals since the server started.** Games played per mode, rooms made, players joined, the peak player count, and
+  frames relayed.
+
+The board is public, so it shows player names and games only, never a player's id or token. The page's data is
+`GET /api/board`. All of it lives in the server's memory, so a restart or redeploy starts the numbers again.
+
+![The who board: players online, rooms with their scores, recent games](docs/matchmaker_board.png)
+
 ## Controls
 
 These are the defaults. Change any of them in **Options → Key bindings** (see below).

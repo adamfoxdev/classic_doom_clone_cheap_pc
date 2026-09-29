@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hexen Sharp · Who's on</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f3ef;
+    --surface: #fcfcfb;
+    --border: #e2e0d8;
+    --text: #0b0b0b;
+    --text-2: #52514e;
+    --text-3: #7a7973;
+    --accent: #2a78d6;
+    --series-1: #2a78d6;
+    --series-1-fill: rgba(42, 120, 214, 0.12);
+    --grid: #ebe9e2;
+    --blue: #2a78d6;
+    --red: #e34948;
+    --good: #008300;
+    --warn: #b87400;
+    --chip: #eeede8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111110;
+      --surface: #1a1a19;
+      --border: #2e2e2b;
+      --text: #ffffff;
+      --text-2: #c3c2b7;
+      --text-3: #8f8e86;
+      --accent: #3987e5;
+      --series-1: #3987e5;
+      --series-1-fill: rgba(57, 135, 229, 0.18);
+      --grid: #262624;
+      --blue: #3987e5;
+      --red: #e66767;
+      --good: #3fae3f;
+      --warn: #e0a030;
+      --chip: #262624;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111110;
+    --surface: #1a1a19;
+    --border: #2e2e2b;
+    --text: #ffffff;
+    --text-2: #c3c2b7;
+    --text-3: #8f8e86;
+    --accent: #3987e5;
+    --series-1: #3987e5;
+    --series-1-fill: rgba(57, 135, 229, 0.18);
+    --grid: #262624;
+    --blue: #3987e5;
+    --red: #e66767;
+    --good: #3fae3f;
+    --warn: #e0a030;
+    --chip: #262624;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 20px; }
+  h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin: 28px 0 10px; font-weight: 600; }
+  .meta { color: var(--text-3); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; }
+  .live-dot.stale { background: var(--warn); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .tile .label { color: var(--text-2); font-size: 12px; }
+  .tile .value { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tile .sub { color: var(--text-3); font-size: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .chart-card { position: relative; }
+  .chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .chart-title { font-weight: 600; font-size: 14px; }
+  .chart-note { color: var(--text-3); font-size: 12px; }
+  svg.chart { width: 100%; height: 140px; display: block; overflow: visible; }
+  svg.chart text { fill: var(--text-3); font-size: 11px; }
+  .tooltip {
+    position: absolute; pointer-events: none; background: var(--text); color: var(--surface);
+    font-size: 12px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -110%);
+    opacity: 0; transition: opacity 0.1s;
+  }
+  .rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+  .room-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .room-host { font-weight: 650; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--text-2); white-space: nowrap; }
+  .badge.playing { color: var(--good); }
+  .badge.lobby { color: var(--accent); }
+  .badge.over { color: var(--text-3); }
+  .room-mode { color: var(--text-2); font-size: 13px; margin-top: 2px; }
+  .room-status { margin-top: 8px; font-size: 14px; font-variant-numeric: tabular-nums; }
+  ul.members { list-style: none; padding: 0; margin: 10px 0 0; border-top: 1px solid var(--border); }
+  ul.members li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  ul.members li:last-child { border-bottom: none; }
+  .conn { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--good); }
+  .conn.off { background: transparent; border: 1.5px solid var(--text-3); }
+  .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who small { color: var(--text-3); margin-left: 4px; }
+  .team { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  .team.t0 { background: var(--blue); }
+  .team.t1 { background: var(--red); }
+  .stat { color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stat.down { color: var(--red); font-weight: 600; }
+  .empty { color: var(--text-3); text-align: center; padding: 28px 12px; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; }
+  .two { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--text-3); font-weight: 500; font-size: 12px; padding: 0 8px 6px 0; }
+  td { padding: 7px 8px 7px 0; border-top: 1px solid var(--border); vertical-align: top; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td .muted { color: var(--text-3); font-size: 12px; }
+  .table-wrap { overflow-x: auto; }
+  .bars { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row .bar-label { display: flex; justify-content: space-between; font-size: 13px; }
+  .bar-row .bar-label span:last-child { color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .bar-track { height: 8px; margin-top: 4px; }
+  .bar-fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+  footer { margin-top: 32px; color: var(--text-3); font-size: 12px; }
+  .error { color: var(--red); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Who's on</h1>
+    <div class="meta"><span class="live-dot" id="live"></span><span id="updated">Connecting…</span></div>
+  </header>
+
+  <section class="tiles" id="tiles" aria-label="Server stats"></section>
+
+  <div class="card chart-card" style="margin-top:10px">
+    <div class="chart-head">
+      <span class="chart-title">Players online</span>
+      <span class="chart-note">each minute, for up to 2 hours</span>
+    </div>
+    <svg class="chart" id="chart" role="img" aria-label="Players online over the last two hours"></svg>
+    <div class="tooltip" id="tip"></div>
+  </div>
+
+  <h2>Rooms</h2>
+  <section class="rooms" id="rooms"></section>
+
+  <div class="two">
+    <section>
+      <h2>Recent games</h2>
+      <div class="card table-wrap" id="recent"></div>
+    </section>
+    <section>
+      <h2>Games by mode</h2>
+      <div class="card bars" id="modes"></div>
+    </section>
+  </div>
+
+  <footer id="footer"></footer>
+</main>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const REFRESH_MS = 3000;
+let lastOk = 0;
+
+// every name and line on this page comes from players: build with textContent, never innerHTML
+function el(tag, props, ...children) {
+  const node = document.createElement(tag);
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else node.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) node.append(c);
+  return node;
+}
+
+function duration(seconds) {
+  seconds = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, s = seconds % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+function ago(iso, now) {
+  const s = (now - new Date(iso)) / 1000;
+  return s < 60 ? "just now" : `${duration(s).replace(/ \d+s$/, "")} ago`;
+}
+function bytes(n) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
+}
+const num = n => n.toLocaleString();
+
+function tile(label, value, sub) {
+  return el("div", { class: "tile" },
+    el("div", { class: "label", text: label }),
+    el("div", { class: "value", text: value }),
+    sub ? el("div", { class: "sub", text: sub }) : null);
+}
+
+function renderTiles(b) {
+  const t = b.totals;
+  $("tiles").replaceChildren(
+    tile("Players online", num(b.playersOnline), `peak ${num(t.peakPlayers)}`),
+    tile("Games playing", num(b.gamesPlaying), `${num(b.roomsOpen)} room${b.roomsOpen === 1 ? "" : "s"} open`),
+    tile("Games played", num(t.gamesStarted), t.longestGameSeconds ? `longest ${duration(t.longestGameSeconds)}` : null),
+    tile("Players joined", num(t.playersJoined), `${num(t.roomsCreated)} rooms made`),
+    tile("Server up", duration((new Date(b.now) - new Date(b.serverStarted)) / 1000), null),
+  );
+}
+
+// players online: one series, so no legend; the title names it. Hover shows the minute and the count.
+let chartData = [];
+function renderChart(history, now) {
+  const fresh = history.length < 2; // (the server's not been up a minute: just now, drawn flat)
+  if (fresh) history = [history[0] ?? 0, history[0] ?? 0];
+  const svg = $("chart");
+  const w = svg.clientWidth || 600, h = 140, padL = 26, padR = 8, padT = 8, padB = 20;
+  const max = Math.max(4, ...history);
+  const step = Math.ceil(max / 4);
+  const top = step * 4;
+  const x = i => padL + (w - padL - padR) * (i / (history.length - 1));
+  const y = v => padT + (h - padT - padB) * (1 - v / top);
+  const ns = "http://www.w3.org/2000/svg";
+  const make = (tag, attrs) => { const n = document.createElementNS(ns, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  const parts = [];
+  for (let v = 0; v <= top; v += step) {
+    parts.push(make("line", { x1: padL, x2: w - padR, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1 }));
+    const label = make("text", { x: padL - 6, y: y(v) + 4, "text-anchor": "end" }); label.textContent = v; parts.push(label);
+  }
+  const span = history.length - 1, minsAgo = m => m >= 60 && m % 60 === 0 ? `${m / 60}h ago` : `${m}m ago`;
+  const ticks = [[0, fresh ? "server start" : minsAgo(span)], [span, "now"]];
+  if (span >= 4) ticks.splice(1, 0, [span / 2, minsAgo(Math.round(span / 2))]);
+  for (const [i, text] of ticks) {
+    const label = make("text", { x: x(i), y: h - 4, "text-anchor": i === 0 ? "start" : i === history.length - 1 ? "end" : "middle" });
+    label.textContent = text; parts.push(label);
+  }
+  const points = history.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+  parts.push(make("path", { d: `M${x(0)},${y(0)} L${points.join(" L")} L${x(history.length - 1)},${y(0)} Z`, fill: "var(--series-1-fill)", stroke: "none" }));
+  parts.push(make("polyline", { points: points.join(" "), fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  const cursor = make("line", { y1: padT, y2: h - padB, stroke: "var(--text-3)", "stroke-width": 1, opacity: 0 });
+  const dot = make("circle", { r: 4, fill: "var(--series-1)", stroke: "var(--surface)", "stroke-width": 2, opacity: 0 });
+  parts.push(cursor, dot);
+  svg.replaceChildren(...parts);
+  chartData = { history, x, y, w, padL, padR, cursor, dot, now };
+}
+function chartHover(ev) {
+  const d = chartData; if (!d.history) return;
+  const svg = $("chart"), rect = svg.getBoundingClientRect(), scale = d.w / rect.width;
+  const px = (ev.clientX - rect.left) * scale;
+  const n = d.history.length;
+  const i = Math.max(0, Math.min(n - 1, Math.round((px - d.padL) / (d.w - d.padL - d.padR) * (n - 1))));
+  const v = d.history[i], cx = d.x(i), cy = d.y(v);
+  d.cursor.setAttribute("x1", cx); d.cursor.setAttribute("x2", cx); d.cursor.setAttribute("opacity", 1);
+  d.dot.setAttribute("cx", cx); d.dot.setAttribute("cy", cy); d.dot.setAttribute("opacity", 1);
+  const mins = n - 1 - i;
+  const tip = $("tip");
+  tip.textContent = `${v} player${v === 1 ? "" : "s"} · ${mins === 0 ? "now" : mins + " min ago"}`;
+  tip.style.left = `${cx / scale + svg.offsetLeft}px`;
+  tip.style.top = `${cy / scale + svg.offsetTop}px`;
+  tip.style.opacity = 1;
+}
+function chartLeave() {
+  const d = chartData; if (!d.history) return;
+  d.cursor.setAttribute("opacity", 0); d.dot.setAttribute("opacity", 0); $("tip").style.opacity = 0;
+}
+$("chart").addEventListener("pointermove", chartHover);
+$("chart").addEventListener("pointerleave", chartLeave);
+
+function member(p, playing) {
+  const stats = [];
+  if (p.dead) stats.push(el("span", { class: "stat down", text: "DOWN" }));
+  else if (p.health != null) stats.push(el("span", { class: "stat", text: `${p.health} hp` }));
+  if (p.kills != null) stats.push(el("span", { class: "stat", text: `${p.kills} kill${p.kills === 1 ? "" : "s"}` }));
+  return el("li", null,
+    el("span", { class: `conn${p.connected || !playing ? "" : " off"}`, title: p.connected ? "connected" : "not connected" }),
+    p.team != null ? el("span", { class: `team t${p.team}`, title: p.team === 0 ? "Blue team" : "Red team" }) : null,
+    el("span", { class: "who" }, p.name, p.isHost ? el("small", { text: "host" }) : null),
+    ...stats);
+}
+
+function renderRooms(b) {
+  if (!b.rooms.length) {
+    $("rooms").replaceChildren(el("div", { class: "empty", text: "Nobody's on right now. Host a game from Online in the game menu and it shows up here." }));
+    return;
+  }
+  const now = new Date(b.now);
+  $("rooms").replaceChildren(...b.rooms.map(r => {
+    const state = { playing: "Playing", lobby: "In the lobby", over: "Game over" }[r.state] || r.state;
+    const mode = r.modeName
+      ? `${r.modeName}${r.playingSeconds != null ? ` · ${duration(r.playingSeconds)}` : ""}`
+      : `Waiting to start · opened ${ago(r.opened, now)}`;
+    return el("article", { class: "card" },
+      el("div", { class: "room-head" },
+        el("span", { class: "room-host", text: `${r.host || "?"}'s game` }),
+        el("span", { class: `badge ${r.state}`, text: state })),
+      el("div", { class: "room-mode", text: `${mode} · ${r.players}/${r.capacity} players · v${r.version}` }),
+      r.status ? el("div", { class: "room-status", text: r.status }) : null,
+      el("ul", { class: "members" }, ...r.members.map(p => member(p, r.state === "playing"))));
+  }));
+}
+
+function renderRecent(b) {
+  if (!b.recent.length) {
+    $("recent").replaceChildren(el("div", { class: "muted", text: "No finished games since the server started.", style: "color:var(--text-3)" }));
+    return;
+  }
+  const now = new Date(b.now);
+  $("recent").replaceChildren(el("table", null,
+    el("thead", null, el("tr", null,
+      el("th", { text: "Players" }), el("th", { text: "Mode" }), el("th", { class: "num", text: "Length" }), el("th", { class: "num", text: "When" }))),
+    el("tbody", null, ...b.recent.map(g => el("tr", null,
+      el("td", null, g.players.join(", "), g.status ? el("div", { class: "muted", text: g.status }) : null),
+      el("td", { text: g.modeName || "—" }),
+      el("td", { class: "num", text: duration(g.seconds) }),
+      el("td", { class: "num", text: ago(new Date(new Date(g.started).getTime() + g.seconds * 1000).toISOString(), now) }))))));
+}
+
+function renderModes(b) {
+  const names = { campaign: "Campaign co-op", soccer: "Rocket Soccer" };
+  const rows = Object.entries(b.totals.gamesByMode).sort((a, c) => c[1] - a[1]);
+  if (!rows.length) { $("modes").replaceChildren(el("div", { text: "No games yet.", style: "color:var(--text-3)" })); return; }
+  const max = Math.max(...rows.map(r => r[1]));
+  $("modes").replaceChildren(...rows.map(([mode, count]) => el("div", { class: "bar-row" },
+    el("div", { class: "bar-label" }, el("span", { text: names[mode] || mode }), el("span", { text: num(count) })),
+    el("div", { class: "bar-track" }, el("div", { class: "bar-fill", style: `width:${(count / max * 100).toFixed(1)}%` })))));
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("api/board", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const b = await res.json();
+    renderTiles(b);
+    renderChart(b.history, new Date(b.now));
+    renderRooms(b);
+    renderRecent(b);
+    renderModes(b);
+    $("footer").textContent = `${num(b.totals.framesRelayed)} frames relayed · ${bytes(b.totals.bytesRelayed)} sent to players since the server started. Refreshes every ${REFRESH_MS / 1000}s.`;
+    lastOk = Date.now();
+    $("updated").textContent = `Live · updated ${new Date().toLocaleTimeString()}`;
+    $("updated").classList.remove("error");
+    $("live").classList.remove("stale");
+  } catch (e) {
+    $("updated").textContent = `Can't reach the server (${e.message}); retrying…`;
+    $("updated").classList.add("error");
+    $("live").classList.add("stale");
+  }
+}
+refresh();
+setInterval(refresh, REFRESH_MS);
+window.addEventListener("resize", () => { if (chartData.history) renderChart(chartData.history, chartData.now); });
+</script>
+</body>
+</html>

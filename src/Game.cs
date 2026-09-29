@@ -1309,6 +1309,32 @@ public sealed partial class Game
     }
 
     /// <summary>
+    /// How the online game's going, for the matchmaker's who board: a line ("Blue 2 - 1 Red, 3:10 left", or the map and
+    /// the crew's kills) and each player's kills, health and soccer team.
+    /// </summary>
+    public NetworkMessage OnlineStatus()
+    {
+        string line;
+        if (OnSoccer)
+        {
+            int left = (int)MathF.Ceiling(MathF.Max(0, SoccerLeft));
+            string clock = $"{left / 60}:{left % 60:00} left";
+            line = SoccerVersus ? $"Blue {TeamGoals[0]} - {TeamGoals[1]} Red, {clock}" : $"{SoccerGoals} goal{(SoccerGoals == 1 ? "" : "s")}, {clock}";
+        }
+        else
+        {
+            int kills = OnlinePlayers.Sum(p => p.State.Kills);
+            line = $"{Level?.Name ?? "?"}, {kills} kill{(kills == 1 ? "" : "s")}";
+        }
+        var scores = OnlinePlayers.Select(p => new NetworkScore
+        {
+            PlayerId = p.Id, Kills = p.State.Kills, Health = Math.Max(0, p.State.Health), Dead = p.State.Dead,
+            Team = SoccerVersus ? SoccerTeam(p.State) : -1,
+        }).ToArray();
+        return new NetworkMessage { Type = "status", Status = line, Scores = scores };
+    }
+
+    /// <summary>
     /// A checksum of the shared game: every player (place, view, health), the map, and every monster and missile on it,
     /// bit for bit. The host sends its own now and then; a client whose differs has drifted out of sync.
     /// </summary>

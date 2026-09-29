@@ -299,4 +299,17 @@ public sealed class NetworkMessage
     public long? Hash { get; set; }
     /// <summary>On a start: what the game plays (OnlineSession.Modes; the campaign when missing).</summary>
     public string Mode { get; set; }
+    /// <summary>On a status (host to matchmaker only, for its who board): how the game's going, and each player's score.</summary>
+    public string Status { get; set; }
+    public NetworkScore[] Scores { get; set; }
+}
+
+/// <summary>A player's line on the matchmaker's who board. Team is the soccer team (0 Blue, 1 Red), or -1.</summary>
+public sealed class NetworkScore
+{
+    public string PlayerId { get; set; }
+    public int Kills { get; set; }
+    public int Health { get; set; }
+    public bool Dead { get; set; }
+    public int Team { get; set; }
 }
