@@ -228,7 +228,19 @@ public sealed class Renderer
     {
         var items = g.Menu.Items(MenuPage.Online);
         CenterText("ONLINE MATCHMAKING", 14, Col.Rgb(230, 190, 80), 2);
-        for (int i = 0; i < items.Length; i++) MenuItem(items[i], 42 + i * 12, i == g.Menu.Cursor);
+        for (int i = 0; i < items.Length; i++)
+        {
+            string text = items[i];
+            if (g.Menu.EditingServer && text.StartsWith("Server: "))
+                text = "Server: " + (g.Menu.ServerDraft.Length > 38 ? "..." + g.Menu.ServerDraft[^35..] : g.Menu.ServerDraft) + ((int)(g.Time * 3) % 2 == 0 ? "_" : " ");
+            MenuItem(text, 42 + i * 12, i == g.Menu.Cursor);
+        }
+        if (g.Menu.EditingServer)
+        {
+            CenterText("TYPE THE MATCHMAKER'S ADDRESS. EMPTY FOR THE DEFAULT.", 134, Col.Rgb(230, 190, 80));
+            CenterText("ENTER: SAVE  TAB: PASTE  BACKSPACE: DELETE  ESC: CANCEL", 190, MenuDim);
+            return;
+        }
         string status = g.Matchmaker?.Status ?? "Matchmaking is not configured.";
         int line = 0;
         if (g.OnlineNotice != null)
@@ -2067,16 +2079,28 @@ public sealed class Renderer
         void Right(string s, int dy, uint c) => Text(W - 4 - Font.Width(s), y + dy, s, c);
         int secs = (int)MathF.Ceiling(MathF.Max(0, g.SoccerLeft));
         Right($"{secs / 60}:{secs % 60:00}", 0, !g.RunStarted ? Col.Rgb(150, 150, 160) : secs <= 10 ? Col.Rgb(255, 110, 90) : Col.Rgb(240, 236, 220));
-        Right($"GOALS {g.SoccerGoals}", 10, Col.Rgb(120, 255, 140));
-        if (best > 0) Right($"BEST {best}", 20, Col.Rgb(255, 220, 90));
-        // the lit goal: an arrow at the top, turned toward it
-        var (gx, gy) = Soccer.Mouth(g.LitGoal);
         var p = g.P;
+        int target = g.SoccerTarget(p);
+        if (g.SoccerVersus)
+        {
+            // a match: the score, and your side
+            int team = g.SoccerTeam(p);
+            string score = $"BLUE {g.TeamGoals[0]} - {g.TeamGoals[1]} RED";
+            Right(score, 10, Col.Rgb(240, 236, 220));
+            Right($"YOU: {Game.SoccerTeamName(team).ToUpperInvariant()}", 20, Game.SoccerTeamColour(team));
+        }
+        else
+        {
+            Right($"GOALS {g.SoccerGoals}", 10, Col.Rgb(120, 255, 140));
+            if (best > 0) Right($"BEST {best}", 20, Col.Rgb(255, 220, 90));
+        }
+        // the goal to shoot at: an arrow at the top, turned toward it
+        var (gx, gy) = Soccer.Mouth(target);
         float rel = Game.AngleDiff(MathF.Atan2(gy - p.Y, gx - p.X), p.Angle);
         float half = g.ViewFov * MathF.PI / 360f;
         int ax = Math.Clamp(W / 2 + (int)(MathF.Tan(Math.Clamp(rel, -half, half)) / MathF.Tan(half) * (W / 2 - 40)), 40, W - 40);
-        uint lit = Col.Rgb(90, 190, 255);
-        string label = g.LitGoal == 0 ? "WEST GOAL" : "EAST GOAL";
+        uint lit = g.SoccerVersus ? Game.SoccerTeamColour(g.SoccerTeam(p)) : Col.Rgb(90, 190, 255);
+        string label = target == 0 ? "WEST GOAL" : "EAST GOAL";
         bool ahead = MathF.Abs(rel) < half;
         string mark = ahead ? "v" : rel > 0 ? ">" : "<";
         Text(ax - Font.Width(label) / 2, 36, label, lit);

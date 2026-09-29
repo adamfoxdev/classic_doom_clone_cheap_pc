@@ -50,8 +50,25 @@ public sealed class NetworkAvatar : Thing
     {
         PlayerId = playerId; Player = player; SpriteW = 0.34f; SpriteH = Player.Height; Radius = Player.Radius; FullBright = true;
     }
+    /// <summary>Its colour: a team's in a match, a crewmate's own in co-op (0 for the plain ghost).</summary>
+    public uint Tint;
     public override int Alpha => Player.Dead ? 75 : 230;
-    public override Tex Sprite(float time) => Art.Ghost[(int)(time * 7) % 2];
+    public override Tex Sprite(float time)
+    {
+        var frame = Art.Ghost[(int)(time * 7) % 2];
+        if (Tint == 0) return frame;
+        var key = (frame, Tint);
+        if (!_tinted.TryGetValue(key, out var t)) _tinted[key] = t = Tinted(frame, Tint);
+        return t;
+    }
+    static readonly Dictionary<(Tex, uint), Tex> _tinted = new();
+    static Tex Tinted(Tex from, uint tint)
+    {
+        var t = new Tex(from.W, from.H);
+        for (int i = 0; i < from.Px.Length; i++)
+            t.Px[i] = Col.A(from.Px[i]) == 0 ? from.Px[i] : Col.Lerp(from.Px[i], tint, 150);
+        return t;
+    }
 }
 
 // ---------------------------------------------------------------- decorations
@@ -224,6 +241,8 @@ public sealed class Projectile : Thing
     public int DmgMin, DmgMax;
     public float Splash;               // radius of splash damage, 0 = none
     public bool FromPlayer, Exploding;
+    /// <summary>The player who fired it (online, whose share of its blast they take; others only get the push).</summary>
+    public Player ByPlayer;
     /// <summary>Climbs or dives at VZ in a straight line (aimed up or down at a target) instead of levelling out.</summary>
     public bool Aimed;
     /// <summary>Which of your weapons fired it (-1 for monsters' shots), so its kills level that weapon up.</summary>

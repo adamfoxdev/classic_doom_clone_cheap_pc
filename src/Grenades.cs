@@ -52,7 +52,7 @@ public sealed partial class Game
             DmgMin = w.DmgMin, DmgMax = w.DmgMax,
             X = p.X + MathF.Cos(p.Angle) * 0.2f, Y = p.Y + MathF.Sin(p.Angle) * 0.2f, Z = launchZ,
             VX = MathF.Cos(p.Angle) * flat, VY = MathF.Sin(p.Angle) * flat, VZ = MathF.Sin(a) * Grenades.Speed + Grenades.Up,
-            Level = Level, SpriteW = 0.2f, SpriteH = 0.2f, Life = Grenades.Fuse, Radius = 0.08f,
+            Level = Level, SpriteW = 0.2f, SpriteH = 0.2f, Life = Grenades.Fuse, Radius = 0.08f, ByPlayer = p,
         };
         GrenadesThrown++;
         if (OnSoccer) SoccerShots++;

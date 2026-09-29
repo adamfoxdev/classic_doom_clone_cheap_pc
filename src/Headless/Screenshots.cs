@@ -516,6 +516,22 @@ public static partial class Headless
             g.Menu.BoardSoccer = true; g.Menu.BoardClass = PClass.Fighter;
             Shot("153_soccer_board");
             g.Menu.Close();
+            {
+                // Rocket Soccer online, from the Red player's machine: Blue across the pitch, the ball on the spot
+                var keep = g;
+                var h = new Game { AchievementsOn = false, OnlineMode = "soccer" };
+                var c = new Game { AchievementsOn = false };
+                var hostLink = new LoopLink(); var clientLink = new LoopLink();
+                hostLink.Peer = clientLink; clientLink.Peer = hostLink;
+                h.UseNetLink(hostLink, "a"); c.UseNetLink(clientLink, "b");
+                OnlineSession.StartHost(h, hostLink, new[] { "a", "b" }, "a", 4242);
+                c.Update(new Input(), 1f / 60f);
+                for (int k = 0; k < 90; k++) { h.Update(new Input { Move = k < 40 ? 1 : 0 }, 1f / 60f); c.Update(new Input { Move = k < 30 ? 1 : 0, LookY = k < 10 ? 2 : 0 }, 1f / 60f); }
+                g = c;
+                Shot("167_online_soccer");
+                g = keep;
+            }
+            g.Menu.Close();
             g.Profile.SoccerRuns.Clear();
             g.GoToTitle();
 

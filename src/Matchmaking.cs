@@ -66,7 +66,7 @@ public sealed class MatchmakerClient : IDisposable, INetLink
         if (Busy || InRoom) return;
         Run(async () =>
         {
-            using var response = await _http.PostAsJsonAsync("api/rooms", new CreateRoom(name, _version));
+            using var response = await _http.PostAsJsonAsync("api/rooms", new CreateRoom(string.IsNullOrWhiteSpace(name) ? Name() : name.Trim()[..Math.Min(20, name.Trim().Length)], _version));
             response.EnsureSuccessStatusCode();
             Ticket = await response.Content.ReadFromJsonAsync<MatchTicket>();
             Joined(Ticket);
@@ -240,7 +240,9 @@ public sealed class MatchmakerClient : IDisposable, INetLink
         finally { Busy = false; }
     }
 
-    static string Name() => "Player" + Random.Shared.Next(1000, 9999);
+    /// <summary>The name you go by in rooms (your leaderboard name, from the menu); a random one when unset.</summary>
+    public string PlayerName;
+    string Name() => string.IsNullOrWhiteSpace(PlayerName) ? "Player" + Random.Shared.Next(1000, 9999) : PlayerName.Trim()[..Math.Min(20, PlayerName.Trim().Length)];
     public void Dispose()
     {
         _socketStop?.Cancel();
@@ -295,4 +297,6 @@ public sealed class NetworkMessage
     public GameStyle Style { get; set; }
     /// <summary>On every OnlineSession.HashEvery'th frame: the host's checksum of the game after it (see Game.OnlineHash).</summary>
     public long? Hash { get; set; }
+    /// <summary>On a start: what the game plays (OnlineSession.Modes; the campaign when missing).</summary>
+    public string Mode { get; set; }
 }

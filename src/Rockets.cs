@@ -70,9 +70,29 @@ public sealed partial class Game
         }
         if (direct != null && direct.Alive) Push(direct, direct.X - pr.X, direct.Y - pr.Y, Dist(direct.X, direct.Y, pr.X, pr.Y), Rockets.SplashMax);
         // you: the push in full, the damage halved (and only your own rockets reach you like this; a monster's hits you as a projectile)
+        if (NetSession != null)
+        {
+            // online, a blast reaches every player: all of its push, but only its own firer's share of the damage
+            var keep = P;
+            foreach (var a in OnlinePlayers)
+            {
+                if (a.State.Dead) continue;
+                P = a.State;
+                if (!pr.FromPlayer) MonsterBlastHitsPlayer(pr); else if (Mode == GameMode.Playing) BlastPlayer(pr);
+            }
+            P = keep;
+            return;
+        }
         if (!pr.FromPlayer) { MonsterBlastHitsPlayer(pr); return; } // a Grenadier's
         if (Mode != GameMode.Playing) return;
+        BlastPlayer(pr);
+    }
+
+    /// <summary>A player's own kind of blast reaching them (P): the push in full, and (their own rocket) half the damage.</summary>
+    void BlastPlayer(Projectile pr)
+    {
         var p = P;
+        bool own = pr.ByPlayer == null || pr.ByPlayer == p;
         float pz = p.FloorZ + p.Z + Player.Height * 0.5f;
         float ex = p.X - pr.X, ey = p.Y - pr.Y, ez = pz - pr.Z, dist = MathF.Sqrt(ex * ex + ey * ey + ez * ez);
         float points = Rockets.Points(dist);
@@ -87,6 +107,7 @@ public sealed partial class Game
             p.Z = MathF.Max(p.Z, 0.001f); // off the ground: now it's a flight
         }
         p.Boost = MathF.Max(p.Boost, p.HSpeed);
+        if (!own) return; // a teammate's (or rival's) blast only shoves you
         RocketJumps++;
         BlastTrick(pr, airborne, pr.HitWall);
         int hurt = (int)(points * Rockets.SelfShare);
@@ -138,7 +159,7 @@ public sealed partial class Game
             DmgMin = (int)MathF.Round(w.DmgMin * mult), DmgMax = (int)MathF.Round(w.DmgMax * mult),
             X = p.X + MathF.Cos(p.Angle) * 0.2f, Y = p.Y + MathF.Sin(p.Angle) * 0.2f, Z = launchZ,
             VX = MathF.Cos(p.Angle) * flat, VY = MathF.Sin(p.Angle) * flat, VZ = MathF.Sin(climb) * w.Speed, Aimed = true,
-            Level = Level, SpriteW = 0.28f, SpriteH = 0.28f, Life = 8f,
+            Level = Level, SpriteW = 0.28f, SpriteH = 0.28f, Life = 8f, ByPlayer = p,
         };
         Level.Things.Add(pr);
         if (OnSoccer) SoccerShots++;

@@ -218,11 +218,28 @@ dotnet run -c Release
 ### Online matchmaking
 
 The title menu's **Online** page can quick-match into an open room, host a room or join a listed room. Rooms hold up to
-four players, expire after 45 seconds without a heartbeat and only match the same game version. Names are anonymous;
-there are no accounts. The host starts a shared, seeded co-op run from the room menu. A host-led 60 Hz input relay makes
-all peers simulate the same players, monsters, doors, projectiles and pickups; player characters can revive one another.
-The relay does not yet provide client prediction, host migration or late joining, so latency can delay visible gameplay
-and the session ends if the host disconnects. Run the matchmaker on a publicly reachable HTTPS endpoint for Internet play.
+four players, expire after 45 seconds without a heartbeat and only match the same game version. There are no accounts:
+you go by your leaderboard name (`name` in the console). A host-led 60 Hz input relay makes all peers simulate the same
+players, monsters, doors, projectiles and pickups. The relay does not yet provide client prediction, host migration or
+late joining, so latency can delay visible gameplay, and the session ends if the host disconnects.
+
+- **The server:** out of the box the game uses the public matchmaker at
+  `https://matchmaker-tranquil-fire-5888.fly.dev/`. To use another (your own, or one on your network), pick
+  **Server** on the Online page and type its address:
+  - A host name is enough (https is assumed); **Tab** pastes, and an empty address goes back to the default.
+  - The console's `matchmaker <address>` does the same, and `matchmaker default` resets it.
+  - Your choice is saved with your settings. The `HEXEN_MATCHMAKER_URL` environment variable, when set, wins for that
+    run (it isn't saved).
+- **What to play:** in a room, the host picks the **Mode** (Left/Right or Enter) and then **Start game**:
+  - **Campaign co-op:** the campaign together. Crewmates can revive one another.
+  - **Rocket Soccer:** the pitch, team against team.
+    - Players alternate between **Blue** (shooting for the east goal) and **Red** (the west), each ghost in its
+      team's colour, lining up in their own halves.
+    - Every player has the rocket and grenade launchers. Blasts shove everyone near, but only hurt their own firer.
+    - Each goal scores for the side shooting at it. The top-right corner shows the clock, the score and your side, and
+      the arrow points to your goal.
+    - Two minutes from the first touch, then full time calls the winner and the teams line up again.
+    - Played alone, it's the usual lit-goal practice.
 
 In a session:
 
@@ -246,7 +263,7 @@ Run the custom matchmaker locally:
 dotnet run --project server/Matchmaker -- --urls http://0.0.0.0:5080
 ```
 
-Point the game at it before launching:
+Point the game at it (Online > Server, `matchmaker http://127.0.0.1:5080` in the console, or for one run):
 
 ```sh
 HEXEN_MATCHMAKER_URL=http://127.0.0.1:5080/ dotnet run
@@ -259,8 +276,10 @@ $env:HEXEN_MATCHMAKER_URL = "http://127.0.0.1:5080/"
 dotnet run
 ```
 
-For players outside your network, publish the service behind an HTTPS reverse proxy, then set
-`HEXEN_MATCHMAKER_URL` to its public HTTPS address. Lobby state is held in memory and resets when the service restarts.
+For players outside your network, publish the service behind an HTTPS reverse proxy, then point the game at its public
+HTTPS address. Lobby state is held in memory and resets when the service restarts.
+
+![Rocket Soccer online, from Red's side: the score, your team, and the arrow to your goal](docs/online_soccer.png)
 
 #### Deploying the matchmaker to Fly.io
 

@@ -134,5 +134,69 @@ public static partial class Headless
         bool down = host.Mode == GameMode.Dead;
         for (int k = 0; k < 60 * 5; k++) host.Update(new Input(), Frame);
         check(down && host.Mode == GameMode.Playing && host.OnlinePlayers.All(o => !o.State.Dead && o.State.Health > 0), "with the whole crew down, everyone's back up a few seconds later");
+
+        // ---------------------------------------------------------------- the matchmaker's address
+
+        var g = new Game { AchievementsOn = false };
+        check(g.MatchmakerUrl == Game.DefaultMatchmakerUrl && Game.DefaultMatchmakerUrl == "https://matchmaker-tranquil-fire-5888.fly.dev/",
+            "online play uses the public matchmaker unless you choose another");
+        string bad = g.SetMatchmakerUrl("ftp://example.org");
+        string ok = g.SetMatchmakerUrl("example.org:5080");
+        check(bad != null && ok == null && g.MatchmakerUrl == "https://example.org:5080/" && Settings.Lines(g).Contains("matchmaker https://example.org:5080/"),
+            "a host name (https assumed) sets it, and it's saved; something that isn't an http(s) address doesn't");
+        g.Con.Execute("matchmaker default", quiet: true);
+        check(g.MatchmakerUrl == Game.DefaultMatchmakerUrl && !Settings.Lines(g).Any(l => l.StartsWith("matchmaker")), "'matchmaker default' goes back to the public one");
+        g.Menu.Show(MenuPage.Online);
+        var online = g.Menu.Items(MenuPage.Online);
+        g.Menu.Cursor = Array.FindIndex(online, i => i.StartsWith("Server: "));
+        g.Menu.Update(new Input { Confirm = true }, Frame);
+        bool editing = g.Menu.EditingServer;
+        for (int k = 0; k < 80; k++) g.Menu.Update(new Input { Backspace = true }, Frame);
+        g.Menu.Update(new Input { Typed = "http://127.0.0.1:5080" }, Frame);
+        g.Menu.Update(new Input { Confirm = true }, Frame);
+        check(online.Contains("Server: matchmaker-tranquil-fire-5888.fly.dev") && editing && !g.Menu.EditingServer && g.MatchmakerUrl == "http://127.0.0.1:5080/",
+            "Online > Server: type another address (a local one, say) and Enter to use it");
+        check(OnlineSession.NextMode("campaign", 1) == "soccer" && OnlineSession.NextMode("soccer", 1) == "campaign" && OnlineSession.ModeName("soccer") == "Rocket Soccer",
+            "the host picks the game: Campaign co-op or Rocket Soccer");
+
+        // ---------------------------------------------------------------- Rocket Soccer online: Blue against Red
+
+        (host, client, _, _) = Pair(prepHost: h => h.OnlineMode = "soccer");
+        void Run(int frames) { for (int k = 0; k < frames; k++) { host.Update(new Input(), Frame); client.Update(new Input(), Frame); } client.Update(new Input(), 0); }
+        void Both(Action<Game> change) { change(host); change(client); } // (the same change on both copies, in step)
+        a = Of(host, "a").State; b = Of(host, "b").State;
+        check(client.OnSoccer && host.SoccerVersus && client.SoccerVersus && a.X < Soccer.SpotX && b.X > Soccer.SpotX && Of(client, "b").State.Weapons[0].Rocket
+              && host.Level.Things.OfType<NetworkAvatar>().Select(v => v.Tint).Distinct().Count() == 2,
+            "an online game can be Rocket Soccer: Blue kicks off from the west half and Red from the east, each with the launchers, in their team's colour");
+        check(host.SoccerTarget(a) == 1 && host.SoccerTarget(b) == 0 && client.SoccerTarget(client.P) == 0, "Blue shoots for the east goal, Red for the west");
+        Run(60);
+        Both(g2 => { var ball = g2.Ball; ball.X = Soccer.SpotX + 4; ball.Y = Of(g2, "b").State.Y; ball.Z = 0; ball.Grounded = true; ball.VX = ball.VY = ball.VZ = 0; });
+        Run(2);
+        float ballFrom = host.Ball.X;
+        client.Update(new Input { Fire = true }, Frame); host.Update(new Input(), Frame);
+        client.Update(new Input(), Frame); host.Update(new Input(), Frame);
+        Run(60);
+        check(host.Ball.X < ballFrom - 1 && host.OnlineHash() == client.OnlineHash(), $"Red's rocket knocks the ball west, on both machines alike ({ballFrom:0.0} to {host.Ball.X:0.0})");
+        Both(g2 => { var ball = g2.Ball; ball.X = Soccer.LineE - 2; ball.Y = Soccer.SpotY; ball.Z = 0; ball.Grounded = true; ball.VX = 6; ball.VY = ball.VZ = 0; });
+        Run(40);
+        check(host.TeamGoals[0] == 1 && client.TeamGoals[0] == 1 && host.TeamGoals[1] == 0 && host.OnlineHash() == client.OnlineHash(), "into the east goal: a goal for Blue, on both machines");
+        // a blast shoves everyone near, but only hurts its own firer
+        Both(g2 =>
+        {
+            var pb = Of(g2, "b").State;
+            pb.X = 20; pb.Y = 20; pb.VX = pb.VY = 0; pb.Z = 0;
+            var boom = new Projectile { Kind = ProjKind.Rocket, FromPlayer = true, Splash = Rockets.SplashRadius, DmgMin = 100, DmgMax = 120, X = 19.2f, Y = 20, Z = pb.FloorZ + 0.2f, Level = g2.Level, ByPlayer = Of(g2, "a").State };
+            g2.Level.Things.Add(boom);
+            typeof(Game).GetMethod("Explode", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(g2, new object[] { boom, null, null });
+        });
+        var shoved = Of(host, "b").State;
+        check(shoved.VX > 2 && shoved.Health == 100, $"Blue's blast beside a Red player shoves them ({shoved.VX:0.0} cells a second) without hurting them");
+        Both(g2 => Of(g2, "b").State.Ammo[(int)AmmoKind.Rockets] = 0);
+        Run(3);
+        check(Of(host, "b").State.Ammo[(int)AmmoKind.Rockets] > 0 && Of(client, "b").State.Ammo[(int)AmmoKind.Rockets] > 0, "every player's rockets are topped up, not just the host's");
+        Both(g2 => { g2.RunStarted = true; g2.SoccerLeft = 0.2f; });
+        Run(30);
+        check(host.TeamGoals[0] == 0 && host.Messages.Any(m => m.text.Contains("Blue wins")) && Of(host, "a").State.X < Soccer.SpotX && host.OnlineHash() == client.OnlineHash(),
+            "at full time Blue's 1-0 win is called, and the teams line up for the next match");
     }
 }
