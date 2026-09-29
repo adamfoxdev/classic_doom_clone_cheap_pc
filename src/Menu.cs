@@ -66,19 +66,19 @@ public sealed class MenuSystem
     void EditServer(Input inp)
     {
         if (inp.Pause) { EditingServer = false; Say("Server unchanged."); return; }
+        // what was typed goes in before an Enter in the same frame is taken
+        if (inp.Tab && _g.PasteText?.Invoke() is { } pasted) ServerDraft = pasted.Trim();
+        if (inp.Backspace && ServerDraft.Length > 0) ServerDraft = ServerDraft[..^1];
+        if (!string.IsNullOrEmpty(inp.Typed))
+            foreach (char c in inp.Typed)
+                if (c > ' ' && c < 127 && ServerDraft.Length < 200) ServerDraft += c;
         if (inp.Confirm)
         {
             EditingServer = false;
             string error = _g.SetMatchmakerUrl(ServerDraft);
             Say(error == null ? "Server: " + ServerLabel(_g.MatchmakerUrl) : "Server not changed: " + error);
             _g.PlaySound(error == null ? Sfx.Item : Sfx.Locked, 0.8f);
-            return;
         }
-        if (inp.Tab && _g.PasteText?.Invoke() is { } pasted) ServerDraft = pasted.Trim();
-        if (inp.Backspace && ServerDraft.Length > 0) ServerDraft = ServerDraft[..^1];
-        if (!string.IsNullOrEmpty(inp.Typed))
-            foreach (char c in inp.Typed)
-                if (c > ' ' && c < 127 && ServerDraft.Length < 200) ServerDraft += c;
     }
 
     /// <summary>Typing your online name on the Online page (asked the first time you open it): what's typed so far.</summary>
@@ -94,6 +94,12 @@ public sealed class MenuSystem
             if (_g.OnlineName.Length == 0) Back();
             return;
         }
+        // what was typed goes in before an Enter in the same frame is taken
+        if (inp.Tab && _g.PasteText?.Invoke() is { } pasted) NameDraft = Game.CleanOnlineName(pasted);
+        if (inp.Backspace && NameDraft.Length > 0) NameDraft = NameDraft[..^1];
+        if (!string.IsNullOrEmpty(inp.Typed))
+            foreach (char c in inp.Typed)
+                if (!char.IsControl(c) && NameDraft.Length < 16 && !(c == ' ' && (NameDraft.Length == 0 || NameDraft[^1] == ' '))) NameDraft += c;
         if (inp.Confirm)
         {
             string name = Game.CleanOnlineName(NameDraft);
@@ -103,13 +109,7 @@ public sealed class MenuSystem
             _g.SaveSettings();
             Say($"You're {name} online.");
             _g.PlaySound(Sfx.Item, 0.8f);
-            return;
         }
-        if (inp.Tab && _g.PasteText?.Invoke() is { } pasted) NameDraft = Game.CleanOnlineName(pasted);
-        if (inp.Backspace && NameDraft.Length > 0) NameDraft = NameDraft[..^1];
-        if (!string.IsNullOrEmpty(inp.Typed))
-            foreach (char c in inp.Typed)
-                if (!char.IsControl(c) && NameDraft.Length < 16 && !(c == ' ' && (NameDraft.Length == 0 || NameDraft[^1] == ' '))) NameDraft += c;
     }
 
     /// <summary>How many of the course list's items go in its left column (the rest, and Back, in the right).</summary>
@@ -160,7 +160,10 @@ public sealed class MenuSystem
 
     // ------------------------------------------------------------ page contents
 
-    public string[] Items(MenuPage p) => p switch
+    /// <summary>A page's items. Where the game can't quit itself (in a browser tab), there's no Quit.</summary>
+    public string[] Items(MenuPage p) => _g.CanQuit ? PageItems(p) : PageItems(p).Where(i => i is not ("Quit" or "Quit game")).ToArray();
+
+    string[] PageItems(MenuPage p) => p switch
     {
         // Continue heads the list when there's a saved campaign to pick up
         MenuPage.Main => (_g.CheckSave() != null ? new[] { "Continue" } : Array.Empty<string>())

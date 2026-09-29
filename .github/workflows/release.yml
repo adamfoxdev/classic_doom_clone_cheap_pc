@@ -1,6 +1,9 @@
 # Release builds: pushing a tag like v1.2.0 tests the game, publishes self-contained single-file builds for Windows and
-# Linux (no .NET install needed), zips each with the README and the map editor, and attaches them to a GitHub
-# release for the tag. Run it by hand (workflow_dispatch) to get the zips as an artifact without making a release.
+# Linux (no .NET install needed), zips each with the README and the map editor, zips the browser version too, and
+# attaches them to a GitHub release for the tag. Run it by hand (workflow_dispatch) to get the zips as an artifact
+# without making a release.
+# Then, when the repo has a FLY_API_TOKEN secret (fly tokens create deploy), it deploys the matchmaker to Fly.io with
+# the browser version at /play/, built as the same version, so the two can play together from the moment it's out.
 name: Release
 
 on:
@@ -46,6 +49,9 @@ jobs:
             (cd "out/$rid" && zip -qr "../../HexenSharp-$v-$rid.zip" .)
           done
           ./out/linux-x64/HexenSharp --version
+          # the browser version: static files, for any web server (the matchmaker serves them at /play/)
+          dotnet publish web/HexenSharp.Web.csproj -c Release -p:Version="$v" -o out/web
+          (cd out/web/wwwroot && zip -qr "../../../HexenSharp-$v-web.zip" .)
           ls -la HexenSharp-*.zip
 
       - name: Upload the zips
@@ -61,3 +67,23 @@ jobs:
         with:
           files: HexenSharp-*.zip
           generate_release_notes: true
+
+  deploy:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy the matchmaker and the browser version to Fly.io
+        if: env.FLY_API_TOKEN != ''
+        run: |
+          curl -sL https://fly.io/install.sh | sh
+          ~/.fly/bin/flyctl deploy --remote-only --ha=false --build-arg GAME_VERSION="${GITHUB_REF_NAME#v}"
+
+      - name: No Fly.io token
+        if: env.FLY_API_TOKEN == ''
+        run: echo "::notice::No FLY_API_TOKEN secret, so the server wasn't deployed. Deploy it by hand (see README), with --build-arg GAME_VERSION=${GITHUB_REF_NAME#v}."

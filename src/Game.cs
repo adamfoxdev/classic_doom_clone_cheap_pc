@@ -196,6 +196,8 @@ public sealed partial class Game
     public float Time, PlayTime;
     public int MenuIndex;
     public bool ShowMap, Paused, QuitRequested;
+    /// <summary>Whether the game can close itself (the desktop's window can; a browser tab can't, so it has no Quit).</summary>
+    public bool CanQuit = true;
     public readonly List<(string text, float time)> Messages = new();
     public Action<Sfx, float> PlaySound = (_, _) => { };
     public MatchmakerClient Matchmaker;

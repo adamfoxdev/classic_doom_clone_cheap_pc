@@ -1,15 +1,17 @@
-# Fly.io config for the Hexen Sharp matchmaker. Deploy from this folder (server/Matchmaker):
-#   fly launch --copy-config --no-deploy   (pick your own app name and region)
-#   fly deploy --ha=false
+# Fly.io config for the Hexen Sharp matchmaker, which also serves the browser version of the game at /play/.
+# Deploy from the repo's root:
+#   fly launch --copy-config --no-deploy   (once, for a new app: pick your own name and region)
+#   fly deploy --ha=false --build-arg GAME_VERSION=1.2.0   (the desktop release's version, so the two can play together)
 #   fly scale count 1
+# (A tag's release workflow deploys it itself when the repo has a FLY_API_TOKEN secret.)
 # Rooms live in the server's memory, so it must run as ONE machine: with two, players on different machines
 # couldn't see or join each other's rooms.
 
-app = "hexen-matchmaker"      # change to your app's name
+app = "matchmaker-tranquil-fire-5888"   # change to your app's name (the game's default server is this one)
 primary_region = "iad"        # pick the region nearest your players: every input and frame goes through it
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "server/Matchmaker/Dockerfile"
 
 [env]
   ASPNETCORE_URLS = "http://0.0.0.0:8080"

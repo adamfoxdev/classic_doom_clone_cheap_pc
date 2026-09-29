@@ -203,6 +203,10 @@ see [Rendered art pack](#rendered-art-pack-blender)).
 
 ## Running
 
+**In a browser:** play at [matchmaker-tranquil-fire-5888.fly.dev/play/](https://matchmaker-tranquil-fire-5888.fly.dev/play/),
+with nothing to install. It's the same game as the desktop version, and it plays online with it (see
+[The browser version](#the-browser-version)).
+
 **Download:** each [release](https://github.com/adamfoxdev/classic_doom_clone_cheap_pc/releases) has a zip for Windows
 (`win-x64`) and one for Linux (`linux-x64`). Each holds a single self-contained executable (no .NET install needed),
 this README and the map editor (`editor/index.html`). Unzip it and run `HexenSharp.exe` or `./HexenSharp`.
@@ -214,6 +218,56 @@ Windows, Linux and macOS.
 ```sh
 dotnet run -c Release
 ```
+
+### The browser version
+
+The browser version is the desktop game compiled to WebAssembly: `web/` builds every file in `src/` except the
+desktop's window and audio (`src/Program.cs`, `src/Audio.cs`). `web/WebHost.cs` and `web/wwwroot/main.js` stand in
+for those: they pass in the keys, mouse and first controller, draw the 320×200 picture on a canvas, and play sound
+through Web Audio. Both versions run the same frame (`src/Host.cs`), so any change to the game is a change to both.
+
+- **Playing:** open `/play/` on the matchmaker. Click the picture to aim with the mouse; **Esc** gives the mouse back and
+  opens the pause menu. **Fullscreen** is at the bottom right. A controller works the moment you press a button.
+- **Saving:** settings, your profile and the campaign save are kept in the browser's storage for that site. A private
+  window keeps nothing, and clearing the site's data clears them.
+- **Online:** a browser plays against the desktop version as long as both are the same version. The page uses the
+  matchmaker it came from, unless you pick another under **Online → Server** (or add `?matchmaker=<address>` to the
+  page's address).
+- **On an Xbox:** open the address in Microsoft Edge and use the controller. This hasn't been tested on a console
+  yet, so the controller mapping and speed there are unconfirmed.
+- **Speed:** .NET runs in the browser as an interpreter, on one thread, so a frame costs about ten times what it does
+  on the desktop. That's still about 5 ms on a modern PC, well inside 60 fps.
+- **Not in the browser:** there's no Quit (close the tab), and `--play` map testing is desktop-only. Screenshots
+  (F12 is the browser's own key, so rebind **Screenshot** first) download as PNG files.
+
+![The browser version: the Velocity Hangar in Chromium](docs/web_version.png)
+
+Build and try it locally (the matchmaker serves it at `/play/`, just as it does on Fly.io):
+
+```sh
+dotnet publish web/HexenSharp.Web.csproj -c Release -o out/web
+dotnet publish server/Matchmaker/HexenSharp.Matchmaker.csproj -c Release -o out/server
+cp -r out/web/wwwroot out/server/wwwroot/play
+(cd out/server && ASPNETCORE_URLS=http://localhost:5080 dotnet HexenSharp.Matchmaker.dll)
+# then open http://localhost:5080/play/
+```
+
+#### Keeping the desktop and browser versions in step
+
+- **Game code goes in `src/`.** Both versions build all of it. Only a platform's own window, input and sound stay
+  outside: `src/Program.cs` and `src/Audio.cs` for the desktop, and `web/` for the browser. Put new per-frame logic in
+  `src/Host.cs`, not in either host.
+- **Game maths uses the game's `MathF`** (`src/MathF.cs`). It takes the place of `System.MathF` automatically. Its sine,
+  arctangent, exp and pow come out the same to the last bit on every machine. Platform maths libraries differ now and
+  then in the last bit, which is enough to put an online game out of step within seconds. The self-test fails if any
+  code calls `Math.Sin`, `System.MathF.Atan2` or the like directly. Use `MathF`, or `DetMath` for doubles.
+- **CI checks both on every pull request:**
+  - the `test` job runs the self-test and the screenshot tour;
+  - the `web` job builds the browser version, plays it in headless Chromium (`tools/web/test_web.cjs`), and checks
+    that a scripted two-player session gives the same checksums as the desktop's `--sync-probe`.
+  - If that last check fails, desktop and browser players would fall out of step in an online game.
+- **One version number.** A release tag builds the desktop zips and the browser version with the same version, and
+  (given a `FLY_API_TOKEN` secret) deploys it, so both can play together straight away.
 
 ### Online matchmaking
 
@@ -290,15 +344,22 @@ HTTPS address. Lobby state is held in memory and resets when the service restart
 
 #### Deploying the matchmaker to Fly.io
 
-`server/Matchmaker` has a `Dockerfile` and a `fly.toml`. With the [Fly CLI](https://fly.io/docs/flyctl/install/)
-installed and signed in (`fly auth login`), deploy from that folder:
+The image (`server/Matchmaker/Dockerfile`) holds the matchmaker, the who board at `/` and the browser version of the
+game at `/play/`. `fly.toml` sits at the repo's root. With the [Fly CLI](https://fly.io/docs/flyctl/install/)
+installed and signed in (`fly auth login`), deploy from the root:
 
 ```sh
-cd server/Matchmaker
-fly launch --copy-config --no-deploy   # choose your app name and a region near your players
-fly deploy --ha=false
+fly launch --copy-config --no-deploy   # a new app only: choose your app name and a region near your players
+fly deploy --ha=false --build-arg GAME_VERSION=1.2.0   # the desktop release's version, so the two can play together
 fly scale count 1
 ```
+
+`fly.toml` names the default server's app (`matchmaker-tranquil-fire-5888`); change `app` for your own. Without
+`GAME_VERSION`, the browser version reports `dev` and only meets other dev builds online.
+
+**Deploying on release:** add a Fly deploy token as the repo secret `FLY_API_TOKEN` (`fly tokens create deploy`,
+then GitHub → Settings → Secrets and variables → Actions). After that, pushing a `v*` tag also deploys the server and
+the browser version at the tag's version.
 
 Then point the game at it (`https`: the game switches to secure WebSockets itself):
 
@@ -1582,6 +1643,7 @@ dotnet run -c Release -- --sounds sounds  # writes every sound effect, both styl
 dotnet run -c Release -- --bench [frames] # times the renderer on fixed views, from rooms to the tall open maps
 dotnet run -c Release -- --bench-compare 1.25 base.txt -- head.txt   # fails if head's --bench is >25% slower
 dotnet run -c Release -- --version        # prints the version (a release build's tag, else "dev")
+dotnet run -c Release -- --sync-probe     # a scripted two-player session's checksums (the browser's must match)
 dotnet run -c Release -- --replay file.hxreplay   # plays a replay headlessly and prints where it ended
 dotnet run -c Release -- --update-replays # rewrites tests/replays' expected endings after a meant gameplay change
 dotnet run -c Release -- --play map.hxm   # play-tests a map file, reloading it whenever it's saved

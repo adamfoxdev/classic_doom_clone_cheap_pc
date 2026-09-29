@@ -256,8 +256,9 @@ public sealed class Profile
     }
 
     /// <summary>Experience needed to go from `level` to the next: 100, 282, 519, 800...</summary>
-    public static int XpToNext(int level) => (int)(100 * Math.Pow(level, 1.5));
-    public static int WeaponXpToNext(int level) => (int)(60 * Math.Pow(level, 1.4));
+    // (DetMath's pow is the same on every machine; the nudge keeps a whole-number result, 4^1.5 = 8, from reading as 7.999…)
+    public static int XpToNext(int level) => (int)(100 * DetMath.Pow(level, 1.5) + 1e-6);
+    public static int WeaponXpToNext(int level) => (int)(60 * DetMath.Pow(level, 1.4) + 1e-6);
 
     public int Rank(Skill s) => Ranks.TryGetValue(s.ToString(), out int r) ? Math.Clamp(r, 0, MaxRank) : 0;
 

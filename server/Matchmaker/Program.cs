@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.StaticFiles;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
@@ -6,10 +7,38 @@ using System.Threading.Channels;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<RoomDirectory>();
+// the API holds no cookies or logins, so a copy of the browser game served from anywhere (a laptop, GitHub Pages) may use it
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 var app = builder.Build();
-// the who board (wwwroot/index.html) at the root: who's online, what they're playing, and the server's stats
+app.UseCors();
+
+// the who board (wwwroot/index.html) at the root, and the browser game (wwwroot/play, built from web/) at /play/
+var types = new FileExtensionContentTypeProvider();
+types.Mappings[".wasm"] = "application/wasm";
+types.Mappings[".dat"] = "application/octet-stream";
+app.Use(async (context, next) =>
+{
+    string path = context.Request.Path.Value ?? "";
+    if (path.StartsWith("/play/", StringComparison.Ordinal))
+    {
+        // the game's files keep their names from build to build: always check for a newer one
+        context.Response.Headers.CacheControl = "no-cache";
+        // and the big ones go brotli-compressed (the build makes a .br of each) to a browser that takes it
+        if (context.Request.Headers.AcceptEncoding.ToString().Contains("br") && types.TryGetContentType(path, out var type)
+            && app.Environment.WebRootFileProvider.GetFileInfo(path + ".br") is { Exists: true, PhysicalPath: not null } br)
+        {
+            context.Response.Headers.ContentEncoding = "br";
+            context.Response.Headers.Vary = "Accept-Encoding";
+            context.Response.ContentType = type;
+            context.Response.ContentLength = br.Length;
+            await context.Response.SendFileAsync(br);
+            return;
+        }
+    }
+    await next();
+});
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = types });
 // a ping every 20 s keeps a lobby's quiet connection from being closed as idle by a proxy (Fly.io's, say)
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 
@@ -61,7 +90,8 @@ app.Map("/api/rooms/{id}/connect", async (HttpContext context, string id, RoomDi
     if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
     string playerId = context.Request.Query["playerId"].ToString();
     string auth = context.Request.Headers.Authorization.ToString();
-    string token = auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? auth[7..] : "";
+    // the game sends its token as a header; a browser can't put headers on a WebSocket, so it sends it in the address
+    string token = auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? auth[7..] : context.Request.Query["token"].ToString();
     var channel = rooms.Attach(id, playerId, token);
     if (channel == null) { context.Response.StatusCode = 404; return; }
     using var socket = await context.WebSockets.AcceptWebSocketAsync();

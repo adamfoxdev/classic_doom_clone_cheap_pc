@@ -324,7 +324,10 @@ public static class Png
         return c ^ 0xFFFFFFFFu;
     }
 
-    public static void Save(string path, uint[] px, int w, int h)
+    public static void Save(string path, uint[] px, int w, int h) => File.WriteAllBytes(path, Encode(px, w, h));
+
+    /// <summary>The picture as a PNG file's bytes (8-bit RGB).</summary>
+    public static byte[] Encode(uint[] px, int w, int h)
     {
         using var raw = new MemoryStream();
         for (int y = 0; y < h; y++)
@@ -341,7 +344,7 @@ public static class Png
         using var zbuf = new MemoryStream();
         using (var z = new ZLibStream(zbuf, CompressionLevel.Optimal, true)) raw.WriteTo(z);
 
-        using var fs = File.Create(path);
+        using var fs = new MemoryStream();
         fs.Write(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
         var ihdr = new byte[13];
         WriteBE(ihdr, 0, (uint)w);
@@ -350,6 +353,7 @@ public static class Png
         Chunk(fs, "IHDR", ihdr);
         Chunk(fs, "IDAT", zbuf.ToArray());
         Chunk(fs, "IEND", Array.Empty<byte>());
+        return fs.ToArray();
     }
 
     static void Chunk(Stream s, string type, byte[] data)

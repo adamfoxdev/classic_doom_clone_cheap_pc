@@ -126,10 +126,12 @@ public sealed class MatchmakerClient : IDisposable, INetLink
             {
                 Scheme = baseUri.Scheme == "https" ? "wss" : "ws",
                 Path = baseUri.AbsolutePath.TrimEnd('/') + $"/api/rooms/{Uri.EscapeDataString(ticket.Room.Id)}/connect",
-                Query = "playerId=" + Uri.EscapeDataString(ticket.PlayerId),
+                Query = "playerId=" + Uri.EscapeDataString(ticket.PlayerId)
+                    // a browser can't put headers on a WebSocket, so there the token rides in the address
+                    + (OperatingSystem.IsBrowser() ? "&token=" + Uri.EscapeDataString(ticket.Token) : ""),
             };
             using var socket = new ClientWebSocket();
-            socket.Options.SetRequestHeader("Authorization", "Bearer " + ticket.Token);
+            if (!OperatingSystem.IsBrowser()) socket.Options.SetRequestHeader("Authorization", "Bearer " + ticket.Token);
             await socket.ConnectAsync(builder.Uri, stop);
             Status = "Connected to lobby relay.";
             var sender = SendLoop(socket, stop);

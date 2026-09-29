@@ -103,6 +103,7 @@ public static partial class Headless
         FishingChecks(Check);
         Console.WriteLine("Online co-op:");
         NetChecks(Check);
+        CrossPlayChecks(Check);
         Console.WriteLine("Map colours:");
         MapColourChecks(Check);
         Console.WriteLine("Game feel:");

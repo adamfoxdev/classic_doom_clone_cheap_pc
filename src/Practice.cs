@@ -238,7 +238,7 @@ public sealed class DemoPilot
     }
 
     /// <summary>
-    /// Plans a platform: plays out approaches of each zig-zag width (0 to 50 degrees each side, starting either way) in
+    /// Plans a platform: plays out approaches of each zig-zag width (0 to 60 degrees each side, every 3, starting either way) in
     /// the copy of the course, and returns the one that reaches the next platform soonest, or null if none can yet.
     /// </summary>
     Approach PlanPlatform(Game g, (int x0, int x1, float floor) a, (int x0, int x1, float floor) b)
@@ -251,7 +251,7 @@ public sealed class DemoPilot
         }
         Approach best = null;
         float bestTime = float.MaxValue, bestSpeed = 0;
-        for (int deg = 0; deg <= 50; deg += 5)
+        for (int deg = 0; deg <= 60; deg += 3)
             foreach (int sign in deg == 0 ? new[] { 1 } : new[] { 1, -1 })
             {
                 var trial = new Approach(deg * MathF.PI / 180, sign, _flight);
