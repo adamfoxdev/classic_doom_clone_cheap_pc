@@ -240,7 +240,7 @@ public sealed class MatchmakerClient : IDisposable, INetLink
         finally { Busy = false; }
     }
 
-    /// <summary>The name you go by in rooms (your leaderboard name, from the menu); a random one when unset.</summary>
+    /// <summary>The name you go by in rooms (the one you typed on the Online page); a random one when unset.</summary>
     public string PlayerName;
     string Name() => string.IsNullOrWhiteSpace(PlayerName) ? "Player" + Random.Shared.Next(1000, 9999) : PlayerName.Trim()[..Math.Min(20, PlayerName.Trim().Length)];
     public void Dispose()
@@ -302,6 +302,13 @@ public sealed class NetworkMessage
     /// <summary>On a status (host to matchmaker only, for its who board): how the game's going, and each player's score.</summary>
     public string Status { get; set; }
     public NetworkScore[] Scores { get; set; }
+    /// <summary>
+    /// On a chat: the line. You send only the Text; the matchmaker adds Name (who said it) and From ("player", or "web"
+    /// for someone on its who board) and passes it to everyone in the room.
+    /// </summary>
+    public string Text { get; set; }
+    public string Name { get; set; }
+    public string From { get; set; }
 }
 
 /// <summary>A player's line on the matchmaker's who board. Team is the soccer team (0 Blue, 1 Red), or -1.</summary>

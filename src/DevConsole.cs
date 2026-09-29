@@ -464,6 +464,12 @@ public sealed class DevConsole
             }
             Print($"matchmaker = {_g.MatchmakerUrl}{(_g.MatchmakerUrl == Game.DefaultMatchmakerUrl ? " (the default)" : "")}");
         });
+        Add("onlinename", "[name]", "the name you go by in online games (asked for the first time you go Online)", a =>
+        {
+            if (a.Length < 2) { Print($"onlinename = {_g.OnlineName}"); return; }
+            _g.OnlineName = Game.CleanOnlineName(string.Join(' ', a[1..]));
+            Print($"onlinename = {_g.OnlineName}");
+        });
         Add("name", "[name]", "the name your practice course times go on the leaderboard under", a =>
         {
             if (a.Length < 2) { Print($"name = {_g.RunnerName}"); return; }

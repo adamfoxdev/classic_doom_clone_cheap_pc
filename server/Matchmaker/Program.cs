@@ -16,6 +16,20 @@ app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSecond
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/api/rooms", (RoomDirectory rooms) => Results.Ok(rooms.List()));
 app.MapGet("/api/board", (RoomDirectory rooms) => Results.Ok(rooms.Board()));
+// the who board talks to the players: to one room, or to every room ("all")
+app.MapPost("/api/rooms/{id}/say", (string id, SayRequest request, HttpContext context, RoomDirectory rooms) =>
+{
+    // behind Fly's proxy the caller's address is in Fly-Client-IP; elsewhere, the connection's
+    string caller = context.Request.Headers["Fly-Client-IP"].ToString() is { Length: > 0 } fly ? fly : context.Connection.RemoteIpAddress?.ToString() ?? "?";
+    return rooms.Say(id, request.Name, request.Text, caller) switch
+    {
+        "name" => Results.BadRequest(new { error = "Name must be 1–16 characters." }),
+        "text" => Results.BadRequest(new { error = $"Say something (up to {RoomDirectory.ChatMax} characters)." }),
+        "missing" => Results.NotFound(new { error = "That room has gone." }),
+        "slow" => Results.StatusCode(StatusCodes.Status429TooManyRequests),
+        _ => Results.Accepted(),
+    };
+});
 app.MapGet("/api/rooms/{id}", (string id, RoomDirectory rooms) => rooms.Get(id) is { } room ? Results.Ok(room) : Results.NotFound());
 app.MapPost("/api/rooms", (CreateRoomRequest request, RoomDirectory rooms) =>
 {
@@ -95,6 +109,7 @@ static bool ValidName(string name) => !string.IsNullOrWhiteSpace(name) && name.T
 sealed record CreateRoomRequest(string Name, string Version);
 sealed record JoinRoomRequest(string Name, string Version);
 sealed record PlayerRequest(string PlayerId, string Token);
+sealed record SayRequest(string Name, string Text);
 sealed record RoomMember(string PlayerId, string Name, bool IsHost);
 sealed record RoomSummary(string Id, string Code, string Host, string Version, int Players, int Capacity, DateTimeOffset UpdatedAt, RoomMember[] Members, bool Started);
 sealed record PlayerTicket(RoomSummary Room, string PlayerId, string Token, bool IsHost);
@@ -105,11 +120,13 @@ sealed record PlayerTicket(RoomSummary Room, string PlayerId, string Token, bool
 /// ending with now.
 /// </summary>
 sealed record Board(DateTimeOffset Now, DateTimeOffset ServerStarted, int PlayersOnline, int RoomsOpen, int GamesPlaying,
-    BoardTotals Totals, int[] History, BoardRoom[] Rooms, BoardGame[] Recent);
+    BoardTotals Totals, int[] History, BoardRoom[] Rooms, BoardGame[] Recent, BoardChat[] Chat);
+/// <summary>A line of chat: Room is whose game it was said in ("Sam's game"), or "everyone" for the board's to all rooms.</summary>
+sealed record BoardChat(DateTimeOffset When, string Room, string Name, string Text, string From);
 sealed record BoardTotals(long RoomsCreated, long PlayersJoined, long GamesStarted, int PeakPlayers, long FramesRelayed, long BytesRelayed,
     double LongestGameSeconds, IReadOnlyDictionary<string, long> GamesByMode);
 /// <summary>A room: State is lobby, playing, or over (the host ended it and the rest haven't left yet).</summary>
-sealed record BoardRoom(string Host, string State, string? Mode, string? ModeName, string Version, int Players, int Capacity,
+sealed record BoardRoom(string Id, string Host, string State, string? Mode, string? ModeName, string Version, int Players, int Capacity,
     DateTimeOffset Opened, double? PlayingSeconds, string? Status, BoardPlayer[] Members);
 /// <summary>A player: Kills, Health, Dead and Team come from the host's status (newer games send one every couple of seconds).</summary>
 sealed record BoardPlayer(string Name, bool IsHost, bool Connected, int? Kills, int? Health, bool? Dead, int? Team);
@@ -124,6 +141,8 @@ sealed class RoomDirectory
     readonly object _statsGate = new();
     readonly Dictionary<string, long> _gamesByMode = new();
     readonly Queue<BoardGame> _recent = new();
+    readonly Queue<BoardChat> _chat = new();
+    readonly ConcurrentDictionary<string, Queue<DateTimeOffset>> _sayers = new();
     readonly int[] _history = new int[Minutes];
     long _roomsCreated, _playersJoined, _gamesStarted, _framesRelayed, _bytesRelayed;
     int _peakPlayers, _historyAt, _samples;
@@ -131,6 +150,68 @@ sealed class RoomDirectory
     readonly Timer _sampler;
     /// <summary>How many minutes of players-online the board's chart covers, and how many finished games it lists.</summary>
     public const int Minutes = 120, RecentGames = 20;
+    /// <summary>Chat: the longest line, and how many lines the board keeps.</summary>
+    public const int ChatMax = 100, ChatKept = 50;
+
+    /// <summary>
+    /// Someone on the who board says something, to one room or (id "all") to every room. One line every 3 seconds and
+    /// 10 a minute from each address; it goes out marked as from the web, so nobody can pass for a player.
+    /// Returns an error ("name", "text", "missing", "slow"), or null when it's sent.
+    /// </summary>
+    public string? Say(string id, string? name, string? text, string caller)
+    {
+        name = Clip(name, 16);
+        text = Clip(text, ChatMax);
+        if (string.IsNullOrEmpty(name)) return "name";
+        if (string.IsNullOrEmpty(text)) return "text";
+        Prune();
+        var targets = id == "all" ? _rooms.Values.ToArray() : _rooms.TryGetValue(id, out var one) ? new[] { one } : Array.Empty<Room>();
+        if (targets.Length == 0 && id != "all") return "missing";
+        var now = DateTimeOffset.UtcNow;
+        var times = _sayers.GetOrAdd(caller, _ => new Queue<DateTimeOffset>());
+        lock (times)
+        {
+            while (times.Count > 0 && now - times.Peek() > TimeSpan.FromMinutes(1)) times.Dequeue();
+            if (times.Count >= 10 || (times.Count > 0 && now - times.Last() < TimeSpan.FromSeconds(3))) return "slow";
+            times.Enqueue(now);
+        }
+        if (_sayers.Count > 10_000) _sayers.Clear(); // (a bound on the memory; it only forgets who spoke lately)
+        if (id == "all")
+        {
+            foreach (var room in targets)
+                lock (room.Gate) Broadcast(room, name, text, "web");
+            Remember(new BoardChat(now, "everyone", name, text, "web"));
+        }
+        else
+            lock (targets[0].Gate) Chat(targets[0], name, text, "web");
+        return null;
+    }
+
+    /// <summary>A line said in a room: to everyone in it (the speaker too, so they see it went), and onto the board.</summary>
+    void Chat(Room room, string name, string? text, string from)
+    {
+        text = Clip(text, ChatMax);
+        if (string.IsNullOrEmpty(text)) return;
+        Broadcast(room, name, text, from);
+        Remember(new BoardChat(DateTimeOffset.UtcNow, RoomLabel(room), name, text, from));
+    }
+
+    static void Broadcast(Room room, string name, string text, string from)
+    {
+        string json = JsonSerializer.Serialize(new { type = "chat", name, text, from });
+        foreach (var player in room.Players.Values) Send(player, json);
+    }
+
+    void Remember(BoardChat line)
+    {
+        lock (_statsGate)
+        {
+            _chat.Enqueue(line);
+            while (_chat.Count > ChatKept) _chat.Dequeue();
+        }
+    }
+
+    static string RoomLabel(Room room) => (room.Players.TryGetValue(room.HostId, out var host) ? host.Name : room.StartedNames.FirstOrDefault() ?? "?") + "'s game";
 
     public RoomDirectory()
     {
@@ -168,7 +249,7 @@ sealed class RoomDirectory
             var totals = new BoardTotals(_roomsCreated, _playersJoined, _gamesStarted, _peakPlayers, _framesRelayed, _bytesRelayed,
                 _longestGame, new Dictionary<string, long>(_gamesByMode));
             return new Board(now, _started, rooms.Sum(r => r.Players), rooms.Length, rooms.Count(r => r.State == "playing"),
-                totals, history, rooms, _recent.Reverse().ToArray());
+                totals, history, rooms, _recent.Reverse().ToArray(), _chat.Reverse().ToArray());
         }
     }
 
@@ -182,7 +263,7 @@ sealed class RoomDirectory
                 room.Scores.TryGetValue(p.Id, out var score);
                 return new BoardPlayer(p.Name, p.IsHost, p.Outgoing != null, score?.Kills, score?.Health, score?.Dead, score?.Team);
             }).ToArray();
-            return new BoardRoom(room.Players.TryGetValue(room.HostId, out var host) ? host.Name : "", state, room.Mode, ModeName(room.Mode),
+            return new BoardRoom(room.Id, room.Players.TryGetValue(room.HostId, out var host) ? host.Name : "", state, room.Mode, ModeName(room.Mode),
                 room.Version, room.Players.Count, Capacity, room.Opened, room.StartMessage != null ? room.LastTick / 60.0 : null, room.Status, members);
         }
     }
@@ -322,6 +403,11 @@ sealed class RoomDirectory
                     foreach (var player in room.Players.Values)
                         if (!player.IsHost) { Send(player, json); sent++; }
                     lock (_statsGate) { _framesRelayed++; _bytesRelayed += (long)json.Length * sent; }
+                }
+                else if (type == "chat")
+                {
+                    if (root.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String && sender.MayChat(DateTimeOffset.UtcNow))
+                        Chat(room, sender.Name, text.GetString(), "player");
                 }
                 else if (sender.IsHost && type == "status" && room.StartMessage != null)
                     TakeStatus(room, root); // (for the board only: nobody else needs it)
@@ -467,6 +553,9 @@ sealed class RoomDirectory
         public readonly ConcurrentDictionary<string, Member> Players = new();
         public Member Add(string name, bool host)
         {
+            // two Sams in a room would be hard to tell apart in chat: the second is "Sam 2"
+            string wanted = name;
+            for (int n = 2; Players.Values.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)); n++) name = $"{wanted} {n}";
             var member = new Member(Guid.NewGuid().ToString("N"), Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)), name, DateTimeOffset.UtcNow, host);
             Players[member.Id] = member;
             if (host) HostId = member.Id;
@@ -480,5 +569,15 @@ sealed class RoomDirectory
         public readonly DateTimeOffset Joined = seen;
         public DateTimeOffset Seen = seen;
         public Channel<string>? Outgoing;
+        readonly Queue<DateTimeOffset> _said = new();
+
+        /// <summary>A player may say 5 lines in any 5 seconds (more is dropped: a stuck key, or a flood).</summary>
+        public bool MayChat(DateTimeOffset now)
+        {
+            while (_said.Count > 0 && now - _said.Peek() > TimeSpan.FromSeconds(5)) _said.Dequeue();
+            if (_said.Count >= 5) return false;
+            _said.Enqueue(now);
+            return true;
+        }
     }
 }
