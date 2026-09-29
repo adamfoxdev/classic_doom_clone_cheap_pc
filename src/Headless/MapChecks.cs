@@ -168,7 +168,7 @@ public static partial class Headless
         var g = new Game { FixedSeed = 1, MapsDir = dir };
         void Tick(Input i, int frames = 1) { for (int k = 0; k < frames; k++) g.Update(i, 1f / 35f); }
 
-        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }),
+        check(!g.Menu.Items(MenuPage.Main).Contains("Level editor") && g.Menu.Items(MenuPage.Main).SequenceEqual(new[] { "New game", "Practice", "Arena", "Story", "Online", "Leaderboard", "Character", "Options", "Quit" }),
               "the title menu no longer has a level editor (maps are made in tools/editor)");
         g.Con.Execute("edit");
         check(g.Con.Log.Last().Contains("unknown"), "the 'edit' console command is gone");

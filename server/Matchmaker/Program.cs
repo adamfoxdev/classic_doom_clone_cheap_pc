@@ -141,8 +141,9 @@ sealed class RoomDirectory
         {
             if (!room.Players.TryGetValue(playerId, out var player) || !TokenMatches(player.Token, token)) return null;
             player.Outgoing?.Writer.TryComplete();
-            player.Outgoing = Channel.CreateBounded<string>(new BoundedChannelOptions(64) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false });
-            if (room.StartMessage != null) player.Outgoing.Writer.TryWrite(room.StartMessage);
+            // never drop: the game is lockstep, so a lost frame puts a client out of sync for good (see Send)
+            player.Outgoing = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+            if (room.StartMessage != null) Send(player, room.StartMessage);
             return player.Outgoing;
         }
     }
@@ -157,10 +158,10 @@ sealed class RoomDirectory
                 if (player.IsHost)
                 {
                     foreach (var other in room.Players.Values)
-                        if (!other.IsHost) other.Outgoing?.Writer.TryWrite("{\"type\":\"stop\"}");
+                        if (!other.IsHost) Send(other, "{\"type\":\"stop\"}");
                 }
                 else if (room.Players.TryGetValue(room.HostId, out var host))
-                    host.Outgoing?.Writer.TryWrite(JsonSerializer.Serialize(new { type = "peer-left", playerId }));
+                    Send(host, JsonSerializer.Serialize(new { type = "peer-left", playerId }));
             }
     }
 
@@ -179,23 +180,23 @@ sealed class RoomDirectory
                 if (type == "input" && room.StartMessage != null && !sender.IsHost && room.Players.TryGetValue(room.HostId, out var host))
                 {
                     var relay = JsonSerializer.Serialize(new { type = "input", playerId = senderId, input = doc.RootElement.GetProperty("input") });
-                    host.Outgoing?.Writer.TryWrite(relay);
+                    Send(host, relay);
                 }
                 else if (sender.IsHost && type == "start" && room.Started && room.StartMessage == null)
                 {
                     room.StartMessage = json;
                     foreach (var player in room.Players.Values)
-                        if (!player.IsHost) player.Outgoing?.Writer.TryWrite(json);
+                        if (!player.IsHost) Send(player, json);
                 }
                 else if (sender.IsHost && type == "frame" && room.Started)
                 {
                     foreach (var player in room.Players.Values)
-                        if (!player.IsHost) player.Outgoing?.Writer.TryWrite(json);
+                        if (!player.IsHost) Send(player, json);
                 }
                 else if (sender.IsHost && type == "stop")
                 {
                     foreach (var player in room.Players.Values)
-                        if (!player.IsHost) player.Outgoing?.Writer.TryWrite(json);
+                        if (!player.IsHost) Send(player, json);
                 }
             }
         }
@@ -232,10 +233,10 @@ sealed class RoomDirectory
             if (player.IsHost)
             {
                 foreach (var other in room.Players.Values)
-                    if (!other.IsHost) other.Outgoing?.Writer.TryWrite("{\"type\":\"stop\"}");
+                    if (!other.IsHost) Send(other, "{\"type\":\"stop\"}");
             }
             else if (room.Players.TryGetValue(room.HostId, out var host))
-                host.Outgoing?.Writer.TryWrite(JsonSerializer.Serialize(new { type = "peer-left", playerId }));
+                Send(host, JsonSerializer.Serialize(new { type = "peer-left", playerId }));
             room.Players.TryRemove(playerId, out _);
             if (room.Players.IsEmpty) _rooms.TryRemove(id, out _);
             return true;
@@ -263,6 +264,21 @@ sealed class RoomDirectory
                 room.Players.Count, Capacity, room.Players.Values.Select(p => p.Seen).DefaultIfEmpty(DateTimeOffset.UtcNow).Max(),
                 room.Players.Values.OrderBy(p => p.Joined).Select(p => new RoomMember(p.Id, p.Name, p.IsHost)).ToArray(), room.Started);
     }
+
+    /// <summary>
+    /// Queues a message for a player. Nothing is ever dropped (a lockstep game can't skip a frame), but a player a whole
+    /// minute of frames behind isn't coming back: their connection is closed, and their game says so.
+    /// </summary>
+    static void Send(Member member, string message)
+    {
+        var outgoing = member.Outgoing;
+        if (outgoing == null) return;
+        if (outgoing.Reader.CanCount && outgoing.Reader.Count >= MaxQueued) { outgoing.Writer.TryComplete(); return; }
+        outgoing.Writer.TryWrite(message);
+    }
+
+    /// <summary>How many messages may wait for one player: a minute of the host's 60 frames a second, and some.</summary>
+    const int MaxQueued = 60 * 60 + 256;
 
     static bool TokenMatches(string expected, string actual)
     {
