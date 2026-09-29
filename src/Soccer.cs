@@ -147,7 +147,7 @@ public sealed partial class Game
     public SoccerRun LastSoccer;
     public int LastSoccerPlace;
     /// <summary>After a goal: seconds until the ball comes back to the spot (negative when it's in play).</summary>
-    float _kickoff = -1, _beacon, _ballLastX, _ballLastY;
+    float _kickoff = -1, _beacon;
 
     /// <summary>On a fresh pitch: the rocket launcher (1) and the grenade launcher (2), mana that never runs out.</summary>
     void SetUpSoccer()
@@ -165,7 +165,42 @@ public sealed partial class Game
     void ResetSoccer()
     {
         SoccerGoals = SoccerShots = 0; LitGoal = 1; SoccerLeft = Soccer.Length;
+        TeamGoals[0] = TeamGoals[1] = 0;
         KickOff();
+    }
+
+    // ------------------------------------------------------------------ online: team against team
+
+    /// <summary>
+    /// Online with two or more players, Rocket Soccer is a match: players alternate between Blue (shooting for the east
+    /// goal) and Red (the west), each goal scores for the side shooting at it, and full time says who won.
+    /// </summary>
+    public bool SoccerVersus => OnSoccer && OnlineRun && SoccerVersusFor(OnlinePlayers.Count);
+    static bool SoccerVersusFor(int players) => players > 1;
+    public readonly int[] TeamGoals = new int[2];
+    public static string SoccerTeamName(int team) => team == 0 ? "Blue" : "Red";
+    public static uint SoccerTeamColour(int team) => team == 0 ? Col.Rgb(70, 130, 255) : Col.Rgb(255, 70, 60);
+    /// <summary>Co-op crewmates' colours, so you can tell them apart.</summary>
+    public static readonly uint[] CrewColours = { Col.Rgb(90, 200, 255), Col.Rgb(255, 170, 60), Col.Rgb(140, 255, 120), Col.Rgb(230, 110, 255) };
+
+    /// <summary>A player's side (0 Blue, 1 Red): by their place in the session.</summary>
+    public int SoccerTeam(Player p) => Math.Max(0, OnlinePlayers.FindIndex(a => a.State == p)) % 2;
+
+    /// <summary>The goal a player's shooting for: their side's in a match, else the lit one.</summary>
+    public int SoccerTarget(Player p) => SoccerVersus ? (SoccerTeam(p) == 0 ? 1 : 0) : LitGoal;
+
+    /// <summary>The kick-off line-up: Blue in the west half facing east, Red in the east half facing west, spread across.</summary>
+    void PlaceSoccerTeams()
+    {
+        for (int i = 0; i < OnlinePlayers.Count; i++)
+        {
+            var p = OnlinePlayers[i].State;
+            int team = i % 2, slot = i / 2;
+            p.X = team == 0 ? 10.5f : Soccer.W - 10.5f;
+            p.Y = Soccer.SpotY + (slot % 2 == 0 ? -1 : 1) * (1.5f + slot / 2 * 3f);
+            p.Angle = team == 0 ? 0 : MathF.PI;
+            p.FloorZ = Level.FloorUnder(p.X, p.Y, p.Radius); p.Z = p.VZ = p.VX = p.VY = 0; p.Pitch = 0; p.TeleportFlash = 1;
+        }
     }
 
     /// <summary>The ball dropped on the centre spot, still.</summary>
@@ -205,9 +240,12 @@ public sealed partial class Game
         if ((_beacon -= dt) <= 0)
         {
             _beacon = 0.2f;
-            var (mx, _) = Soccer.Mouth(LitGoal);
-            foreach (float y in new[] { Soccer.MouthY0 + 0.1f, Soccer.MouthY1 + 0.9f })
-                SpawnPuff(Art.RailSpiral, mx, y, Soccer.Crossbar * RandF(), 0.3f);
+            foreach (int lit in SoccerVersus ? new[] { 0, 1 } : new[] { LitGoal })
+            {
+                var (mx, _) = Soccer.Mouth(lit);
+                foreach (float y in new[] { Soccer.MouthY0 + 0.1f, Soccer.MouthY1 + 0.9f })
+                    SpawnPuff(Art.RailSpiral, mx, y, Soccer.Crossbar * RandF(), 0.3f);
+            }
         }
         if (!RunStarted || Mode != GameMode.Playing) return;
         SoccerLeft -= dt;
@@ -221,6 +259,15 @@ public sealed partial class Game
         Ball.VX = Ball.VY = 0;
         for (int k = 0; k < 6; k++) SpawnPuff(Art.Fireball[1], Ball.X, Ball.Y + (k - 2.5f) * 0.6f, Ball.MidZ + RandF(), 0.8f);
         Ball.Removed = true;
+        if (SoccerVersus)
+        {
+            int team = goal == 1 ? 0 : 1; // the east goal is Blue's to shoot at
+            TeamGoals[team]++;
+            PlaySound(Sfx.Secret, 1);
+            AddShake(0.3f);
+            Say($"GOAL for {SoccerTeamName(team)}! Blue {TeamGoals[0]} - {TeamGoals[1]} Red.");
+            return;
+        }
         if (goal != LitGoal)
         {
             PlaySound(Sfx.Locked, 0.8f);
@@ -238,6 +285,15 @@ public sealed partial class Game
     void EndSoccerMatch()
     {
         Messages.Clear();
+        if (SoccerVersus)
+        {
+            int b = TeamGoals[0], r = TeamGoals[1];
+            Say(b == r ? $"Full time: Blue {b} - {r} Red. A draw!" : $"Full time: Blue {b} - {r} Red. {SoccerTeamName(b > r ? 0 : 1)} wins!");
+            PlaySound(Sfx.Secret, 1);
+            ResetRun(); // (a fresh match: nil-nil, the ball on the spot)
+            PlaceSoccerTeams();
+            return;
+        }
         if (Demo || PracticeSpeed < 1 || SoccerGoals == 0)
             Say(SoccerGoals == 0 ? "Full time: no goals. Get behind the ball, facing the lit goal, and blast it from close." : $"Full time: {SoccerGoals} goals at {PracticeSpeed * 100:0}% speed.");
         else
@@ -314,7 +370,14 @@ public sealed partial class Game
             if (b.Z + 2 * r > ceiling) { b.Z = ceiling - 2 * r; if (b.VZ > 0) b.VZ = -b.VZ * Soccer.WallBounce; b.Grounded = false; }
         }
         b.Spin += MathF.Sqrt(b.VX * b.VX + b.VY * b.VY) * dt / (MathF.Tau * r) * 8;
-        BallMeetsPlayer(b, dt);
+        if (NetSession != null)
+        {
+            // online, every player can run into it
+            var keep = P;
+            foreach (var a in OnlinePlayers) if (!a.State.Dead) { P = a.State; BallMeetsPlayer(b, dt); }
+            P = keep;
+        }
+        else BallMeetsPlayer(b, dt);
     }
 
     void Thud(SoccerBall b) => Sound(Sfx.Hit, b.X, b.Y);
@@ -332,17 +395,15 @@ public sealed partial class Game
     /// <summary>Your velocity this frame, for running into balls: Quake movement's, or how far you've come since the last frame.</summary>
     (float x, float y) RunVelocity(float dt)
     {
-        if (PlayTime == _runVelAt) return _runVel;
         var p = P;
+        if (PlayTime == p.RunVelAt) return p.RunVel;
         float vx = p.VX, vy = p.VY;
-        if (dt > 0 && vx == 0 && vy == 0) { vx = (p.X - _ballLastX) / dt; vy = (p.Y - _ballLastY) / dt; }
+        if (dt > 0 && vx == 0 && vy == 0) { vx = (p.X - p.BallLastX) / dt; vy = (p.Y - p.BallLastY) / dt; }
         if (MathF.Abs(vx) + MathF.Abs(vy) > 20) vx = vy = 0; // (a teleport, not a run)
-        _ballLastX = p.X; _ballLastY = p.Y;
-        _runVelAt = PlayTime;
-        return _runVel = (vx, vy);
+        p.BallLastX = p.X; p.BallLastY = p.Y;
+        p.RunVelAt = PlayTime;
+        return p.RunVel = (vx, vy);
     }
-    float _runVelAt = -1;
-    (float x, float y) _runVel;
 
     /// <summary>You run into the ball: it's pushed off you, at least as fast as you were going into it.</summary>
     void BallMeetsPlayer(SoccerBall b, float dt)

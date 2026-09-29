@@ -60,7 +60,8 @@ public static class Program
         var game = new Game
         {
             ConfigPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HexenSharp", "settings.cfg"),
-            Matchmaker = new MatchmakerClient(Environment.GetEnvironmentVariable("HEXEN_MATCHMAKER_URL") ?? "http://localhost:5080/", Version),
+            Matchmaker = new MatchmakerClient(Game.DefaultMatchmakerUrl, Version),
+            MatchmakerVersion = Version,
         };
         game.MapsDir = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "maps");
         game.ProfilePath = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "profile.json");
@@ -68,6 +69,9 @@ public static class Program
         game.CopyText = t => Raylib.SetClipboardText(t);
         game.PasteText = () => Raylib.GetClipboardText_();
         game.LoadSettings();
+        // HEXEN_MATCHMAKER_URL, when set, wins over the saved choice (for this run; it isn't saved)
+        if (Environment.GetEnvironmentVariable("HEXEN_MATCHMAKER_URL") is { Length: > 0 } envUrl && game.SetMatchmakerUrl(envUrl, save: false) is { } envError)
+            Console.Error.WriteLine($"HEXEN_MATCHMAKER_URL ignored: {envError}");
         game.LoadProfile();
         var keys = new RaylibKeys();
         var pad = new Gamepad();

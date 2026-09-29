@@ -455,6 +455,15 @@ public sealed class DevConsole
             _g.ShowGhost();
             Print("racing your own ghost again");
         });
+        Add("matchmaker", "[address|default]", "the matchmaker online play uses: an http(s) address or a host name, or 'default' for the public one", a =>
+        {
+            if (a.Length > 1)
+            {
+                string error = _g.SetMatchmakerUrl(a[1]);
+                if (error != null) { Print("matchmaker: " + error); return; }
+            }
+            Print($"matchmaker = {_g.MatchmakerUrl}{(_g.MatchmakerUrl == Game.DefaultMatchmakerUrl ? " (the default)" : "")}");
+        });
         Add("name", "[name]", "the name your practice course times go on the leaderboard under", a =>
         {
             if (a.Length < 2) { Print($"name = {_g.RunnerName}"); return; }

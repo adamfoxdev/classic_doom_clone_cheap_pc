@@ -148,6 +148,9 @@ public sealed class Player
     /// <summary>Time not yet stepped by the fixed-rate Quake movement physics.</summary>
     public float MoveClock;
     public float HSpeed => MathF.Sqrt(VX * VX + VY * VY);
+    /// <summary>For running into a ball (Rocket Soccer, Rocket Pool): where you were last frame, and your velocity this frame.</summary>
+    public float BallLastX, BallLastY, RunVelAt = -1;
+    public (float x, float y) RunVel;
     public float SlideTime, SlideCd, SlideDX, SlideDY, SlideLow;
     public const float SlideLength = 0.55f, Height = 0.55f;
     /// <summary>Jetpack (Wings of Wrath in the fantasy style): fuel in seconds of hovering; it recharges on the ground.</summary>
@@ -195,6 +198,14 @@ public sealed partial class Game
     public readonly List<(string text, float time)> Messages = new();
     public Action<Sfx, float> PlaySound = (_, _) => { };
     public MatchmakerClient Matchmaker;
+    /// <summary>The public matchmaker online play uses unless you choose another (Online > Server, or 'matchmaker').</summary>
+    public const string DefaultMatchmakerUrl = "https://matchmaker-tranquil-fire-5888.fly.dev/";
+    /// <summary>The matchmaker in use; the one you chose (saved in settings; null for the default); the game's version, which rooms must match.</summary>
+    public string MatchmakerUrl { get; private set; } = DefaultMatchmakerUrl;
+    public string SavedMatchmakerUrl { get; private set; }
+    public string MatchmakerVersion = "dev";
+    /// <summary>What an online game plays: the campaign together, or Rocket Soccer, team against team (the host picks).</summary>
+    public string OnlineMode = "campaign";
     public OnlineSession NetSession;
     public readonly List<OnlinePlayer> OnlinePlayers = new();
     public bool OnlineRun { get; private set; }
@@ -224,6 +235,29 @@ public sealed partial class Game
     {
         // commands replayed from the settings file must not rewrite it halfway through loading
         if (ConfigPath != null && !_loadingSettings) Settings.Save(this, ConfigPath);
+    }
+
+    /// <summary>
+    /// Points online play at another matchmaker: a full http(s) address, or just a host name (https is assumed);
+    /// "default" (or nothing) for the public one. Not while you're in a room. Says what's wrong, or null when done.
+    /// </summary>
+    public string SetMatchmakerUrl(string url, bool save = true)
+    {
+        url = (url ?? "").Trim();
+        bool reset = url.Length == 0 || url.Equals("default", StringComparison.OrdinalIgnoreCase);
+        if (reset) url = DefaultMatchmakerUrl;
+        if (!url.Contains("://")) url = "https://" + url;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || string.IsNullOrEmpty(uri.Host))
+            return "that isn't an http:// or https:// address";
+        if (Matchmaker?.InRoom == true || NetSession != null) return "leave the room first";
+        string clean = uri.AbsoluteUri.EndsWith('/') ? uri.AbsoluteUri : uri.AbsoluteUri + "/";
+        if (clean != MatchmakerUrl)
+        {
+            MatchmakerUrl = clean;
+            if (Matchmaker != null) { Matchmaker.Dispose(); Matchmaker = new MatchmakerClient(clean, MatchmakerVersion); }
+        }
+        if (save) { SavedMatchmakerUrl = reset ? null : clean; SaveSettings(); }
+        return null;
     }
 
     public void LoadSettings()
@@ -1126,7 +1160,7 @@ public sealed partial class Game
         return mine;
     }
 
-    public void BeginOnlineGame(int seed, string[] playerIds, string localPlayerId, GameVars settings, GameStyle style)
+    public void BeginOnlineGame(int seed, string[] playerIds, string localPlayerId, GameVars settings, GameStyle style, string mode = null)
     {
         _onlineProfileBackup = Profile;
         _onlineProfilePathBackup = ProfilePath;
@@ -1140,20 +1174,29 @@ public sealed partial class Game
         OnlineSession.CopyLocalSettings(_onlineVarsBackup, Vars); // what only you see and hear stays yours
         FixedSeed = seed;
         Style = style;
-        NewGame(PClass.Fighter);
+        OnlineMode = mode ?? "campaign";
+        if (OnlineMode == "soccer") StartPractice(PClass.Fighter, Soccer.Course); // the pitch, team against team
+        else NewGame(PClass.Fighter);
 
         OnlinePlayers.Clear();
         var host = P;
         for (int i = 0; i < playerIds.Length; i++)
         {
+            // on a course everyone's the same class with the same kit (a fair match); in the campaign the crew's classes differ
             var actor = i == 0 ? host : new Player
             {
-                Class = (PClass)(i % Enum.GetValues<PClass>().Length), X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle,
+                Class = Practicing ? host.Class : (PClass)(i % Enum.GetValues<PClass>().Length), X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle,
                 Health = 100, MaxHealth = 100, BlueMana = 50,
             };
+            if (Practicing && i > 0)
+            {
+                actor.Loadout = host.Loadout; actor.HasWeapon = (bool[])host.HasWeapon.Clone(); actor.Weapon = host.Weapon;
+                actor.BlueMana = host.BlueMana; actor.GreenMana = host.GreenMana; Array.Copy(host.Ammo, actor.Ammo, host.Ammo.Length);
+            }
             actor.FloorZ = Level.FloorUnder(actor.X, actor.Y, actor.Radius);
             OnlinePlayers.Add(new OnlinePlayer(playerIds[i], actor));
         }
+        if (OnSoccer) PlaceSoccerTeams();
         var local = OnlinePlayers.FirstOrDefault(p => p.Id == localPlayerId) ?? OnlinePlayers[0];
         P = local.State;
         _crewDownFor = 0;
@@ -1164,10 +1207,18 @@ public sealed partial class Game
             player.Avatar = new NetworkAvatar(player.Id, player.State) { X = player.State.X, Y = player.State.Y, Z = player.State.Z, Level = Level };
             Level.Things.Add(player.Avatar);
         }
+        for (int i = 0; i < OnlinePlayers.Count; i++)
+            OnlinePlayers[i].Avatar.Tint = SoccerVersusFor(OnlinePlayers.Count) ? SoccerTeamColour(i % 2) : CrewColours[i % CrewColours.Length];
         Menu.Close();
         Mode = GameMode.Playing;
         OnlineRun = true;
-        Say("Co-op session started. Esc for the menu (leave from there).");
+        Messages.Clear();
+        if (OnSoccer && SoccerVersus)
+        {
+            int team = OnlinePlayers.IndexOf(local) % 2;
+            Say($"Rocket Soccer: you're on {SoccerTeamName(team)}, shooting for the {(team == 0 ? "east" : "west")} goal. Two minutes from the first touch.");
+        }
+        else Say("Co-op session started. Esc for the menu (leave from there).");
     }
 
     public void StepOnline(NetworkPlayerInput[] inputs, float dt, string localPlayerId)
@@ -1186,6 +1237,7 @@ public sealed partial class Game
             LoadLocals(actor);
             var wire = inputs.FirstOrDefault(i => i.PlayerId == actor.Id)?.Input;
             UpdatePlayer(wire?.ToInput() ?? default, step);
+            if (Mode == GameMode.Playing) RangeTick(step); // (each player's own health back and ammo topped up, on the rocket courses)
             SaveLocals(actor);
         }
 
@@ -1210,7 +1262,7 @@ public sealed partial class Game
         else _crewDownFor = 0;
         if (Mode == GameMode.Playing)
         {
-            HazardTick(step); DirectorTick(step); UpdateWorld(step); RematchTick(step); EliteTick(step); RangeTick(step);
+            HazardTick(step); DirectorTick(step); UpdateWorld(step); RematchTick(step); EliteTick(step);
             TrickTick(dt); TowerTick(step); SoccerTick(step); PoolTick(step); FishingTick(step); RoomLookTick(dt);
             QuakeArenaTick(); TargetsTick(step); CheckBossIntros(); Arcade.Update(dt);
             DigTarget = Level != null && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
@@ -1272,6 +1324,7 @@ public sealed partial class Game
         }
         Add((uint)(Hub == null ? -1 : Array.IndexOf(Hub, Level)));
         Add((uint)Mode);
+        Add((uint)TeamGoals[0]); Add((uint)TeamGoals[1]); Add((uint)SoccerGoals);
         if (Level != null)
         {
             Add((uint)Level.Things.Count);
@@ -1281,6 +1334,7 @@ public sealed partial class Game
                     case Monster m: F(m.X); F(m.Y); Add((uint)m.Health); Add((uint)m.State); break;
                     case Projectile pr: F(pr.X); F(pr.Y); F(pr.Z); break;
                     case Pickup pk: F(pk.X); F(pk.Y); break;
+                    case SoccerBall ball: F(ball.X); F(ball.Y); F(ball.Z); break;
                 }
         }
         return (long)h;

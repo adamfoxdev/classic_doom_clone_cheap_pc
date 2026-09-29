@@ -54,6 +54,33 @@ public sealed class MenuSystem
 
     public MenuSystem(Game g) { _g = g; }
 
+    /// <summary>Typing a matchmaker's address on the Online page: what's typed so far.</summary>
+    public bool EditingServer;
+    public string ServerDraft = "";
+
+    /// <summary>A matchmaker address as the Online page shows it: just the host (and a port, if it isn't the usual).</summary>
+    public static string ServerLabel(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var u) ? (u.IsDefaultPort ? u.Host : $"{u.Host}:{u.Port}") + (u.Scheme == "http" ? " (http)" : "") : url;
+
+    /// <summary>Typing the address: letters go in, Backspace takes one out, Tab pastes, Enter saves (empty for the default), Esc cancels.</summary>
+    void EditServer(Input inp)
+    {
+        if (inp.Pause) { EditingServer = false; Say("Server unchanged."); return; }
+        if (inp.Confirm)
+        {
+            EditingServer = false;
+            string error = _g.SetMatchmakerUrl(ServerDraft);
+            Say(error == null ? "Server: " + ServerLabel(_g.MatchmakerUrl) : "Server not changed: " + error);
+            _g.PlaySound(error == null ? Sfx.Item : Sfx.Locked, 0.8f);
+            return;
+        }
+        if (inp.Tab && _g.PasteText?.Invoke() is { } pasted) ServerDraft = pasted.Trim();
+        if (inp.Backspace && ServerDraft.Length > 0) ServerDraft = ServerDraft[..^1];
+        if (!string.IsNullOrEmpty(inp.Typed))
+            foreach (char c in inp.Typed)
+                if (c > ' ' && c < 127 && ServerDraft.Length < 200) ServerDraft += c;
+    }
+
     /// <summary>How many of the course list's items go in its left column (the rest, and Back, in the right).</summary>
     public static int CourseColumn(int items) => (items + 1) / 2;
 
@@ -104,10 +131,13 @@ public sealed class MenuSystem
             .Concat(new[] { "New game" }).Concat(_g.Profile.NgUnlocked > 0 ? new[] { "New Game+" } : Array.Empty<string>())
             .Concat(new[] { "Practice", "Arena", "Story", "Online", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
         MenuPage.Online => _g.Matchmaker?.InRoom == true
-            ? new[] { _g.Matchmaker.Ticket.IsHost ? $"Start co-op ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})" : $"Waiting for host ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})", "Leave room", "Back" }
+            ? (_g.Matchmaker.Ticket.IsHost
+                ? new[] { $"Start game ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})", "Mode: " + OnlineSession.ModeName(_g.OnlineMode), "Leave room", "Back" }
+                : new[] { $"Waiting for host ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})", "Leave room", "Back" })
             : new[] { "Quick match", "Host a game", "Refresh games" }
                 .Concat((_g.Matchmaker?.Rooms ?? Array.Empty<MatchmakerClient.MatchRoom>())
                     .Select(r => $"Join {r.Code.ToUpperInvariant()} - {r.Host} ({r.Players}/{r.Capacity})"))
+                .Append("Server: " + ServerLabel(_g.MatchmakerUrl))
                 .Append("Back").ToArray(),
         MenuPage.Pause => _g.OnlineRun ? new[] { "Resume", "Leave game" }
             : _g.Practicing && !_g.OnRange
@@ -186,6 +216,7 @@ public sealed class MenuSystem
             return;
         }
 
+        if (EditingServer && Page == MenuPage.Online) { EditServer(inp); return; }
         if (inp.Pause || (inp.Character && Page == MenuPage.Character)) { _g.PlaySound(Sfx.Swing, 0.5f); Back(); return; }
         if (inp.Up) { Cursor = (Cursor + items.Length - 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
         if (inp.Down) { Cursor = (Cursor + 1) % items.Length; _g.PlaySound(Sfx.Swing, 0.5f); }
@@ -198,24 +229,28 @@ public sealed class MenuSystem
 
         if (Page == MenuPage.Online)
         {
-            if (!inp.Confirm) return;
-            if (_g.Matchmaker == null) { Say("Online matchmaking is not configured."); return; }
-            if (_g.Matchmaker.InRoom)
+            string item = items[Math.Clamp(Cursor, 0, items.Length - 1)];
+            if (item.StartsWith("Mode: ") && (inp.Left || inp.Right || inp.Confirm))
             {
-                if (Cursor == 0 && _g.Matchmaker.Ticket.IsHost) _g.Matchmaker.RequestStart();
-                else if (Cursor == 1) _g.Matchmaker.Leave();
-                else if (Cursor == items.Length - 1) Back();
+                _g.OnlineMode = OnlineSession.NextMode(_g.OnlineMode, inp.Left ? -1 : 1);
+                _g.PlaySound(Sfx.Swing, 0.5f);
                 return;
             }
-            if (Cursor == 0) _g.Matchmaker.QuickMatch();
-            else if (Cursor == 1) _g.Matchmaker.Host("Player" + Random.Shared.Next(1000, 9999));
-            else if (Cursor == 2) _g.Matchmaker.Refresh();
-            else if (Cursor < items.Length - 1)
+            if (!inp.Confirm) return;
+            if (item == "Back") { Back(); return; }
+            if (item.StartsWith("Server: ")) { EditingServer = true; ServerDraft = _g.MatchmakerUrl; return; }
+            if (_g.Matchmaker == null) { Say("Online matchmaking is not configured."); return; }
+            _g.Matchmaker.PlayerName = _g.RunnerName;
+            if (item.StartsWith("Start game")) _g.Matchmaker.RequestStart();
+            else if (item == "Leave room") _g.Matchmaker.Leave();
+            else if (item == "Quick match") _g.Matchmaker.QuickMatch();
+            else if (item == "Host a game") _g.Matchmaker.Host(_g.RunnerName);
+            else if (item == "Refresh games") _g.Matchmaker.Refresh();
+            else if (item.StartsWith("Join "))
             {
                 int room = Cursor - 3;
                 if (room >= 0 && room < _g.Matchmaker.Rooms.Count) _g.Matchmaker.Join(_g.Matchmaker.Rooms[room]);
             }
-            else Back();
             return;
         }
 
@@ -518,6 +553,7 @@ public static class Settings
         if (Difficulties.Of(g.Vars) is var d && d != Difficulty.Custom) yield return "difficulty " + d.ToString().ToLowerInvariant();
         yield return "name " + g.RunnerName;
         yield return "arenamods " + ArenaModInfo.Letters(g.ArenaMods);
+        if (g.SavedMatchmakerUrl != null) yield return "matchmaker " + g.SavedMatchmakerUrl;
     }
 
     public static void Save(Game g, string path)

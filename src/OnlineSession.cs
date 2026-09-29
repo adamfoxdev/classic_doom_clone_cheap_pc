@@ -79,9 +79,19 @@ public sealed class OnlineSession
     public static void StartHost(Game game, INetLink link, string[] players, string localId, int seed)
     {
         var settings = CopySettings(game.Vars);
-        game.BeginOnlineGame(seed, players, localId, settings, game.Style);
+        string mode = ModeName(game.OnlineMode) != null ? game.OnlineMode : Modes[0].Id;
+        game.BeginOnlineGame(seed, players, localId, settings, game.Style, mode);
         game.NetSession = new OnlineSession(link, players, localId, true);
-        link.SendNetwork(new NetworkMessage { Type = "start", Seed = seed, Players = players, Settings = settings, Style = game.Style });
+        link.SendNetwork(new NetworkMessage { Type = "start", Seed = seed, Players = players, Settings = settings, Style = game.Style, Mode = mode });
+    }
+
+    /// <summary>What an online game can be: the campaign together, or Rocket Soccer, team against team.</summary>
+    public static readonly (string Id, string Name)[] Modes = { ("campaign", "Campaign co-op"), ("soccer", "Rocket Soccer") };
+    public static string ModeName(string id) => Modes.FirstOrDefault(m => m.Id == id).Name;
+    public static string NextMode(string id, int dir)
+    {
+        int i = Array.FindIndex(Modes, m => m.Id == id);
+        return Modes[((i < 0 ? 0 : i) + dir + Modes.Length) % Modes.Length].Id;
     }
 
     /// <summary>A client joins the game its host started.</summary>
@@ -90,7 +100,7 @@ public sealed class OnlineSession
         var link = game.NetLink;
         string id = game.NetPlayerId;
         if (link == null || id == null || game.Matchmaker?.Ticket is { IsHost: true } || start.Players == null || !start.Players.Contains(id)) return;
-        game.BeginOnlineGame(start.Seed, start.Players, id, start.Settings ?? new GameVars(), start.Style);
+        game.BeginOnlineGame(start.Seed, start.Players, id, start.Settings ?? new GameVars(), start.Style, start.Mode);
         game.NetSession = new OnlineSession(link, start.Players, id, false);
     }
 
