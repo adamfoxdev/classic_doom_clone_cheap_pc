@@ -8,13 +8,13 @@ using System.Collections.Concurrent;
 namespace HexenSharp;
 
 /// <summary>Anonymous lobby discovery against a self-hosted Hexen Sharp matchmaker.</summary>
-public sealed class MatchmakerClient : IDisposable
+public sealed class MatchmakerClient : IDisposable, INetLink
 {
     readonly HttpClient _http;
     readonly string _version;
     readonly Channel<NetworkMessage> _send = Channel.CreateUnbounded<NetworkMessage>();
     readonly ConcurrentQueue<NetworkMessage> _received = new();
-    readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web) { IncludeFields = true };
+    static JsonSerializerOptions _json => OnlineSession.Json;
     CancellationTokenSource _socketStop;
     Task _work;
     float _refreshIn, _heartbeatIn;
@@ -24,6 +24,8 @@ public sealed class MatchmakerClient : IDisposable
     public string Status { get; private set; } = "Press Enter to find a game or host one.";
     public bool Busy { get; private set; }
     public bool InRoom => Ticket != null;
+    /// <summary>The relay connection dropped while in a room (not by leaving it).</summary>
+    public bool Lost { get; private set; }
 
     public MatchmakerClient(string endpoint, string version)
     {
@@ -109,6 +111,8 @@ public sealed class MatchmakerClient : IDisposable
     void Joined(MatchTicket ticket)
     {
         _heartbeatIn = 0;
+        Lost = false;
+        while (_received.TryDequeue(out _)) { }
         _socketStop = new CancellationTokenSource();
         _ = SocketLoop(ticket, _socketStop.Token);
     }
@@ -137,7 +141,7 @@ public sealed class MatchmakerClient : IDisposable
                 do
                 {
                     result = await socket.ReceiveAsync(buffer, stop);
-                    if (result.MessageType == WebSocketMessageType.Close) return;
+                    if (result.MessageType == WebSocketMessageType.Close) { if (!stop.IsCancellationRequested) Lost = true; return; }
                     data.Write(buffer, 0, result.Count);
                     if (data.Length > 64 * 1024) throw new InvalidDataException("Matchmaker message exceeded 64 KB.");
                 } while (!result.EndOfMessage);
@@ -147,10 +151,11 @@ public sealed class MatchmakerClient : IDisposable
                     if (message != null) _received.Enqueue(message);
                 }
             }
+            if (!stop.IsCancellationRequested) Lost = true;
             await sender;
         }
         catch (OperationCanceledException) { }
-        catch (Exception e) { if (!stop.IsCancellationRequested) Status = "Lobby connection lost: " + e.Message; }
+        catch (Exception e) { if (!stop.IsCancellationRequested) { Lost = true; Status = "Lobby connection lost: " + e.Message; } }
     }
 
     async Task SendLoop(ClientWebSocket socket, CancellationToken stop)
@@ -288,4 +293,6 @@ public sealed class NetworkMessage
     public NetworkInput Input { get; set; }
     public GameVars Settings { get; set; }
     public GameStyle Style { get; set; }
+    /// <summary>On every OnlineSession.HashEvery'th frame: the host's checksum of the game after it (see Game.OnlineHash).</summary>
+    public long? Hash { get; set; }
 }

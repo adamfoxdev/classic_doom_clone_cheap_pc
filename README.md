@@ -224,6 +224,22 @@ all peers simulate the same players, monsters, doors, projectiles and pickups; p
 The relay does not yet provide client prediction, host migration or late joining, so latency can delay visible gameplay
 and the session ends if the host disconnects. Run the matchmaker on a publicly reachable HTTPS endpoint for Internet play.
 
+In a session:
+
+- **Esc** opens a small menu (**Resume**, **Leave game**) while the game carries on; you stand still meanwhile. When the
+  host leaves, the game ends for everyone.
+- **Settings:** the rules (speed, damage, gravity and so on) are the host's, so every copy of the game runs alike. What
+  only changes what you see and hear stays your own: fog, HUD, crosshair, shake, damage numbers, music, the strafe
+  helper and the frame counter. Your mouse sensitivity is your own too: your mouse movement is scaled to the host's
+  setting before it's sent.
+- **Downed:** a crewmate can revive you with Use. When the whole crew is down, everyone gets back up four seconds later,
+  at the checkpoint or the map's start.
+- **Staying in step:** frames are never dropped. If a client ever misses one, or drifts out of step (the host sends a
+  checksum of the game once a second), its game ends with a message saying why, back on the Online page. A drift is most
+  likely between different game versions or operating systems, whose floating-point maths can differ slightly.
+- **A lost connection** ends the game with a message rather than freezing it. The matchmaker disconnects a player who
+  falls a whole minute behind.
+
 Run the custom matchmaker locally:
 
 ```sh

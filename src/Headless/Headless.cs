@@ -101,6 +101,8 @@ public static partial class Headless
         PoolChecks(Check);
         Console.WriteLine("Fishing:");
         FishingChecks(Check);
+        Console.WriteLine("Online co-op:");
+        NetChecks(Check);
         Console.WriteLine("Map colours:");
         MapColourChecks(Check);
         Console.WriteLine("Game feel:");

@@ -392,14 +392,14 @@ public static partial class Headless
         keys.Hit.Add(Keys.WheelDown); check(Read().Cycle == 1, "mouse wheel cycles weapons"); keys.Hit.Clear();
         keys.Hit.Add(Keys.Space); check(Read().Jump, "Space jumps"); keys.Hit.Clear();
 
-        // title menu: New game / Practice / Arena / Story / Leaderboard / Character / Options / Quit
+        // title menu: New game / Practice / Arena / Story / Online / Leaderboard / Character / Options / Quit
         check(g.Menu.Page == MenuPage.Main, "title shows the main menu");
-        for (int k = 0; k < 6; k++) Press(Keys.Down);
+        for (int k = 0; k < 7; k++) Press(Keys.Down);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Options, "main menu opens Options");
         Press(Keys.Escape);
-        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 6, "Esc goes back to the main menu");
-        for (int k = 0; k < 6; k++) Press(Keys.Up);
+        check(g.Menu.Page == MenuPage.Main && g.Menu.Cursor == 7, "Esc goes back to the main menu");
+        for (int k = 0; k < 7; k++) Press(Keys.Up);
         Press(Keys.Enter);
         check(g.Menu.Page == MenuPage.Style, "New game asks for a play style");
         Press(Keys.Enter);

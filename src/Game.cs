@@ -964,12 +964,10 @@ public sealed partial class Game
     {
         Matchmaker?.Tick(dt);
         if (Matchmaker?.TakeStartReady() == true) OnlineSession.Host(this);
-        if (NetSession != null) { NetSession.Tick(this, inp, dt); return; }
-        while (Matchmaker != null && Matchmaker.TryReceiveNetwork(out var networkMessage))
-        {
-            if (networkMessage.Type == "start") { OnlineSession.Client(this, networkMessage); break; }
-        }
-        if (NetSession != null) { NetSession.Tick(this, inp, dt); return; }
+        if (NetSession == null && NetLink is { } link && (Matchmaker == null || Matchmaker.InRoom))
+            while (link.TryReceiveNetwork(out var networkMessage))
+                if (networkMessage.Type == "start") { OnlineSession.Client(this, networkMessage); break; }
+        if (NetSession != null) { OnlineUpdate(inp, dt); return; }
         CurrentReplay?.Frames.Add((dt, inp)); // the run's replay: every frame, as it came
         if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
         dt = MathF.Min(dt, 0.05f);
@@ -1094,6 +1092,40 @@ public sealed partial class Game
     string _onlineProfilePathBackup, _onlineSavePathBackup;
     int? _onlineSeedBackup;
 
+    /// <summary>How a session's messages travel (the matchmaker's relay, unless the checks plug in their own) and who you are in it.</summary>
+    public INetLink NetLink => _netLink ?? Matchmaker;
+    public string NetPlayerId => _netLink != null ? _netPlayerId : Matchmaker?.Ticket?.PlayerId;
+    INetLink _netLink;
+    string _netPlayerId;
+    public void UseNetLink(INetLink link, string playerId) { _netLink = link; _netPlayerId = playerId; }
+
+    /// <summary>
+    /// A frame in a session: the game runs on whatever you do, so Esc opens a small menu (Resume, Leave game) while you
+    /// stand still, rather than pausing everyone or ending it.
+    /// </summary>
+    void OnlineUpdate(Input inp, float dt)
+    {
+        if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
+        if (Menu.Open) { Menu.Update(inp, dt); inp = new Input(); }
+        else if (inp.Pause) { Menu.Show(MenuPage.Pause); inp = new Input(); }
+        NetSession?.Tick(this, inp, dt);
+    }
+
+    /// <summary>
+    /// Your input as it goes on the wire. The game turns mouse movement by the session's sensitivity (the host's, so
+    /// every copy runs alike); scaling it by yours over the session's first means it turns you as your own would.
+    /// </summary>
+    public NetworkInput LocalNetInput(Input inp)
+    {
+        var mine = NetworkInput.Capture(inp);
+        if (_onlineVarsBackup is { } own && Vars.Sens > 0)
+        {
+            mine.LookX *= own.Sens / Vars.Sens;
+            mine.LookY *= own.Sens / Vars.Sens * (own.InvertMouse == Vars.InvertMouse ? 1 : -1);
+        }
+        return mine;
+    }
+
     public void BeginOnlineGame(int seed, string[] playerIds, string localPlayerId, GameVars settings, GameStyle style)
     {
         _onlineProfileBackup = Profile;
@@ -1105,6 +1137,7 @@ public sealed partial class Game
         Profile = new Profile();
         ProfilePath = SavePath = null;
         OnlineSession.CopyFields(settings, Vars);
+        OnlineSession.CopyLocalSettings(_onlineVarsBackup, Vars); // what only you see and hear stays yours
         FixedSeed = seed;
         Style = style;
         NewGame(PClass.Fighter);
@@ -1123,7 +1156,10 @@ public sealed partial class Game
         }
         var local = OnlinePlayers.FirstOrDefault(p => p.Id == localPlayerId) ?? OnlinePlayers[0];
         P = local.State;
-        foreach (var player in OnlinePlayers.Where(p => p != local))
+        _crewDownFor = 0;
+        // every player has an avatar in the world on every machine, your own included (it just isn't drawn), so every
+        // copy of the game holds the same things in the same order
+        foreach (var player in OnlinePlayers)
         {
             player.Avatar = new NetworkAvatar(player.Id, player.State) { X = player.State.X, Y = player.State.Y, Z = player.State.Z, Level = Level };
             Level.Things.Add(player.Avatar);
@@ -1131,7 +1167,7 @@ public sealed partial class Game
         Menu.Close();
         Mode = GameMode.Playing;
         OnlineRun = true;
-        Say("Co-op session started. Press Esc to leave.");
+        Say("Co-op session started. Esc for the menu (leave from there).");
     }
 
     public void StepOnline(NetworkPlayerInput[] inputs, float dt, string localPlayerId)
@@ -1147,8 +1183,10 @@ public sealed partial class Game
         foreach (var actor in OnlinePlayers)
         {
             P = actor.State;
+            LoadLocals(actor);
             var wire = inputs.FirstOrDefault(i => i.PlayerId == actor.Id)?.Input;
             UpdatePlayer(wire?.ToInput() ?? default, step);
+            SaveLocals(actor);
         }
 
         foreach (var actor in OnlinePlayers.Where(p => !p.State.Dead))
@@ -1162,7 +1200,14 @@ public sealed partial class Game
         }
 
         P = OnlinePlayers[0].State;
-        if (OnlinePlayers.All(p => p.State.Dead)) Mode = GameMode.Dead;
+        LoadLocals(OnlinePlayers[0]); // (the world's turn runs as the first player, with its own timers)
+        // the whole crew down: a few seconds later everyone's back up, at the checkpoint (or the map's start)
+        if (OnlinePlayers.All(p => p.State.Dead))
+        {
+            Mode = GameMode.Dead;
+            if ((_crewDownFor += dt) >= CrewRespawn) RespawnCrew();
+        }
+        else _crewDownFor = 0;
         if (Mode == GameMode.Playing)
         {
             HazardTick(step); DirectorTick(step); UpdateWorld(step); RematchTick(step); EliteTick(step); RangeTick(step);
@@ -1170,8 +1215,75 @@ public sealed partial class Game
             QuakeArenaTick(); TargetsTick(step); CheckBossIntros(); Arcade.Update(dt);
             DigTarget = Level != null && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
         }
-        P = OnlinePlayers.FirstOrDefault(p => p.Id == localPlayerId)?.State ?? OnlinePlayers[0].State;
+        SaveLocals(OnlinePlayers[0]);
+        var local = OnlinePlayers.FirstOrDefault(p => p.Id == localPlayerId) ?? OnlinePlayers[0];
+        P = local.State;
+        LoadLocals(local); // (your zoom and the like, for drawing)
         SyncNetworkAvatars();
+    }
+
+    /// <summary>How long the whole crew stays down before it's back up; and how long it's been down.</summary>
+    public const float CrewRespawn = 4f;
+    public float CrewDownFor => _crewDownFor;
+    float _crewDownFor;
+
+    void RespawnCrew()
+    {
+        _crewDownFor = 0;
+        bool atCheckpoint = Checkpoint != null && Checkpoint.Level == Level;
+        float x = atCheckpoint ? Checkpoint.X : Level.StartX, y = atCheckpoint ? Checkpoint.Y : Level.StartY;
+        foreach (var actor in OnlinePlayers)
+        {
+            var p = actor.State;
+            p.Dead = false; p.Health = Math.Max(50, p.MaxHealth / 2); p.EyeZ = 0.5f;
+            p.X = x; p.Y = y; p.FloorZ = Level.FloorUnder(x, y, p.Radius);
+            p.Z = p.VZ = p.VX = p.VY = 0; p.Flying = false; p.TeleportFlash = 1;
+        }
+        Mode = GameMode.Playing;
+        Say(atCheckpoint ? "The crew's back on its feet at the checkpoint." : "The crew's back on its feet.");
+        PlaySound(Sfx.Teleport, 1);
+    }
+
+    void LoadLocals(OnlinePlayer a)
+    {
+        var l = a.Locals;
+        Zoom = l.Zoom; _unhurt = l.Unhurt; _regen = l.Regen; _rodFireWas = l.RodFireWas; _onLift = l.OnLift; InMove = l.InMove; InStrafe = l.InStrafe;
+    }
+
+    void SaveLocals(OnlinePlayer a)
+    {
+        var l = a.Locals;
+        l.Zoom = Zoom; l.Unhurt = _unhurt; l.Regen = _regen; l.RodFireWas = _rodFireWas; l.OnLift = _onLift; l.InMove = InMove; l.InStrafe = InStrafe;
+    }
+
+    /// <summary>
+    /// A checksum of the shared game: every player (place, view, health), the map, and every monster and missile on it,
+    /// bit for bit. The host sends its own now and then; a client whose differs has drifted out of sync.
+    /// </summary>
+    public long OnlineHash()
+    {
+        ulong h = 14695981039346656037UL;
+        void Add(uint v) { h ^= v; h *= 1099511628211UL; }
+        void F(float f) => Add((uint)BitConverter.SingleToInt32Bits(f));
+        foreach (var a in OnlinePlayers)
+        {
+            var p = a.State;
+            F(p.X); F(p.Y); F(p.Z); F(p.FloorZ); F(p.Angle); F(p.Pitch); Add((uint)p.Health); Add(p.Dead ? 1u : 0u); Add((uint)p.Weapon);
+        }
+        Add((uint)(Hub == null ? -1 : Array.IndexOf(Hub, Level)));
+        Add((uint)Mode);
+        if (Level != null)
+        {
+            Add((uint)Level.Things.Count);
+            foreach (var t in Level.Things)
+                switch (t)
+                {
+                    case Monster m: F(m.X); F(m.Y); Add((uint)m.Health); Add((uint)m.State); break;
+                    case Projectile pr: F(pr.X); F(pr.Y); F(pr.Z); break;
+                    case Pickup pk: F(pk.X); F(pk.Y); break;
+                }
+        }
+        return (long)h;
     }
 
     void SyncNetworkAvatars()
@@ -1189,7 +1301,13 @@ public sealed partial class Game
 
     public void StartOnlineGame() => OnlineSession.Host(this);
 
-    public void EndOnlineGame()
+    /// <summary>Why the last session ended, when it wasn't your own choice (shown on the Online page).</summary>
+    public string OnlineNotice;
+
+    /// <summary>Leaves the session (from its menu): the host's leaving ends it for everyone.</summary>
+    public void LeaveOnlineGame() => NetSession?.Leave(this);
+
+    public void EndOnlineGame(string reason = null)
     {
         if (NetSession == null) return;
         NetSession = null;
@@ -1203,6 +1321,8 @@ public sealed partial class Game
         OnlineRun = false;
         _onlineProfileBackup = null; _onlineVarsBackup = null;
         Matchmaker?.Leave();
+        OnlineNotice = reason;
+        if (reason != null) Menu.Show(MenuPage.Online);
     }
 
     /// <summary>The movement keys held last frame, -1/0/1 (forward/back, left/right), for the strafe helper.</summary>
@@ -2530,7 +2650,9 @@ public sealed partial class Game
                 if (distance2 < rr * rr)
                 {
                     // Players start together. Let a player move out of an initial overlap, but never move deeper into it.
-                    float oldDx = actor.State.X - P.X, oldDy = actor.State.Y - P.Y;
+                    // (Measured from whatever is moving: a monster's own place, not the player it's after.)
+                    float fromX = self?.X ?? P.X, fromY = self?.Y ?? P.Y;
+                    float oldDx = actor.State.X - fromX, oldDy = actor.State.Y - fromY;
                     float oldDistance2 = oldDx * oldDx + oldDy * oldDy;
                     if (oldDistance2 < rr * rr && distance2 >= oldDistance2) continue;
                     return true;

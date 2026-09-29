@@ -64,6 +64,7 @@ public sealed class MenuSystem
         if (Page != null) _back.Push((Page.Value, Cursor));
         Page = p; Cursor = 0; Column = 0; Scroll = 0; Capturing = false; NoticeTime = 0;
         if (p == MenuPage.Online) _g.Matchmaker?.Refresh();
+        else if (p != MenuPage.Pause) _g.OnlineNotice = null;
         if (p == MenuPage.Leaderboard)
         {
             BoardClass = _g.P?.Class ?? PClass.Fighter;
@@ -108,7 +109,8 @@ public sealed class MenuSystem
                 .Concat((_g.Matchmaker?.Rooms ?? Array.Empty<MatchmakerClient.MatchRoom>())
                     .Select(r => $"Join {r.Code.ToUpperInvariant()} - {r.Host} ({r.Players}/{r.Capacity})"))
                 .Append("Back").ToArray(),
-        MenuPage.Pause => _g.Practicing && !_g.OnRange
+        MenuPage.Pause => _g.OnlineRun ? new[] { "Resume", "Leave game" }
+            : _g.Practicing && !_g.OnRange
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : _g.ArenaMode || _g.OnRange
             ? new[] { "Resume", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
@@ -469,6 +471,7 @@ public sealed class MenuSystem
                 switch (items[Cursor])
                 {
                     case "Resume": Close(); _g.Paused = false; break;
+                    case "Leave game": Close(); _g.LeaveOnlineGame(); break;
                     case "Watch demo": Close(); _g.Paused = false; _g.StartDemo(); break;
                     case "Stop demo": Close(); _g.Paused = false; _g.EndDemo(); break;
                     case "Character": Show(MenuPage.Character); break;

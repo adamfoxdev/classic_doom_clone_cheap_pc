@@ -57,7 +57,12 @@ public sealed class Renderer
         if (!g.ShowMap) DrawHazardBanner(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
-        if (g.NetSession != null && g.P.Dead) CenterText("DOWNED - A CREWMATE CAN REVIVE YOU", 60, Col.Rgb(255, 120, 90), 2);
+        if (g.NetSession != null && g.P.Dead)
+        {
+            if (g.OnlinePlayers.All(a => a.State.Dead))
+                CenterText($"THE CREW IS DOWN - BACK UP IN {MathF.Ceiling(MathF.Max(0, Game.CrewRespawn - g.CrewDownFor)):0}", 60, Col.Rgb(255, 120, 90), 2);
+            else CenterText("DOWNED - A CREWMATE CAN REVIVE YOU (USE)", 60, Col.Rgb(255, 120, 90), 2);
+        }
         if (g.Intro != null && !g.ShowMap) DrawBossIntro(g, g.Intro);
         if (g.Vars.Hud != HudStyle.Off && !g.ShowMap) DrawBossBar(g); // over the letterbox
         DrawAchievementBanner(g);
@@ -226,6 +231,10 @@ public sealed class Renderer
         for (int i = 0; i < items.Length; i++) MenuItem(items[i], 42 + i * 12, i == g.Menu.Cursor);
         string status = g.Matchmaker?.Status ?? "Matchmaking is not configured.";
         int line = 0;
+        if (g.OnlineNotice != null)
+            foreach (string text in Wrap(g.OnlineNotice.ToUpperInvariant(), 52).Take(2))
+                CenterText(text, 146 + line++ * 9, Col.Rgb(255, 120, 90));
+        line = 0;
         foreach (string text in Wrap(status.ToUpperInvariant(), 52).Take(2))
             CenterText(text, 166 + line++ * 9, Col.Rgb(170, 200, 255));
         CenterText("UP/DOWN: SELECT  ENTER: CHOOSE  ESC: BACK", 190, MenuDim);
@@ -1237,7 +1246,7 @@ public sealed class Renderer
         float invDet = 1f / (_plX * _dirY - _dirX * _plY);
         foreach (var t in lv.Things)
         {
-            if (t.Removed) continue;
+            if (t.Removed || t is NetworkAvatar { Player: var owner } && owner == g.P) continue; // (your own avatar: you're behind its eyes)
             float rx = t.X - _px, ry = t.Y - _py;
             float ty = invDet * (-_plY * rx + _plX * ry);
             if (ty < 0.15f || (!_fullBright && ty > _fogDist + 1)) continue;
