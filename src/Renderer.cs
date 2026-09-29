@@ -57,6 +57,7 @@ public sealed class Renderer
         if (!g.ShowMap) DrawHazardBanner(g);
         if (g.ReadingLore != null) DrawLore(g);
         DrawArenaHud(g);
+        if (g.NetSession != null && g.P.Dead) CenterText("DOWNED - A CREWMATE CAN REVIVE YOU", 60, Col.Rgb(255, 120, 90), 2);
         if (g.Intro != null && !g.ShowMap) DrawBossIntro(g, g.Intro);
         if (g.Vars.Hud != HudStyle.Off && !g.ShowMap) DrawBossBar(g); // over the letterbox
         DrawAchievementBanner(g);
@@ -76,7 +77,7 @@ public sealed class Renderer
     static readonly uint MenuSel = Col.Rgb(255, 220, 90), MenuText = Col.Rgb(200, 190, 170), MenuDim = Col.Rgb(150, 140, 120);
 
     /// <summary>Where the pause and options lists sit: first row, row spacing and the footer line under them.</summary>
-    public const int TitleTop = 108, TitleRow = 9, TitleFooter = 190, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 26, OptionsRow = 9, OptionsFooter = 188;
+    public const int TitleTop = 90, TitleRow = 9, TitleFooter = 190, PauseTop = 60, PauseRow = 12, PauseFooter = 160, OptionsTop = 26, OptionsRow = 9, OptionsFooter = 188;
 
     void MenuItem(string text, int y, bool selected, int cx = W / 2)
     {
@@ -95,7 +96,7 @@ public sealed class Renderer
         var m = g.Menu;
         var page = m.Page.Value;
         var items = m.Items(page);
-        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard or MenuPage.Achievements or MenuPage.Codex ? 246 : 230);
+        if (g.Mode != GameMode.Title) Darken(0, 0, W, H, page == MenuPage.Pause ? 150 : page is MenuPage.Character or MenuPage.Leaderboard or MenuPage.Achievements or MenuPage.Codex or MenuPage.Online ? 246 : 230);
 
         switch (page)
         {
@@ -162,6 +163,10 @@ public sealed class Renderer
                 DrawLeaderboard(g);
                 break;
 
+            case MenuPage.Online:
+                DrawOnlineMenu(g);
+                break;
+
             case MenuPage.ArenaSetup:
                 DrawArenaSetup(g);
                 break;
@@ -212,6 +217,18 @@ public sealed class Renderer
 
         if (m.NoticeTime > 0 && page is not (MenuPage.Bindings or MenuPage.Character or MenuPage.Leaderboard or MenuPage.Options or MenuPage.Effects or MenuPage.ArenaSetup or MenuPage.Achievements or MenuPage.Codex or MenuPage.Rematch))
             CenterText(m.Notice.ToUpperInvariant(), 166, Col.Rgb(120, 255, 140));
+    }
+
+    void DrawOnlineMenu(Game g)
+    {
+        var items = g.Menu.Items(MenuPage.Online);
+        CenterText("ONLINE MATCHMAKING", 14, Col.Rgb(230, 190, 80), 2);
+        for (int i = 0; i < items.Length; i++) MenuItem(items[i], 42 + i * 12, i == g.Menu.Cursor);
+        string status = g.Matchmaker?.Status ?? "Matchmaking is not configured.";
+        int line = 0;
+        foreach (string text in Wrap(status.ToUpperInvariant(), 52).Take(2))
+            CenterText(text, 166 + line++ * 9, Col.Rgb(170, 200, 255));
+        CenterText("UP/DOWN: SELECT  ENTER: CHOOSE  ESC: BACK", 190, MenuDim);
     }
 
     /// <summary>The character screen: level and experience, skills to spend points on, and your weapons' levels.</summary>
@@ -2524,12 +2541,12 @@ public sealed class Renderer
     {
         StoneBackdrop(g.Time);
         CenterText("HEXEN SHARP", 28, Col.Rgb(230, 170, 50), 4);
-        CenterText(Words.T("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#"), 62, Col.Rgb(210, 200, 180));
+        CenterText(Words.T("A TINY HEXEN-STYLE DUNGEON CRAWLER IN C#"), 51, Col.Rgb(210, 200, 180));
         // a few monsters for show
         var e = Art.Monsters["ettin"][(int)(g.Time * 2) % 2];
         var a = Art.Monsters["afrit"][(int)(g.Time * 3) % 2];
         var c = Art.Monsters["centaur"][(int)(g.Time * 2) % 2];
-        Icon(e, 64, 72, 34); Icon(c, 144, 72, 34); Icon(a, 224, 71, 34);
+        Icon(e, 64, 60, 28); Icon(c, 144, 60, 28); Icon(a, 224, 59, 28);
         var items = g.Menu.Items(MenuPage.Main);
         for (int i = 0; i < items.Length; i++) MenuItem(items[i], TitleTop + i * TitleRow, g.Menu.Page == MenuPage.Main && i == g.Menu.Cursor);
         // on Continue, where you'll pick up; otherwise the usual hint

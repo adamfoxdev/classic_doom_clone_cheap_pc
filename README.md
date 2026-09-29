@@ -215,6 +215,37 @@ Windows, Linux and macOS.
 dotnet run -c Release
 ```
 
+### Online matchmaking
+
+The title menu's **Online** page can quick-match into an open room, host a room or join a listed room. Rooms hold up to
+four players, expire after 45 seconds without a heartbeat and only match the same game version. Names are anonymous;
+there are no accounts. The host starts a shared, seeded co-op run from the room menu. A host-led 60 Hz input relay makes
+all peers simulate the same players, monsters, doors, projectiles and pickups; player characters can revive one another.
+The relay does not yet provide client prediction, host migration or late joining, so latency can delay visible gameplay
+and the session ends if the host disconnects. Run the matchmaker on a publicly reachable HTTPS endpoint for Internet play.
+
+Run the custom matchmaker locally:
+
+```sh
+dotnet run --project server/Matchmaker -- --urls http://0.0.0.0:5080
+```
+
+Point the game at it before launching:
+
+```sh
+HEXEN_MATCHMAKER_URL=http://127.0.0.1:5080/ dotnet run
+```
+
+In PowerShell:
+
+```powershell
+$env:HEXEN_MATCHMAKER_URL = "http://127.0.0.1:5080/"
+dotnet run
+```
+
+For players outside your network, publish the service behind an HTTPS reverse proxy, then set
+`HEXEN_MATCHMAKER_URL` to its public HTTPS address. Lobby state is held in memory and resets when the service restarts.
+
 ## Controls
 
 These are the defaults. Change any of them in **Options → Key bindings** (see below).
@@ -1618,6 +1649,7 @@ in both looks (`76_…`, `77_…`).
 | `src/SaveGame.cs`, `src/GameSave.cs` | Save and continue: what a save holds, capturing and restoring it, and when the game saves |
 | `src/Achievements.cs` | The achievements: what each takes, its experience, and the checks that unlock them |
 | `src/Gamepad.cs` | Gamepad layout: sticks, triggers and buttons turned into game input |
+| `src/Matchmaking.cs`, `server/Matchmaker/` | Anonymous room discovery and the self-hosted matchmaking service |
 | `src/RenderedArt.cs` | The optional Blender-rendered art pack: embedded PNGs and which art slots they replace |
 | `tools/blender/build_scifi_assets.py` | Blender script that models and renders the rendered art pack |
 | `src/Audio.cs` | Plays the sounds through Raylib, from the bank matching the visual style |

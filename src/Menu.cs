@@ -1,6 +1,6 @@
 namespace HexenSharp;
 
-public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements, Effects, Codex, Rematch }
+public enum MenuPage { Main, Pause, Options, Bindings, Style, Character, Leaderboard, Courses, ArenaSetup, Achievements, Effects, Codex, Rematch, Online }
 
 /// <summary>
 /// Title, pause, options and key-binding menus. Arrow keys (or your movement keys), Enter and Esc drive them;
@@ -63,6 +63,7 @@ public sealed class MenuSystem
     {
         if (Page != null) _back.Push((Page.Value, Cursor));
         Page = p; Cursor = 0; Column = 0; Scroll = 0; Capturing = false; NoticeTime = 0;
+        if (p == MenuPage.Online) _g.Matchmaker?.Refresh();
         if (p == MenuPage.Leaderboard)
         {
             BoardClass = _g.P?.Class ?? PClass.Fighter;
@@ -100,7 +101,13 @@ public sealed class MenuSystem
         // Continue heads the list when there's a saved campaign to pick up
         MenuPage.Main => (_g.CheckSave() != null ? new[] { "Continue" } : Array.Empty<string>())
             .Concat(new[] { "New game" }).Concat(_g.Profile.NgUnlocked > 0 ? new[] { "New Game+" } : Array.Empty<string>())
-            .Concat(new[] { "Practice", "Arena", "Story", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
+            .Concat(new[] { "Practice", "Arena", "Story", "Online", "Leaderboard", "Character", "Options", "Quit" }).ToArray(),
+        MenuPage.Online => _g.Matchmaker?.InRoom == true
+            ? new[] { _g.Matchmaker.Ticket.IsHost ? $"Start co-op ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})" : $"Waiting for host ({_g.Matchmaker.Ticket.Room.Players}/{_g.Matchmaker.Ticket.Room.Capacity})", "Leave room", "Back" }
+            : new[] { "Quick match", "Host a game", "Refresh games" }
+                .Concat((_g.Matchmaker?.Rooms ?? Array.Empty<MatchmakerClient.MatchRoom>())
+                    .Select(r => $"Join {r.Code.ToUpperInvariant()} - {r.Host} ({r.Players}/{r.Capacity})"))
+                .Append("Back").ToArray(),
         MenuPage.Pause => _g.Practicing && !_g.OnRange
             ? new[] { "Resume", _g.Demo ? "Stop demo" : "Watch demo", "Character", "Leaderboard", "Options", "Restart", "Quit to title", "Quit game" }
             : _g.ArenaMode || _g.OnRange
@@ -184,6 +191,29 @@ public sealed class MenuSystem
         if (Page == MenuPage.Codex)
         {
             if (inp.Confirm && Cursor == items.Length - 1) Back();
+            return;
+        }
+
+        if (Page == MenuPage.Online)
+        {
+            if (!inp.Confirm) return;
+            if (_g.Matchmaker == null) { Say("Online matchmaking is not configured."); return; }
+            if (_g.Matchmaker.InRoom)
+            {
+                if (Cursor == 0 && _g.Matchmaker.Ticket.IsHost) _g.Matchmaker.RequestStart();
+                else if (Cursor == 1) _g.Matchmaker.Leave();
+                else if (Cursor == items.Length - 1) Back();
+                return;
+            }
+            if (Cursor == 0) _g.Matchmaker.QuickMatch();
+            else if (Cursor == 1) _g.Matchmaker.Host("Player" + Random.Shared.Next(1000, 9999));
+            else if (Cursor == 2) _g.Matchmaker.Refresh();
+            else if (Cursor < items.Length - 1)
+            {
+                int room = Cursor - 3;
+                if (room >= 0 && room < _g.Matchmaker.Rooms.Count) _g.Matchmaker.Join(_g.Matchmaker.Rooms[room]);
+            }
+            else Back();
             return;
         }
 
@@ -419,6 +449,7 @@ public sealed class MenuSystem
                 case "Practice": Show(MenuPage.Courses); break;
                 case "Arena": Show(MenuPage.ArenaSetup); Cursor = ArenaModInfo.All.Length; break;
                 case "Leaderboard": Show(MenuPage.Leaderboard); break;
+                case "Online": Show(MenuPage.Online); break;
                 case "Character": Show(MenuPage.Character); break;
                 case "Options": Show(MenuPage.Options); break;
                 case "Quit": _g.QuitRequested = true; break;
