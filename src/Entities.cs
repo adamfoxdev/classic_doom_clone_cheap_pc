@@ -41,6 +41,19 @@ public sealed class GhostRunner : Thing
     public override Tex Sprite(float time) => Art.Ghost[At > 0 && !Finished ? (int)(At * 7) % 2 : 0];
 }
 
+/// <summary>A co-op partner rendered in the world; the host's fixed input frames own its movement.</summary>
+public sealed class NetworkAvatar : Thing
+{
+    public readonly string PlayerId;
+    public Player Player;
+    public NetworkAvatar(string playerId, Player player)
+    {
+        PlayerId = playerId; Player = player; SpriteW = 0.34f; SpriteH = Player.Height; Radius = Player.Radius; FullBright = true;
+    }
+    public override int Alpha => Player.Dead ? 75 : 230;
+    public override Tex Sprite(float time) => Art.Ghost[(int)(time * 7) % 2];
+}
+
 // ---------------------------------------------------------------- decorations
 
 public sealed class Decor : Thing

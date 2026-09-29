@@ -60,6 +60,7 @@ public static class Program
         var game = new Game
         {
             ConfigPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HexenSharp", "settings.cfg"),
+            Matchmaker = new MatchmakerClient(Environment.GetEnvironmentVariable("HEXEN_MATCHMAKER_URL") ?? "http://localhost:5080/", Version),
         };
         game.MapsDir = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "maps");
         game.ProfilePath = Path.Combine(Path.GetDirectoryName(game.ConfigPath)!, "profile.json");
@@ -154,10 +155,11 @@ public static class Program
 
         game.SaveSettings();
         game.EndArenaRun(); // closing the window mid-run still records it
-        game.SaveNow();     // and mid-campaign it saves where you are
+        if (!game.OnlineRun) game.SaveNow(); // a network session is not an offline campaign save
         game.SaveProfile();
         Raylib.UnloadTexture(tex);
         audio?.Dispose();
+        game.Matchmaker?.Dispose();
         Raylib.CloseAudioDevice();
         Raylib.CloseWindow();
     }

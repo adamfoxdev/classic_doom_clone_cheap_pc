@@ -194,6 +194,10 @@ public sealed partial class Game
     public bool ShowMap, Paused, QuitRequested;
     public readonly List<(string text, float time)> Messages = new();
     public Action<Sfx, float> PlaySound = (_, _) => { };
+    public MatchmakerClient Matchmaker;
+    public OnlineSession NetSession;
+    public readonly List<OnlinePlayer> OnlinePlayers = new();
+    public bool OnlineRun { get; private set; }
     public readonly GameVars Vars = new();
     public readonly DevConsole Con;
     public float Fps;
@@ -857,6 +861,7 @@ public sealed partial class Game
 
     public void NewGame(PClass cls)
     {
+        OnlineRun = false;
         EndArenaRun(); // Restart, or trying again after dying
         Arcade.Reset();
         TrickAge = 99f; // (no callout left over from the last game)
@@ -957,6 +962,14 @@ public sealed partial class Game
 
     public void Update(Input inp, float dt)
     {
+        Matchmaker?.Tick(dt);
+        if (Matchmaker?.TakeStartReady() == true) OnlineSession.Host(this);
+        if (NetSession != null) { NetSession.Tick(this, inp, dt); return; }
+        while (Matchmaker != null && Matchmaker.TryReceiveNetwork(out var networkMessage))
+        {
+            if (networkMessage.Type == "start") { OnlineSession.Client(this, networkMessage); break; }
+        }
+        if (NetSession != null) { NetSession.Tick(this, inp, dt); return; }
         CurrentReplay?.Frames.Add((dt, inp)); // the run's replay: every frame, as it came
         if (dt > 0) Fps += (1f / dt - Fps) * 0.05f;
         dt = MathF.Min(dt, 0.05f);
@@ -1074,6 +1087,122 @@ public sealed partial class Game
                 else NewGame(P.Class);
             }
         }
+    }
+
+    Profile _onlineProfileBackup;
+    GameVars _onlineVarsBackup;
+    string _onlineProfilePathBackup, _onlineSavePathBackup;
+    int? _onlineSeedBackup;
+
+    public void BeginOnlineGame(int seed, string[] playerIds, string localPlayerId, GameVars settings, GameStyle style)
+    {
+        _onlineProfileBackup = Profile;
+        _onlineProfilePathBackup = ProfilePath;
+        _onlineSavePathBackup = SavePath;
+        _onlineSeedBackup = FixedSeed;
+        _onlineVarsBackup = new GameVars();
+        OnlineSession.CopyFields(Vars, _onlineVarsBackup);
+        Profile = new Profile();
+        ProfilePath = SavePath = null;
+        OnlineSession.CopyFields(settings, Vars);
+        FixedSeed = seed;
+        Style = style;
+        NewGame(PClass.Fighter);
+
+        OnlinePlayers.Clear();
+        var host = P;
+        for (int i = 0; i < playerIds.Length; i++)
+        {
+            var actor = i == 0 ? host : new Player
+            {
+                Class = (PClass)(i % Enum.GetValues<PClass>().Length), X = Level.StartX, Y = Level.StartY, Angle = Level.StartAngle,
+                Health = 100, MaxHealth = 100, BlueMana = 50,
+            };
+            actor.FloorZ = Level.FloorUnder(actor.X, actor.Y, actor.Radius);
+            OnlinePlayers.Add(new OnlinePlayer(playerIds[i], actor));
+        }
+        var local = OnlinePlayers.FirstOrDefault(p => p.Id == localPlayerId) ?? OnlinePlayers[0];
+        P = local.State;
+        foreach (var player in OnlinePlayers.Where(p => p != local))
+        {
+            player.Avatar = new NetworkAvatar(player.Id, player.State) { X = player.State.X, Y = player.State.Y, Z = player.State.Z, Level = Level };
+            Level.Things.Add(player.Avatar);
+        }
+        Menu.Close();
+        Mode = GameMode.Playing;
+        OnlineRun = true;
+        Say("Co-op session started. Press Esc to leave.");
+    }
+
+    public void StepOnline(NetworkPlayerInput[] inputs, float dt, string localPlayerId)
+    {
+        Time += dt; PlayTime += dt;
+        AchievementTime = MathF.Max(0, AchievementTime - dt);
+        for (int i = Messages.Count - 1; i >= 0; i--)
+        {
+            var m = Messages[i]; m.time -= dt;
+            if (m.time <= 0) Messages.RemoveAt(i); else Messages[i] = m;
+        }
+        float step = FeelStep(dt);
+        foreach (var actor in OnlinePlayers)
+        {
+            P = actor.State;
+            var wire = inputs.FirstOrDefault(i => i.PlayerId == actor.Id)?.Input;
+            UpdatePlayer(wire?.ToInput() ?? default, step);
+        }
+
+        foreach (var actor in OnlinePlayers.Where(p => !p.State.Dead))
+        {
+            var wire = inputs.FirstOrDefault(i => i.PlayerId == actor.Id)?.Input;
+            if (wire?.Use != true) continue;
+            var down = OnlinePlayers.FirstOrDefault(p => p.State.Dead && Dist(actor.State.X, actor.State.Y, p.State.X, p.State.Y) < 1.35f);
+            if (down == null) continue;
+            down.State.Dead = false; down.State.Health = Math.Max(50, down.State.MaxHealth / 2); down.State.EyeZ = 0.5f;
+            Say("A crewmate is back on their feet!"); PlaySound(Sfx.Heal, 0.8f);
+        }
+
+        P = OnlinePlayers[0].State;
+        if (OnlinePlayers.All(p => p.State.Dead)) Mode = GameMode.Dead;
+        if (Mode == GameMode.Playing)
+        {
+            HazardTick(step); DirectorTick(step); UpdateWorld(step); RematchTick(step); EliteTick(step); RangeTick(step);
+            TrickTick(dt); TowerTick(step); SoccerTick(step); PoolTick(step); FishingTick(step); RoomLookTick(dt);
+            QuakeArenaTick(); TargetsTick(step); CheckBossIntros(); Arcade.Update(dt);
+            DigTarget = Level != null && !Level.Flight ? MineTarget(P.CurWeapon.Melee && !Relaxed ? P.CurWeapon.Range + 0.3f : 1.3f) : null;
+        }
+        P = OnlinePlayers.FirstOrDefault(p => p.Id == localPlayerId)?.State ?? OnlinePlayers[0].State;
+        SyncNetworkAvatars();
+    }
+
+    void SyncNetworkAvatars()
+    {
+        foreach (var player in OnlinePlayers.Where(p => p.Avatar != null))
+        {
+            if (player.Avatar.Level != Level)
+            {
+                player.Avatar.Level?.Things.Remove(player.Avatar);
+                player.Avatar.Level = Level; Level.Things.Add(player.Avatar);
+            }
+            player.Avatar.X = player.State.X; player.Avatar.Y = player.State.Y; player.Avatar.Z = player.State.Z;
+        }
+    }
+
+    public void StartOnlineGame() => OnlineSession.Host(this);
+
+    public void EndOnlineGame()
+    {
+        if (NetSession == null) return;
+        NetSession = null;
+        foreach (var player in OnlinePlayers)
+            if (player.Avatar != null) player.Avatar.Level?.Things.Remove(player.Avatar);
+        OnlinePlayers.Clear();
+        GoToTitle();
+        Profile = _onlineProfileBackup ?? new Profile();
+        ProfilePath = _onlineProfilePathBackup; SavePath = _onlineSavePathBackup; FixedSeed = _onlineSeedBackup;
+        if (_onlineVarsBackup != null) OnlineSession.CopyFields(_onlineVarsBackup, Vars);
+        OnlineRun = false;
+        _onlineProfileBackup = null; _onlineVarsBackup = null;
+        Matchmaker?.Leave();
     }
 
     /// <summary>The movement keys held last frame, -1/0/1 (forward/back, left/right), for the strafe helper.</summary>
@@ -1205,6 +1334,7 @@ public sealed partial class Game
         p.DamageFlash = MathF.Max(0, p.DamageFlash - dt * 2);
         p.PickupFlash = MathF.Max(0, p.PickupFlash - dt * 3);
         p.TeleportFlash = MathF.Max(0, p.TeleportFlash - dt * 1.5f);
+        if (p.Dead) { p.Flying = false; p.EyeZ = MathF.Max(0.12f, p.EyeZ - dt * 0.8f); return; }
         if (Mode == GameMode.Dead) { p.Flying = false; p.Z = MathF.Max(0, p.Z - dt * 4f); return; }
         if (Level.Flight) { UpdateFlight(inp, dt); return; }
 
@@ -2167,10 +2297,21 @@ public sealed partial class Game
             var dest = lv.FindMark(mark);
             if (dest == null) continue;
             Level = lv;
-            P.X = dest.Value.x; P.Y = dest.Value.y;
-            P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0; P.VX = P.VY = 0; P.Flying = false;
-            P.PortalLock = true;
-            P.TeleportFlash = 1;
+            if (NetSession != null)
+            {
+                foreach (var actor in OnlinePlayers)
+                {
+                    var p = actor.State;
+                    p.X = dest.Value.x; p.Y = dest.Value.y; p.FloorZ = lv.FloorUnder(p.X, p.Y, p.Radius);
+                    p.Z = p.VZ = p.VX = p.VY = 0; p.Flying = false; p.PortalLock = true; p.TeleportFlash = 1;
+                }
+            }
+            else
+            {
+                P.X = dest.Value.x; P.Y = dest.Value.y;
+                P.FloorZ = lv.FloorUnder(P.X, P.Y, P.Radius); P.Z = 0; P.VZ = 0; P.VX = P.VY = 0; P.Flying = false;
+                P.PortalLock = true; P.TeleportFlash = 1;
+            }
             // drop any in-flight projectiles from the level we left
             foreach (var t in Hub.SelectMany(l => l.Things)) if (t is Projectile or Puff) t.Removed = true;
             PlaySound(Sfx.Teleport, 1);
@@ -2193,9 +2334,21 @@ public sealed partial class Game
     void EnterFlight()
     {
         var lv = Level;
-        MoveTo(lv.StartX, lv.StartY, 0);
-        P.Z = FlightStartZ; P.Flying = true; P.ShipSpeed = FlightCruise; P.Pitch = 0; P.PortalLock = true;
-        P.Health = Math.Max(P.Health, P.MaxHealth);
+        if (NetSession != null)
+        {
+            foreach (var actor in OnlinePlayers)
+            {
+                var p = actor.State;
+                p.X = lv.StartX; p.Y = lv.StartY; p.FloorZ = 0; p.Z = FlightStartZ; p.VZ = 0;
+                p.Flying = true; p.ShipSpeed = FlightCruise; p.Pitch = 0; p.PortalLock = true; p.Health = Math.Max(p.Health, p.MaxHealth);
+            }
+        }
+        else
+        {
+            MoveTo(lv.StartX, lv.StartY, 0);
+            P.Z = FlightStartZ; P.Flying = true; P.ShipSpeed = FlightCruise; P.Pitch = 0; P.PortalLock = true;
+            P.Health = Math.Max(P.Health, P.MaxHealth);
+        }
         Checkpoint = new Checkpoint { Level = lv, X = lv.StartX, Y = lv.StartY, Floor = 0, Angle = 0, Health = P.MaxHealth, Armor = P.Armor };
         foreach (var t in lv.Things)
         {
@@ -2310,7 +2463,13 @@ public sealed partial class Game
             switch (t)
             {
                 case Monster m:
-                    if (!Vars.Freeze || !m.Alive) UpdateMonster(m, dt);
+                    if (!Vars.Freeze || !m.Alive)
+                    {
+                        var focus = P;
+                        if (NetSession != null) P = NetSession.NearestTarget(this, m);
+                        UpdateMonster(m, dt);
+                        P = focus;
+                    }
                     break;
                 case Projectile pr: UpdateProjectile(pr, dt); break;
                 case SoccerBall ball: BallTick(ball, dt); break;
@@ -2323,6 +2482,10 @@ public sealed partial class Game
 
     bool CellOccupied(int cx, int cy)
     {
+        if (NetSession != null)
+            foreach (var actor in OnlinePlayers)
+                if (!actor.State.Dead && ((int)actor.State.X == cx && (int)actor.State.Y == cy
+                    || Dist(actor.State.X, actor.State.Y, cx + 0.5f, cy + 0.5f) < 0.5f + actor.State.Radius)) return true;
         if ((int)P.X == cx && (int)P.Y == cy) return true;
         if (Mode != GameMode.Dead && Dist(P.X, P.Y, cx + 0.5f, cy + 0.5f) < 0.5f + P.Radius) return true;
         foreach (var t in Level.Things)
@@ -2356,7 +2519,25 @@ public sealed partial class Game
                 return true;
             }
         }
-        if (self != null && Mode != GameMode.Dead)
+        if (NetSession != null)
+        {
+            foreach (var actor in OnlinePlayers)
+            {
+                if (actor.State.Dead || (self == null && actor.State == P)) continue;
+                float rr = r + actor.State.Radius;
+                float dx = actor.State.X - x, dy = actor.State.Y - y;
+                float distance2 = dx * dx + dy * dy;
+                if (distance2 < rr * rr)
+                {
+                    // Players start together. Let a player move out of an initial overlap, but never move deeper into it.
+                    float oldDx = actor.State.X - P.X, oldDy = actor.State.Y - P.Y;
+                    float oldDistance2 = oldDx * oldDx + oldDy * oldDy;
+                    if (oldDistance2 < rr * rr && distance2 >= oldDistance2) continue;
+                    return true;
+                }
+            }
+        }
+        else if (self != null && Mode != GameMode.Dead)
         {
             float rr = r + P.Radius;
             if ((P.X - x) * (P.X - x) + (P.Y - y) * (P.Y - y) < rr * rr) return true;
@@ -2391,7 +2572,7 @@ public sealed partial class Game
         if (m.Target != null) { DummyTick(m, dt); return; }
         if (m.FrozenTime > 0 && m.Alive) { m.FrozenTime -= dt; return; } // frozen solid (Deep Freeze): not a twitch
         float dist = Dist(m.X, m.Y, P.X, P.Y);
-        bool playerAlive = Mode != GameMode.Dead;
+        bool playerAlive = Mode != GameMode.Dead && !P.Dead;
 
         if (Relaxed && m.Alive) { Wander(m, dt, dist); return; }
 
@@ -2668,9 +2849,18 @@ public sealed partial class Game
                         Explode(pr, other);
                         return;
                     }
-                if (Mode != GameMode.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z))
+                Player hitPlayer = null;
+                if (NetSession != null)
+                    hitPlayer = OnlinePlayers.Select(a => a.State).FirstOrDefault(p => !p.Dead
+                        && Dist(p.X, p.Y, pr.X, pr.Y) < p.Radius + pr.Radius
+                        && pr.Z >= p.FloorZ + p.Z - 0.05f
+                        && pr.Z <= p.FloorZ + p.Z + Player.Height * (1f - 0.5f * p.SlideLow));
+                else if (Mode != GameMode.Dead && !P.Dead && Dist(P.X, P.Y, pr.X, pr.Y) < P.Radius + pr.Radius && HitsPlayerHeight(pr.Z)) hitPlayer = P;
+                if (hitPlayer != null)
                 {
+                    var focus = P; P = hitPlayer;
                     EliteHit(pr.Owner as Monster, DamagePlayer(Rand(pr.DmgMin, pr.DmgMax)));
+                    P = focus;
                     Explode(pr, null);
                     return;
                 }
@@ -2948,6 +3138,13 @@ public sealed partial class Game
             p.Dead = true;
             RunDeaths++;
             p.Z = 0; p.VZ = 0; p.VX = p.VY = 0; p.SlideTime = 0; p.SlideLow = 0;
+            if (NetSession != null)
+            {
+                PlaySound(Sfx.PlayerDeath, 1);
+                Say(OnlinePlayers.All(a => a.State.Dead) ? "The whole crew is down." : "Down! A crewmate can revive you.");
+                if (OnlinePlayers.All(a => a.State.Dead)) Mode = GameMode.Dead;
+                return dmg - saved;
+            }
             Mode = GameMode.Dead;
             SaveProfile();
             PlaySound(Sfx.PlayerDeath, 1);
